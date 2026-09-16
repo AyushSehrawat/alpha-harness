@@ -20,7 +20,7 @@ from .brain.client import BrainClient
 from .brain.endpoints import BrainEndpoints
 from .brain.errors import BrainTransportError
 from .catalog.queries import CatalogQueries
-from .catalog.sync import CatalogSync
+from .catalog.sync import CatalogSync, serialise_run
 from .config import BRAIN_API_BASE, Settings, get_settings
 from .db.duck import Catalog
 from .db.models import SimStatus, SimulationRecord, utcnow
@@ -158,6 +158,7 @@ class AppState:
         # A sync killed with the process would otherwise report RUNNING forever.
         try:
             await self.sync.reset_interrupted()
+            await self._replay_last_sync()
         except Exception:
             log.warning("startup.sync_reset_failed", exc_info=True)
 
@@ -172,6 +173,16 @@ class AppState:
         await self.optimizer.start()
         self._session_watch = asyncio.create_task(self._watch_session(), name="session-watch")
         log.info("startup.complete", data_dir=str(self.settings.data_dir))
+
+    async def _replay_last_sync(self) -> None:
+        """Seed the sync topic with the last finished run, so its figures survive a restart.
+
+        The hub replays one message per topic to a client on connect, and that snapshot only
+        ever held runs this process saw.
+        """
+        runs = await self.sync.runs(limit=1)
+        if runs and runs[0].finished_at is not None:
+            await self.hub.broadcast(TOPIC_SYNC, serialise_run(runs[0]))
 
     async def _recapture(self) -> None:
         """Hand the tracker every recently finished Alpha the vault never stored.

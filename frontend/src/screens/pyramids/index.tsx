@@ -49,10 +49,7 @@ export function PyramidsScreen() {
 
   return (
     <Page>
-      <PageHeader
-        title="Sync with BRAIN"
-        description="Download every market's Data Fields from BRAIN, and see each Pyramid Multiplier."
-      />
+      <PageHeader title="Sync with BRAIN" description="Download Data Fields" />
       <SyncHero
         scope={scope}
         onPick={(change) => {

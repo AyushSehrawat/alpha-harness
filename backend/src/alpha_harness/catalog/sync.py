@@ -24,20 +24,32 @@ import structlog
 from sqlalchemy import select, update
 
 from ..brain.errors import BrainError
-from ..brain.schemas import DataCategory, DataField, DataSet
+from ..brain.schemas import BulkField, FieldRef
+from ..db.duck import CatalogUnusableError
 from ..db.models import SyncRun, SyncStatus, utcnow
 
 if TYPE_CHECKING:
     from datetime import datetime
 
     from ..brain.endpoints import BrainEndpoints
+    from ..brain.schemas import DataCategory, DataSet
     from ..db.duck import Catalog
     from ..db.sqlite import Database
 
 log = structlog.get_logger(__name__)
 
-#: Scopes whose fields are held in memory and downloading at once in a full sync.
-ALL_CONCURRENCY = 4
+#: Scopes whose fields are held in memory and downloading at once in a full sync. BRAIN
+#: throttles to roughly 34 requests a minute serially but 67 at eight in flight, so this is
+#: what the platform allows rather than what the local machine could manage.
+ALL_CONCURRENCY = 8
+
+#: How long a market waits for the shared dataset read before fetching its own. Short: a
+#: market that waits is a market not making progress, and its own request costs ~2s.
+BULK_DATASETS_WAIT = 12.0
+
+#: Regions read at once for the shared dataset index. BRAIN allows a request a second, so a
+#: wider fan-out just trades 429s for the latency it saves.
+REGION_DATASETS_CONCURRENCY = 4
 
 #: Tries per market for each stage of a full sync. The client already retries throttling
 #: and server errors per request; this also covers an empty answer or a failed write.
@@ -217,6 +229,42 @@ class CatalogSync:
         finally:
             self._cancels.pop(run_id, None)
 
+    async def _all_datasets(
+        self, targets: list[SyncTarget]
+    ) -> dict[tuple[str, int, str], list[DataSet]] | None:
+        """Every market's datasets, read a region at a time, keyed by region, delay and universe.
+
+        One unscoped read covers all of them on paper, but BRAIN answers it with a 504 at its
+        thirty-second gateway limit; a single region comes back in eight to sixteen seconds.
+        Regions are read together, and one that fails sends only its own markets to their own
+        requests.
+        """
+        scopes = sorted({(t.instrument_type, t.region) for t in targets})
+        gate = asyncio.Semaphore(REGION_DATASETS_CONCURRENCY)
+
+        async def one(instrument_type: str, region: str) -> list[DataSet]:
+            async with gate:
+                return await self.endpoints.list_data_sets_all(
+                    instrumentType=instrument_type, region=region
+                )
+
+        results = await asyncio.gather(*(one(i, r) for i, r in scopes), return_exceptions=True)
+        indexed: dict[tuple[str, int, str], list[DataSet]] = {}
+        failed = 0
+        for (_, region), result in zip(scopes, results, strict=True):
+            if isinstance(result, BaseException):
+                failed += 1
+                log.warning("sync_all.region_datasets_failed", region=region, error=_reason(result))
+                continue
+            for row in result:
+                if row.region is None or row.delay is None or row.universe is None:
+                    continue
+                indexed.setdefault((row.region, row.delay, row.universe), []).append(row)
+        if failed == len(scopes):
+            return None
+        log.info("sync_all.bulk_datasets", regions=len(scopes) - failed, markets=len(indexed))
+        return indexed
+
     async def _crawl_all(
         self, run_id: int, targets: list[SyncTarget], cancel: asyncio.Event
     ) -> None:
@@ -230,6 +278,9 @@ class CatalogSync:
         # so a failure leaves it unset for the next market's retry.
         taxonomy: list[DataCategory] | None = None
         taxonomy_lock = asyncio.Lock()
+        # One unscoped read serves every market and runs beside the field downloads. Markets
+        # never block on it for long: see BULK_DATASETS_WAIT.
+        bulk_datasets = asyncio.create_task(self._all_datasets(targets))
 
         async def report() -> None:
             await self._update(
@@ -279,7 +330,8 @@ class CatalogSync:
 
                 try:
                     fields, datasets, categories = await _retry(store, cancel, target.label)
-                except SyncCancelled:
+                except SyncCancelled, CatalogUnusableError:
+                    # An unusable catalog fails every remaining market the same way.
                     raise
                 # One market failing must not end the whole sync.
                 except Exception as exc:  # noqa: BLE001
@@ -316,11 +368,16 @@ class CatalogSync:
                     )
                 ]
                 await self.catalog.upsert_categories(category_rows)
-                dataset_rows: list[tuple[Any, ...]] = []
-                async for dataset in self.endpoints.iter_data_sets(**target.params):
-                    _check(cancel)
-                    dataset_rows.append(_dataset_row(dataset, target, now))
-                await self.catalog.upsert_datasets(dataset_rows)
+                datasets = await _shared_datasets(bulk_datasets, target)
+                if datasets is None:
+                    # Counted per run: a market paying for its own scope means the shared
+                    # read was too slow, and BULK_DATASETS_WAIT wants raising.
+                    log.info("sync_all.datasets_fallback", target=target.label)
+                    datasets = await self.endpoints.list_data_sets_all(**target.params)
+                _check(cancel)
+                await self.catalog.upsert_datasets(
+                    [_dataset_row(dataset, target, now) for dataset in datasets]
+                )
 
             try:
                 # Inside the gate too: dataset paging is many requests per market, and every
@@ -328,7 +385,7 @@ class CatalogSync:
                 async with gate:
                     await _retry(details, cancel, target.label)
                 market["state"] = "done"
-            except SyncCancelled:
+            except SyncCancelled, CatalogUnusableError:
                 raise
             # The market stays browsable on its derived rows.
             except Exception as exc:  # noqa: BLE001
@@ -340,11 +397,28 @@ class CatalogSync:
         # Every market's pipeline at once, bounded by the gate above.
         await self._update(run_id, phase="fields")
         await self._emit(run_id)
-        results = await asyncio.gather(*(pipeline(t) for t in targets), return_exceptions=True)
-        _check(cancel)
-        for result in results:
-            if isinstance(result, Exception) and not isinstance(result, SyncCancelled):
-                raise result
+        try:
+            results = await asyncio.gather(*(pipeline(t) for t in targets), return_exceptions=True)
+            _check(cancel)
+            for result in results:
+                if isinstance(result, Exception) and not isinstance(result, SyncCancelled):
+                    raise result
+        finally:
+            # Cancelling or failing the run must not leave the shared read holding a
+            # connection, nor its exception unretrieved. CancelledError is named because it
+            # is a BaseException: suppressing Exception alone lets it escape and strand the
+            # run without a finished status.
+            if not bulk_datasets.done():
+                bulk_datasets.cancel()
+            with contextlib.suppress(Exception, asyncio.CancelledError):
+                await bulk_datasets
+
+        # Once, at the end: per market this would serialise behind every other market's
+        # write. A failure here costs disk, not data, so it is logged rather than raised.
+        try:
+            await self.catalog.compact_fields()
+        except Exception:
+            log.warning("sync_all.compact_failed", run_id=run_id, exc_info=True)
 
         status = SyncStatus.COMPLETE if synced else SyncStatus.FAILED
         await self._finish(run_id, status, error=_failures(progress))
@@ -438,33 +512,71 @@ async def _retry(work: Callable[[], Awaitable[Any]], cancel: asyncio.Event, labe
 # Tuple order must match the *_COLUMNS constants in db.duck.
 
 
-def _field_rows(
-    raw: list[dict[str, Any]], target: SyncTarget, now: datetime
-) -> list[tuple[Any, ...]]:
-    return [_field_row(DataField.model_validate(item), target, now) for item in raw]
+#: The labs read MATRIX, VECTOR and GROUP and ignore the rest, so where BRAIN lists one id
+#: under two types the usable one is the one worth keeping.
+_TYPE_RANK = {"MATRIX": 0, "VECTOR": 1, "GROUP": 2}
 
 
-def _field_row(field: DataField, target: SyncTarget, now: datetime) -> tuple[Any, ...]:
-    return (
-        field.id,
-        field.dataset.id if field.dataset else None,
-        field.category.id if field.category else None,
-        field.category.name if field.category else None,
-        field.subcategory.id if field.subcategory else None,
-        field.subcategory.name if field.subcategory else None,
-        field.description,
-        field.type,
-        field.coverage,
-        field.user_count,
-        field.alpha_count,
-        field.pyramid_multiplier,
-        json.dumps(field.themes) if field.themes else None,
+async def _shared_datasets(
+    task: asyncio.Task[dict[tuple[str, int, str], list[DataSet]] | None],
+    target: SyncTarget,
+) -> list[DataSet] | None:
+    """This market's slice of the shared read, or ``None`` to go and fetch its own.
+
+    Time-boxed: a slow unscoped read must never hold forty markets still, which is what a
+    plain ``await`` on it did. ``asyncio.wait`` gives up on the task without cancelling it,
+    so a later market still gets the answer.
+    """
+    if not task.done():
+        await asyncio.wait([task], timeout=BULK_DATASETS_WAIT)
+    if not task.done():
+        return None
+    indexed = task.result()
+    return None if indexed is None else indexed.get((target.region, target.delay, target.universe))
+
+
+def _field_rows(raw: list[BulkField], target: SyncTarget, now: datetime) -> list[tuple[Any, ...]]:
+    """One tuple per field, read straight off the decoded structs.
+
+    Keyed by field id: BRAIN repeats one in a few markets, and an upsert cannot touch the
+    same row twice in a statement — DuckDB drops the extra and leaves its index inconsistent,
+    which kills the connection on a later market's delete.
+    """
+    by_id: dict[str, tuple[Any, ...]] = {}
+    ranks: dict[str, int] = {}
+    instrument, region, delay, universe = (
         target.instrument_type,
         target.region,
         target.delay,
         target.universe,
-        now,
     )
+    for item in raw:
+        rank = _TYPE_RANK.get(item.type or "", len(_TYPE_RANK))
+        if item.id in ranks and ranks[item.id] <= rank:
+            continue
+        ranks[item.id] = rank
+        dataset, category, subcategory = item.dataset, item.category, item.subcategory
+        by_id[item.id] = (
+            item.id,
+            dataset.id if dataset else None,
+            category.id if category else None,
+            category.name if category else None,
+            subcategory.id if subcategory else None,
+            subcategory.name if subcategory else None,
+            item.description,
+            item.type,
+            item.coverage,
+            item.user_count,
+            item.alpha_count,
+            item.pyramid_multiplier,
+            json.dumps(item.themes) if item.themes else None,
+            instrument,
+            region,
+            delay,
+            universe,
+            now,
+        )
+    return list(by_id.values())
 
 
 def _dataset_row(dataset: DataSet, target: SyncTarget, now: datetime) -> tuple[Any, ...]:
@@ -510,7 +622,7 @@ def _category_row(
 
 
 def _derived_rows(
-    raw: list[dict[str, Any]], target: SyncTarget, now: datetime
+    raw: list[BulkField], target: SyncTarget, now: datetime
 ) -> tuple[list[tuple[Any, ...]], list[tuple[Any, ...]]]:
     """Dataset and category rows built from the fields alone.
 
@@ -520,23 +632,24 @@ def _derived_rows(
     """
     datasets: dict[str, dict[str, Any]] = {}
     categories: dict[str, dict[str, Any]] = {}
+    blank = FieldRef()
     for item in raw:
-        dataset = item.get("dataset") or {}
-        category = item.get("category") or {}
-        subcategory = item.get("subcategory") or {}
-        dataset_id = dataset.get("id")
+        dataset = item.dataset or blank
+        category = item.category or blank
+        subcategory = item.subcategory or blank
+        dataset_id = dataset.id
         if dataset_id:
             entry = datasets.setdefault(
                 dataset_id,
-                {"name": dataset.get("name"), "category": category, "sub": subcategory, "n": 0},
+                {"name": dataset.name, "category": category, "sub": subcategory, "n": 0},
             )
             entry["n"] += 1
-        for node, parent_id in ((category, None), (subcategory, category.get("id"))):
-            node_id = node.get("id")
+        for node, parent_id in ((category, None), (subcategory, category.id)):
+            node_id = node.id
             if not node_id:
                 continue
             c = categories.setdefault(
-                node_id, {"name": node.get("name"), "parent": parent_id, "ds": set(), "n": 0}
+                node_id, {"name": node.name, "parent": parent_id, "ds": set(), "n": 0}
             )
             c["n"] += 1
             if dataset_id:
@@ -548,10 +661,10 @@ def _derived_rows(
             dataset_id,
             e["name"],
             None,
-            e["category"].get("id"),
-            e["category"].get("name"),
-            e["sub"].get("id"),
-            e["sub"].get("name"),
+            e["category"].id,
+            e["category"].name,
+            e["sub"].id,
+            e["sub"].name,
             None,
             None,
             None,

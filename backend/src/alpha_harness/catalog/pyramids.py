@@ -23,8 +23,6 @@ if TYPE_CHECKING:
 
 #: Alphas submitted in a pyramid this quarter before it counts as formulated.
 LIT_AT = 3
-#: The order BRAIN lists regions in. Anything else follows alphabetically.
-REGION_ORDER = ("USA", "GLB", "EUR", "ASI", "CHN", "JPN", "IND", "DEU", "GBR")
 
 MULTIPLIERS_TTL = 6 * 3600
 COUNTS_TTL = 600
@@ -55,18 +53,27 @@ def assemble(
     multipliers: list[dict[str, Any]],
     counts: list[dict[str, Any]],
     synced: set[tuple[str, str, int]],
+    universes: dict[str, int],
 ) -> dict[str, Any]:
-    """Merge the two activity lists and the download state into one grid."""
+    """Merge the two activity lists and the download state into one grid.
+
+    The multipliers decide which pyramids exist: they are the ones BRAIN will pay for, and
+    they match the markets the account can simulate. Submitted-alpha counts only fill in
+    pyramids already on the grid — that list also carries regions the account has no access
+    to, which would otherwise show as columns nothing can ever be researched in.
+    """
     cells: dict[tuple[str, str, int], dict[str, Any]] = {}
     categories: dict[str, str] = {}
 
-    def cell(item: dict[str, Any]) -> dict[str, Any] | None:
+    def cell(item: dict[str, Any], *, create: bool) -> dict[str, Any] | None:
         category = item.get("category") or {}
         category_id, region, delay = category.get("id"), item.get("region"), item.get("delay")
         if not category_id or not region or delay is None:
             return None
-        categories.setdefault(category_id, category.get("name") or category_id)
         key = (category_id, region, int(delay))
+        if not create:
+            return cells.get(key)
+        categories.setdefault(category_id, category.get("name") or category_id)
         return cells.setdefault(
             key,
             {
@@ -79,28 +86,27 @@ def assemble(
         )
 
     for item in multipliers:
-        if (found := cell(item)) is not None:
+        if (found := cell(item, create=True)) is not None:
             found["multiplier"] = item.get("multiplier")
     for item in counts:
-        if (found := cell(item)) is not None:
+        if (found := cell(item, create=False)) is not None:
             found["alphaCount"] = int(item.get("alphaCount") or 0)
 
     for key, found in cells.items():
         found["lit"] = found["alphaCount"] >= LIT_AT
         found["synced"] = key in synced
 
-    columns = sorted({(c["region"], c["delay"]) for c in cells.values()}, key=_column_order)
+    # Widest markets first, then alphabetically — the ordering the sync matrix uses, so the
+    # two screens read the same way whatever regions an account has.
+    columns = sorted(
+        {(c["region"], c["delay"]) for c in cells.values()},
+        key=lambda column: (-universes.get(column[0], 0), column[0], column[1]),
+    )
     return {
         "columns": [{"region": region, "delay": delay} for region, delay in columns],
         "categories": [{"id": cid, "name": name} for cid, name in categories.items()],
         "cells": list(cells.values()),
     }
-
-
-def _column_order(column: tuple[str, int]) -> tuple[int, str, int]:
-    region, delay = column
-    rank = REGION_ORDER.index(region) if region in REGION_ORDER else len(REGION_ORDER)
-    return rank, region, delay
 
 
 async def pyramid_grid(
@@ -118,6 +124,10 @@ async def pyramid_grid(
         "SELECT DISTINCT category_id, region, delay FROM data_field WHERE category_id IS NOT NULL"
     )
     synced = {(r["category_id"], r["region"], int(r["delay"])) for r in rows}
-    return assemble(multipliers, counts, synced) | {
+    widths = await catalog.query(
+        "SELECT region, count(DISTINCT universe) AS universes FROM data_field GROUP BY region"
+    )
+    universes = {r["region"]: int(r["universes"]) for r in widths}
+    return assemble(multipliers, counts, synced, universes) | {
         "quarter": {"start": start.isoformat(), "end": end.isoformat(), "today": today.isoformat()}
     }

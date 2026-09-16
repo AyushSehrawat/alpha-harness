@@ -13,6 +13,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Self
 
+import msgspec
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 
@@ -321,6 +322,46 @@ class DataSet(BrainModel):
     themes: list[Any] = Field(default_factory=list)
     pyramid_multiplier: float | None = None
     research_papers: list[Any] = Field(default_factory=list)
+
+
+class FieldRef(msgspec.Struct):
+    """A dataset, category or subcategory named inside a data field."""
+
+    id: str | None = None
+    name: str | None = None
+
+
+class BulkField(msgspec.Struct, rename="camel"):
+    """One entry of ``GET /data-fields``, decoded straight from the response bytes.
+
+    A whole market is ~85k of these, where validating Pydantic models cost three times as
+    much and blocked the event loop while it did. Only the columns the catalog stores are
+    declared; msgspec skips the rest of each object.
+    """
+
+    #: Required: a field without one cannot be keyed, and a null key corrupts DuckDB's index.
+    id: str
+    description: str | None = None
+    type: str | None = None
+    coverage: float | None = None
+    user_count: int | None = None
+    alpha_count: int | None = None
+    pyramid_multiplier: float | None = None
+    themes: list[str] | None = None
+    dataset: FieldRef | None = None
+    category: FieldRef | None = None
+    subcategory: FieldRef | None = None
+
+
+class BulkFields(msgspec.Struct):
+    """The enveloped shape of ``GET /data-fields``, when it answers with one."""
+
+    results: list[BulkField] = []
+
+
+#: Reused: building the decoders once is most of their cost.
+BULK_FIELDS = msgspec.json.Decoder(list[BulkField])
+BULK_FIELDS_ENVELOPE = msgspec.json.Decoder(BulkFields)
 
 
 class DataField(BrainModel):

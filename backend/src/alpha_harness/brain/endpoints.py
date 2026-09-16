@@ -1,7 +1,7 @@
 """Typed wrappers over the BRAIN endpoint surface.
 
-One place that knows which endpoint needs which ``Accept`` version, which ones are
-asynchronous jobs, and how pagination works.
+One place that knows which endpoint needs which ``Accept`` version and which ones are
+asynchronous jobs.
 
 Structured platform entities come back as Pydantic models. Two kinds of response stay raw
 dicts: bulk reads where validating every row costs too much (``list_data_fields_all``), and
@@ -17,8 +17,11 @@ import structlog
 from .altcha import Challenge, Solution, solve_async
 from .errors import BrainError, BrainVerificationRequired
 from .schemas import (
+    BULK_FIELDS,
+    BULK_FIELDS_ENVELOPE,
     Alpha,
     AuthState,
+    BulkField,
     DataCategory,
     DataSet,
     Operator,
@@ -27,8 +30,6 @@ from .schemas import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
-
     from .client import BrainClient, BrainResponse
     from .filters import AlphaQuery
 
@@ -46,8 +47,6 @@ V_ALPHA_SUMMARY = "4.0"
 
 #: The simulation type this application sends; its per-type settings tree is merged in.
 SIMULATION_TYPE = "REGULAR"
-
-PAGE_SIZE = 50
 
 
 class BrainEndpoints:
@@ -255,21 +254,24 @@ class BrainEndpoints:
         raw = r.body if isinstance(r.body, list) else (r.body or {}).get("results", [])
         return [DataCategory.model_validate(c) for c in raw]
 
-    async def list_data_fields_all(self, **params: Any) -> list[dict[str, Any]]:
+    async def list_data_fields_all(self, **params: Any) -> list[BulkField]:
         """Every field in one scope, in one request.
 
         Needs all four scope parameters and ``version=3.0`` (``docs/wqb-api/endpoints/data.md``).
+        The body is taken as bytes and decoded by msgspec: a market is ~40 MB, and the
+        standard library's parser spent that on the event loop.
         """
         r = await self.client.request_retrying(
-            "GET", "/data-fields", version=V_FIELDS_ALL, params=params
+            "GET", "/data-fields", version=V_FIELDS_ALL, params=params, raw=True
         )
-        body = r.body
-        rows = (
-            body
-            if isinstance(body, list)
-            else (body.get("results") if isinstance(body, dict) else None)
-        )
-        return rows if isinstance(rows, list) else []
+        if not isinstance(r.body, bytes):
+            return []
+        # Peek at the head instead of decoding twice: an envelope would otherwise only
+        # announce itself by failing partway through 40 MB, and stripping the whole body
+        # to find its first byte would copy all of it.
+        if r.body[:64].lstrip().startswith(b"{"):
+            return BULK_FIELDS_ENVELOPE.decode(r.body).results
+        return BULK_FIELDS.decode(r.body)
 
     async def pyramid_multipliers(self) -> list[dict[str, Any]]:
         """``{category, region, delay, multiplier}`` for every pyramid on this account.
@@ -290,38 +292,30 @@ class BrainEndpoints:
         items = r.body.get("pyramids") if isinstance(r.body, dict) else None
         return items if isinstance(items, list) else []
 
-    async def iter_data_sets(self, **params: Any) -> AsyncIterator[DataSet]:
-        async for item in self._paginate("/data-sets", params):
-            yield DataSet.model_validate(item)
+    #: A region's datasets take eight to sixteen seconds, longer than the client's
+    #: ordinary timeout allows for. BRAIN itself gives up at thirty with a 504.
+    ALL_SETS_TIMEOUT = 45.0
 
-    async def _paginate(
-        self, path: str, params: dict[str, Any], *, page_size: int = PAGE_SIZE
-    ) -> AsyncIterator[dict[str, Any]]:
-        """Walk a DRF ``limit``/``offset`` list endpoint.
+    async def list_data_sets_all(self, **params: Any) -> list[DataSet]:
+        """Every dataset matching a scope, however partial that scope is.
 
-        Stops when a page comes back short or when ``count`` is reached, and guards
-        against a server that keeps returning full pages forever.
+        Naming only the region answers for its whole column of markets, which is how a sync
+        reads them; all four parameters answer for one market. Omitting ``limit`` returns the
+        whole list rather than a page; a ``limit`` above the platform's page cap is refused
+        outright. The envelope's ``count`` is checked, so a truncated response fails here
+        instead of quietly shrinking the catalog.
         """
-        offset = 0
-        seen = 0
-        total: int | None = None
-
-        while True:
-            # Retrying: abandoning a partially-walked list would under-report the catalog.
-            r = await self.client.request_retrying(
-                "GET", path, params={**params, "limit": page_size, "offset": offset}
-            )
-            body = r.body if isinstance(r.body, dict) else {}
-            results = body.get("results") or []
-            if total is None:
-                total = body.get("count")
-
-            for item in results:
-                yield item
-            seen += len(results)
-
-            if len(results) < page_size:
-                return
-            if total is not None and seen >= total:
-                return
-            offset += page_size
+        r = await self.client.request_retrying(
+            "GET",
+            "/data-sets",
+            params=params,
+            read_timeout=self.ALL_SETS_TIMEOUT,
+        )
+        body = r.body
+        rows = body if isinstance(body, list) else (body or {}).get("results", [])
+        if not isinstance(rows, list):
+            return []
+        total = body.get("count") if isinstance(body, dict) else None
+        if isinstance(total, int) and len(rows) < total:
+            raise BrainError(f"/data-sets returned {len(rows)} of {total} datasets")
+        return [DataSet.model_validate(item) for item in rows]

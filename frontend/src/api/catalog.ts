@@ -13,6 +13,7 @@ type Schemas = components['schemas']
 /** A market a full sync covers (`GET /api/catalog/markets`). */
 export type Market = Schemas['Market']
 export type CatalogScopeRow = Schemas['CatalogScopeRow']
+export type CatalogSize = Schemas['CatalogSize']
 export type CatalogCounts = Schemas['CatalogCounts']
 export type CatalogStats = Schemas['CatalogStats']
 export type CatalogFacets = Schemas['CatalogFacets']
@@ -45,6 +46,7 @@ const B = '/api/catalog'
 
 export const catalog = {
   scopes: () => http.get<CatalogScopeRow[]>(`${B}/scopes`),
+  size: () => http.get<CatalogSize>(`${B}/size`),
   syncAll: () => http.post<Schemas['SyncAllRun']>(`${B}/sync-all`),
   markets: () => http.get<Market[]>(`${B}/markets`),
   cancel: (id: number) => http.post<Schemas['Cancelled']>(`${B}/sync/runs/${id}/cancel`),

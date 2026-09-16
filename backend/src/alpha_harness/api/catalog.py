@@ -97,6 +97,12 @@ class CatalogCounts(BaseModel):
     subcategories: int
 
 
+class CatalogSize(BaseModel):
+    """What the catalog's data occupies, which is smaller than its file."""
+
+    used_bytes: int
+
+
 class CatalogStats(BaseModel):
     coverage_min: float | None = None
     coverage_max: float | None = None
@@ -269,6 +275,12 @@ async def scopes(state: State) -> list[CatalogScopeRow]:
 async def counts(scope: Scope, state: State) -> CatalogCounts:
     """Datasets / categories / subcategories / fields for one scope."""
     return CatalogCounts.model_validate(await state.queries.counts(scope))
+
+
+@router.get("/size")
+async def size(state: State) -> CatalogSize:
+    """How much the catalog's data actually takes up."""
+    return CatalogSize(used_bytes=await state.catalog.used_bytes())
 
 
 @router.get("/stats")

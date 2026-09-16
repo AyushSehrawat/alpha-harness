@@ -12,10 +12,10 @@ import { catalog } from '@/api/catalog'
 import { errorMessage } from '@/api/http'
 import type { Scope, SyncMarket } from '@/api/types'
 import { cn } from '@/lib/cn'
-import { fmt } from '@/lib/format'
+import { DASH, fmt } from '@/lib/format'
 import { useLive } from '@/lib/live'
 import { STAT } from '@/screens/data/state'
-import { Button, Empty, ErrorNotice, Notice, Panel, Progress, Skeleton } from '@/ui/kit'
+import { Button, Empty, ErrorNotice, Metric, Notice, Panel, Progress, Skeleton } from '@/ui/kit'
 import { Confirm } from '@/ui/overlay'
 
 type TileState = SyncMarket['state']
@@ -32,10 +32,10 @@ const HALF: Record<TileState, string> = {
 }
 
 const LEGEND: [TileState, string][] = [
-  ['waiting', 'Not synced'],
-  ['fetching', 'Fetching fields'],
-  ['fields', 'Fields ready'],
-  ['details', 'Filling details'],
+  ['waiting', 'Not Synced'],
+  ['fetching', 'Fetching Fields'],
+  ['fields', 'Fields Ready'],
+  ['details', 'Filling Details'],
   ['done', 'Synced'],
   ['failed', 'Failed'],
 ]
@@ -45,6 +45,23 @@ const NO_DELAY =
   'bg-[repeating-linear-gradient(135deg,var(--color-hairline-strong)_0_1px,transparent_1px_5px)]'
 
 const keyOf = (region: string, delay: number, universe: string) => `${region}|${delay}|${universe}`
+
+/** Seconds between two ISO timestamps, or `null` while either is missing. */
+function seconds(from: string | null | undefined, to: string | null | undefined): number | null {
+  if (!from || !to) return null
+  const span = (Date.parse(to) - Date.parse(from)) / 1000
+  return Number.isFinite(span) && span >= 0 ? span : null
+}
+
+/** Counts up in its own component, so a running sync does not re-render the whole panel. */
+function Elapsed({ since }: { since: string }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+  return <span className="num text-ink">{fmt.duration((now - Date.parse(since)) / 1000)}</span>
+}
 
 export function SyncHero({
   scope,
@@ -62,6 +79,10 @@ export function SyncHero({
   const scopes = useQuery({
     queryKey: ['catalog', 'scopes'],
     queryFn: catalog.scopes,
+  })
+  const size = useQuery({
+    queryKey: ['catalog', 'size'],
+    queryFn: catalog.size,
   })
 
   // Progress arrives on the socket; a finished run refreshes everything the catalog feeds.
@@ -93,7 +114,6 @@ export function SyncHero({
 
   const layout = useMemo(() => {
     const list = markets.data ?? []
-    const regions = [...new Set(list.map((m) => m.region))]
     const delays = [...new Set(list.map((m) => m.delay))].sort((a, b) => a - b)
     const universes = new Map<string, string[]>()
     for (const m of list) {
@@ -101,6 +121,11 @@ export function SyncHero({
       if (!column.includes(m.universe)) column.push(m.universe)
       universes.set(m.region, column)
     }
+    // Widest markets first, so the tallest columns lead and the grid fills from the left.
+    const regions = [...universes.keys()].sort(
+      (a, b) =>
+        (universes.get(b)?.length ?? 0) - (universes.get(a)?.length ?? 0) || a.localeCompare(b),
+    )
     const exists = new Set(list.map((m) => keyOf(m.region, m.delay, m.universe)))
     return { total: list.length, regions, delays, universes, exists }
   }, [markets.data])
@@ -127,6 +152,9 @@ export function SyncHero({
 
   const syncedMarkets = scopes.data?.length ?? 0
   const syncedFields = (scopes.data ?? []).reduce((sum, r) => sum + r.fields, 0)
+  const finished = seconds(full?.startedAt, full?.finishedAt)
+  // From the catalog rather than the run, so it survives a restart with the other figures.
+  const regionsSynced = new Set((scopes.data ?? []).map((r) => r.region)).size
 
   return (
     <Panel
@@ -136,7 +164,7 @@ export function SyncHero({
           {running ? (
             <>
               <span className={STAT}>
-                {running.stage === 'details' ? 'Filling in dataset details' : 'Syncing data fields'}
+                {running.stage === 'details' ? 'Filling in Dataset Details' : 'Syncing Data Fields'}
               </span>
               <span className={STAT}>
                 <span className="num text-ink">
@@ -147,6 +175,11 @@ export function SyncHero({
               <span className={STAT}>
                 <span className="num text-ink">{fmt.pct(running.fraction, 0)}</span>
               </span>
+              {running.startedAt && (
+                <span className={STAT}>
+                  <Elapsed since={running.startedAt} />
+                </span>
+              )}
             </>
           ) : (
             <>
@@ -172,7 +205,7 @@ export function SyncHero({
             onClick={() => setCancelId(running.id)}
           >
             {!cancel.isPending && <XIcon />}
-            Cancel sync
+            Cancel Sync
           </Button>
         ) : (
           <SyncButton variant="primary">Sync</SyncButton>
@@ -290,6 +323,19 @@ export function SyncHero({
 
       {running && <Progress value={running.fraction} label="Sync progress" />}
 
+      {!running && finished !== null && full?.status === 'COMPLETE' && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Metric boxed label="Synced In" value={fmt.duration(finished)} />
+          <Metric boxed label="Regions" value={fmt.int(regionsSynced || layout.regions.length)} />
+          <Metric boxed label="Datasets" value={fmt.int(full.datasetsSynced)} />
+          <Metric
+            boxed
+            label="Size"
+            value={size.data ? `${fmt.int(size.data.used_bytes / 1e6)} MB` : DASH}
+          />
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-3 text-body-compact text-ink-subtle">
         <div className="flex flex-wrap items-center gap-3">
           {LEGEND.map(([state, text]) => (
@@ -300,12 +346,9 @@ export function SyncHero({
           ))}
           <span className="flex items-center gap-1.5">
             <span className={cn('h-3 w-5 shrink-0 rounded-xs', NO_DELAY)} />
-            Not offered
+            Not Offered
           </span>
         </div>
-        <span className="text-pretty">
-          Each cell: Delay 0 | Delay 1 · click one to explore that market
-        </span>
       </div>
 
       <Confirm
@@ -331,7 +374,7 @@ function useDownload() {
   return useMutation({
     mutationFn: () => catalog.syncAll(),
     onSuccess: () => {
-      toast.success('Syncing every BRAIN dataset')
+      toast.success('Syncing every BRAIN Dataset')
       void queryClient.invalidateQueries({ queryKey: ['catalog'] })
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -364,9 +407,9 @@ export function SyncButton({
         pending={sync.isPending}
         onConfirm={() => sync.mutate(undefined, { onSettled: () => setOpen(false) })}
       >
-        Downloads the data fields of every market BRAIN offers, then fills in dataset details. It
-        spends <span className="num text-ink">0</span> simulations. Fields are browsable in the Data
-        Explorer as soon as they arrive; progress shows in Sync with BRAIN.
+        Downloads the Data Fields of every market BRAIN offers, then fills in Dataset Details.
+        Fields are browsable in the Data Explorer as soon as they arrive; progress shows in Sync
+        with BRAIN.
       </Confirm>
     </>
   )

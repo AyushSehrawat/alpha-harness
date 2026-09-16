@@ -36,6 +36,9 @@ pre-commit:
 
 dev:
   parallel: true
+  # Without this lefthook buffers a job's output and only prints it if the job fails, so a
+  # server that never exits prints nothing at all.
+  follow: true
   jobs:
     - name: backend
       root: backend/

@@ -48,8 +48,7 @@ CREATE TABLE IF NOT EXISTS data_field (
     region            VARCHAR NOT NULL,
     delay             INTEGER NOT NULL,
     universe          VARCHAR NOT NULL,
-    synced_at         TIMESTAMP,
-    PRIMARY KEY (field_id, instrument_type, region, delay, universe)
+    synced_at         TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS data_set (
@@ -92,9 +91,6 @@ CREATE TABLE IF NOT EXISTS data_category (
 
 CREATE INDEX IF NOT EXISTS ix_field_tuple
     ON data_field (instrument_type, region, delay, universe);
-CREATE INDEX IF NOT EXISTS ix_field_dataset ON data_field (dataset_id);
-CREATE INDEX IF NOT EXISTS ix_field_category ON data_field (category_id);
-CREATE INDEX IF NOT EXISTS ix_field_id ON data_field (field_id);
 CREATE INDEX IF NOT EXISTS ix_set_tuple
     ON data_set (instrument_type, region, delay, universe);
 
@@ -247,7 +243,6 @@ TRAIN_COLUMNS = ("train_sharpe", "train_fitness", "test_sharpe", "test_fitness")
 PNL_COLUMNS = ("alpha_id", "date", "pnl")
 
 _KEYS = {
-    "data_field": ("field_id", "instrument_type", "region", "delay", "universe"),
     "data_set": ("dataset_id", "instrument_type", "region", "delay", "universe"),
     "data_category": ("category_id", "instrument_type", "region", "delay", "universe"),
     "alpha": ("alpha_id",),
@@ -394,6 +389,78 @@ def _to_arrow(table: str, columns: tuple[str, ...], rows: list[tuple[Any, ...]])
     )
 
 
+#: Indexes the swap has to put back; the primary key deliberately is not one of them.
+_FIELD_INDEXES = (
+    "CREATE INDEX IF NOT EXISTS ix_field_tuple ON data_field "
+    "(instrument_type, region, delay, universe)",
+)
+
+#: Dropped on upgrade: each cost about eight times the write, and reads are within
+#: milliseconds without them because DuckDB scans columns rather than walking an index.
+_SPENT_FIELD_INDEXES = ("ix_field_dataset", "ix_field_category", "ix_field_id")
+
+
+#: Restored after a rebuild: ``CREATE TABLE ... AS SELECT`` copies types but not
+#: nullability, and DuckDB has no ``CREATE TABLE (LIKE ...)`` to copy the schema with.
+_FIELD_NOT_NULL = ("field_id", "instrument_type", "region", "delay", "universe")
+
+
+def _rebuild_field_table(conn: duckdb.DuckDBPyConnection, tmp: str) -> None:
+    """Swap ``data_field`` for a fresh copy of itself, inside one transaction.
+
+    Both callers want the same thing for different reasons: dropping a constraint DuckDB
+    cannot drop in place, and packing rows back into dense row groups.
+    """
+    conn.execute("BEGIN TRANSACTION")
+    try:
+        conn.execute(f"CREATE TABLE {tmp} AS SELECT * FROM data_field")  # noqa: S608
+        conn.execute("DROP TABLE data_field")
+        conn.execute(f"ALTER TABLE {tmp} RENAME TO data_field")
+        for column in _FIELD_NOT_NULL:
+            conn.execute(f"ALTER TABLE data_field ALTER COLUMN {column} SET NOT NULL")
+        for statement in _FIELD_INDEXES:
+            conn.execute(statement)
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    conn.execute("CHECKPOINT")
+
+
+def _drop_field_key(conn: duckdb.DuckDBPyConnection) -> None:
+    """Take the primary key off ``data_field`` on a catalog that still has one.
+
+    A scope is deleted and rewritten whole, so uniqueness never needed enforcing, and the
+    key charged for it twice: maintaining the index on every write, and leaving dead rows
+    that made each sync slower than the one before. DuckDB cannot drop a key in place, so
+    the table is swapped inside a transaction — a failure rolls back onto the original.
+    """
+    keyed = conn.execute(
+        "SELECT count(*) FROM duckdb_constraints() "
+        "WHERE table_name = 'data_field' AND constraint_type = 'PRIMARY KEY'"
+    ).fetchone()
+    if not keyed or not keyed[0]:
+        return
+
+    log.info("catalog.dropping_field_key")
+    _rebuild_field_table(conn, "data_field_rebuilt")
+    log.info("catalog.field_key_dropped")
+
+
+def _drop_spent_indexes(conn: duckdb.DuckDBPyConnection) -> None:
+    """Remove the secondary indexes on ``data_field`` that only ever slowed writes."""
+    for name in _SPENT_FIELD_INDEXES:
+        conn.execute(f"DROP INDEX IF EXISTS {name}")
+
+
+class CatalogUnusableError(RuntimeError):
+    """DuckDB rejected everything after a fatal error; only a restart clears it.
+
+    Raised so a caller stops rather than retrying: once the database is invalidated every
+    later statement fails the same way.
+    """
+
+
 class CatalogLockedError(RuntimeError):
     """Another Alpha Harness backend already has the catalog open.
 
@@ -444,6 +511,8 @@ class Catalog:
                 raise
             raise CatalogLockedError(self.path, str(exc)) from exc
         self._conn.execute(SCHEMA)
+        _drop_field_key(self._conn)
+        _drop_spent_indexes(self._conn)
 
     async def close(self) -> None:
         """Refuse new reads, then let in-flight writes and reads finish before closing."""
@@ -472,6 +541,8 @@ class Catalog:
                 with contextlib.suppress(Exception):
                     await work
                 raise
+            except duckdb.FatalException as exc:
+                raise CatalogUnusableError(str(exc)) from exc
 
     def _require(self) -> duckdb.DuckDBPyConnection:
         if self._conn is None:
@@ -540,32 +611,67 @@ class Catalog:
         finally:
             conn.unregister(source)
 
+    async def used_bytes(self) -> int:
+        """What the catalog's data actually occupies.
+
+        The file is larger: DuckDB keeps freed blocks for reuse rather than returning them
+        to the operating system, so its size on disk is a high-water mark, not a total.
+        """
+        return await self._locked(self._used_bytes_sync)
+
+    def _used_bytes_sync(self) -> int:
+        conn = self._require()
+        row = conn.execute("PRAGMA database_size").fetchone()
+        if row is None:
+            return 0
+        sized = dict(zip([d[0] for d in conn.description], row, strict=False))
+        return int(sized.get("used_blocks") or 0) * int(sized.get("block_size") or 0)
+
+    async def compact_fields(self) -> None:
+        """Rewrite ``data_field`` so its rows sit in dense row groups again.
+
+        A sync replaces one scope at a time, which leaves around sixty part-filled row
+        groups where ten would do. DuckDB compresses per row group, so the same rows cost
+        roughly five times the space until the table is rewritten.
+        """
+        await self._locked(self._compact_fields_sync)
+
+    def _compact_fields_sync(self) -> None:
+        _rebuild_field_table(self._require(), "data_field_compact")
+
+    async def checkpoint(self) -> None:
+        """Fold the write-ahead log into the file so its freed blocks can be reused."""
+        await self._locked(lambda: self._require().execute("CHECKPOINT"))
+
     async def replace_fields(self, scope: list[Any], rows: list[tuple[Any, ...]]) -> int:
         """Make one scope's fields exactly ``rows``, in one transaction.
 
-        Upsert first, then drop what the download no longer lists: a field BRAIN has
-        removed would otherwise stay selectable and spend a simulation on an error.
-        Delete-then-insert is not an option, because DuckDB checks the primary key
-        eagerly inside a transaction.
+        Delete then insert: a field BRAIN has removed would otherwise stay selectable and
+        spend a simulation on an error.
         """
         if not rows:
             return 0
-        await self._locked(self._replace_fields_sync, scope, rows)
+        # Built before the lock: pivoting 85k rows into columns is pure CPU, and doing it
+        # while holding the single writer stalls every other market's write behind it.
+        table = await asyncio.to_thread(_to_arrow, "data_field", FIELD_COLUMNS, rows)
+        await self._locked(self._replace_fields_sync, scope, table)
         return len(rows)
 
-    def _replace_fields_sync(self, scope: list[Any], rows: list[tuple[Any, ...]]) -> None:
+    def _replace_fields_sync(self, scope: list[Any], table: pa.Table) -> None:
         conn = self._require()
         source = "_incoming"
-        conn.register(source, _to_arrow("data_field", FIELD_COLUMNS, rows))
+        columns = ", ".join(FIELD_COLUMNS)
+        conn.register(source, table)
         try:
             conn.execute("BEGIN TRANSACTION")
             try:
-                conn.execute(_upsert_sql("data_field", FIELD_COLUMNS, source))
                 conn.execute(
-                    "DELETE FROM data_field WHERE instrument_type = ? AND region = ? "  # noqa: S608
-                    "AND delay = ? AND universe = ? "
-                    f"AND field_id NOT IN (SELECT field_id FROM {source})",
+                    "DELETE FROM data_field WHERE instrument_type = ? AND region = ? "
+                    "AND delay = ? AND universe = ?",
                     scope,
+                )
+                conn.execute(
+                    f"INSERT INTO data_field ({columns}) SELECT {columns} FROM {source}"  # noqa: S608
                 )
                 conn.execute("COMMIT")
             except Exception:

@@ -50,6 +50,20 @@ DEFAULT_VERSION = "2.0"
 #: Shortest wait between polls of a pending job, whatever ``Retry-After`` says.
 MIN_POLL_DELAY = 0.25
 
+#: A reset this large is a wall-clock instant, not a countdown.
+EPOCH_SECONDS = 1e9
+#: Longest gap a response is allowed to talk us into. Not a rate limit — a bound on how
+#: badly a misread header may stall a sync.
+MAX_MEASURED_GAP = 60.0
+
+
+def _header_num(headers: httpx.Headers, name: str) -> float | None:
+    raw = headers.get(name)
+    try:
+        return float(raw) if raw is not None else None
+    except ValueError:
+        return None
+
 
 @dataclass(frozen=True, slots=True)
 class RateLimit:
@@ -136,6 +150,16 @@ class BrainClient:
         self.base_url = base_url.rstrip("/") + "/"
         self._default_attempts = max(1, default_attempts)
         self._poll_timeout = poll_timeout
+        self._timeout = timeout
+        #: Seconds between sends per endpoint, learned from its own rate-limit headers, and
+        #: the next free slot in each. Measured: BRAIN meters each endpoint separately, and
+        #: asking faster than it allows buys 429s rather than throughput.
+        self._gap: dict[str, float] = {}
+        self._next_send: dict[str, float] = {}
+        #: Set once an endpoint's first response has reported its window, so the callers
+        #: behind it pace on measurements rather than on an assumption.
+        self._measured: dict[str, asyncio.Event] = {}
+        self._pace_lock = asyncio.Lock()
         #: Monotonic time before which no request is sent: set by a ``429`` so every caller
         #: backs off together instead of each retrying into a server that said stop.
         self._resume_at = 0.0
@@ -182,6 +206,53 @@ class BrainClient:
 
     # -- core request ----------------------------------------------------
 
+    @staticmethod
+    def _bucket(path: str) -> str:
+        """The endpoint a path is metered under: ``/simulations/{id}`` shares ``simulations``."""
+        return path.strip("/").split("/", 1)[0]
+
+    async def _reserve(self, bucket: str) -> None:
+        """Hold the caller until this endpoint's next free slot.
+
+        Nothing about the rate is written here. The first caller to reach an unmeasured
+        endpoint goes straight through and every other waits for what its headers report,
+        rather than guessing a number that would be wrong for someone else's account.
+        """
+        async with self._pace_lock:
+            measured = self._measured.get(bucket)
+            if measured is None:
+                self._measured[bucket] = asyncio.Event()
+                return
+        if not measured.is_set():
+            await measured.wait()
+
+        async with self._pace_lock:
+            gap = self._gap.get(bucket, 0.0)
+            if gap <= 0:
+                return
+            slot = max(time.monotonic(), self._next_send.get(bucket, 0.0))
+            self._next_send[bucket] = slot + gap
+        if (wait := slot - time.monotonic()) > 0:
+            await asyncio.sleep(wait)
+
+    def _measure(self, bucket: str, headers: httpx.Headers) -> None:
+        """Read this endpoint's window off the response: how many, and how long until reset."""
+        limit = _header_num(headers, "ratelimit-limit")
+        reset = _header_num(headers, "ratelimit-reset")
+        if reset is not None and reset > EPOCH_SECONDS:
+            # Some gateways report the moment the window rolls over rather than how long
+            # until it does. Taken literally that is a sleep measured in decades.
+            reset = max(0.0, reset - time.time())
+        if limit and limit > 0 and reset and 0 < reset <= MAX_MEASURED_GAP:
+            # Paces starts, not finishes. ``remaining`` is deliberately unused: a one-slot
+            # window reports nothing left after every request, and deferring from the moment
+            # a slow download *ends* would queue the next start behind its transfer.
+            self._gap[bucket] = reset / limit
+        else:
+            # Not metered this way, or a window we cannot make sense of. Left unpaced and
+            # left to the Retry-After gate, which is safer than obeying a nonsense number.
+            self._gap[bucket] = 0.0
+
     async def request(
         self,
         method: Method,
@@ -193,8 +264,14 @@ class BrainClient:
         headers: dict[str, str] | None = None,
         auth: tuple[str, str] | None = None,
         raise_for_status: bool = True,
+        raw: bool = False,
+        read_timeout: float | None = None,
     ) -> BrainResponse:
         """Issue one request and translate failures into typed exceptions.
+
+        ``raw`` leaves a successful body as undecoded ``bytes``, for payloads whose caller
+        has a faster decoder than the standard library's. ``read_timeout`` overrides the client's
+        for one call, since a few endpoints legitimately take longer than the rest.
 
         ``params`` values that are ``None`` are dropped.
         """
@@ -209,6 +286,9 @@ class BrainClient:
         while (wait := self._resume_at - time.monotonic()) > 0:  # noqa: ASYNC110
             await asyncio.sleep(wait + random.uniform(0.05, 0.25))
 
+        bucket = self._bucket(path)
+        await self._reserve(bucket)
+
         try:
             response = await self._client.request(
                 method,
@@ -217,7 +297,14 @@ class BrainClient:
                 json=json_body,
                 headers=merged,
                 auth=auth or httpx.USE_CLIENT_DEFAULT,
+                # Only the read is stretched: passing read_timeout as the default would
+                # make the pool wait that long for a free connection too.
+                timeout=httpx.Timeout(self._timeout, connect=10.0, read=read_timeout)
+                if read_timeout is not None
+                else httpx.USE_CLIENT_DEFAULT,
             )
+            # Before the finally below releases anyone waiting on this endpoint.
+            self._measure(bucket, response.headers)
         # Not connected, or no pooled connection free: the request never left.
         except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
             raise BrainTransportError(
@@ -229,11 +316,16 @@ class BrainClient:
             raise BrainTransportError(
                 f"{method} {path} failed: {exc}", maybe_delivered=True
             ) from exc
+        finally:
+            # Even a failed probe must release its endpoint, or every caller behind it waits
+            # on a measurement that is never coming.
+            self._measured[bucket].set()
 
         result = BrainResponse(
             status=response.status_code,
             headers=response.headers,
-            body=_decode(response),
+            # A refusal is always decoded, so error handling still reads its body.
+            body=response.content if raw and response.status_code < 400 else _decode(response),
             retry_after=_parse_retry_after(response.headers),
             rate_limit=RateLimit.from_headers(response.headers),
             location=response.headers.get("location"),
@@ -342,9 +434,16 @@ class BrainClient:
                 if isinstance(exc, BrainRateLimited):
                     self._resume_at = max(self._resume_at, time.monotonic() + delay)
 
+                params = kwargs.get("params") or {}
+                # Which scope is being throttled: without it a slow market and a starved one
+                # look identical in the log.
+                scope = "/".join(
+                    str(params[k]) for k in ("region", "delay", "universe") if k in params
+                )
                 log.warning(
                     "brain.retrying",
                     path=path,
+                    scope=scope or None,
                     attempt=attempt,
                     of=attempts,
                     delay=round(delay, 2),

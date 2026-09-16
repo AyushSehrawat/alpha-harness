@@ -383,6 +383,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/catalog/size": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Size
+         * @description How much the catalog's data actually takes up.
+         */
+        get: operations["size_api_catalog_size_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/catalog/stats": {
         parameters: {
             query?: never;
@@ -1979,6 +1999,14 @@ export interface components {
             synced_at: string | null;
             /** Universe */
             universe: string;
+        };
+        /**
+         * CatalogSize
+         * @description What the catalog's data occupies, which is smaller than its file.
+         */
+        CatalogSize: {
+            /** Used Bytes */
+            used_bytes: number;
         };
         /** CatalogStats */
         CatalogStats: {
@@ -4406,6 +4434,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CatalogScopeRow"][];
+                };
+            };
+        };
+    };
+    size_api_catalog_size_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogSize"];
                 };
             };
         };
