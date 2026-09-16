@@ -1,0 +1,644 @@
+"""Optuna, driven in rounds that fill whole batches.
+
+The loop is deliberately not Optuna's ``study.optimize``. That call owns the thread and
+evaluates one trial at a time; here a trial takes minutes on someone else's machine and
+eighty of them run at once. So the study is driven by ask/tell:
+
+    ask N points  ->  build N simulations  ->  enqueue  ->  ... wait ...
+    -> harvest finished alphas -> tell -> ask the next N
+
+**N is a multiple of ten.** A multi-simulation carries ten children and there are eight
+concurrent slots, so a round of eighty fills the platform exactly. Asking for 47 leaves
+part-empty batches occupying whole slots for the length of their run.
+
+Two consequences of batching are handled rather than ignored:
+
+* Points asked for together cannot learn from one another. :func:`tpe` compensates
+  where it can (``constant_liar`` for TPE) and says so where it cannot.
+* Batch-splitting settings — region, delay, instrument type, language — are pinned by
+  default instead of searched. Letting the sampler vary region across a round of eighty
+  produces eighty batch keys, which turns eighty concurrent simulations into eight. It
+  is still allowed, but only on purpose.
+
+Restart safety: the Optuna study is rebuilt from the trial rows, never persisted
+separately. Trials live in the application's own database so they stay joinable to the
+simulations that produced them.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import json
+from datetime import UTC, timedelta
+from typing import TYPE_CHECKING, Any
+
+import structlog
+from sqlalchemy import func, select
+
+from ..db.models import (
+    SimStatus,
+    SimulationRecord,
+    Study,
+    StudyStatus,
+    Trial,
+    TrialState,
+    utcnow,
+)
+from . import objectives as obj
+from . import scheduler
+from .objectives import StudyNotFoundError
+from .params import SEARCH_SAMPLER, TASK_SAMPLERS, TEMPLATE_SAMPLER, SearchParams, params_of
+
+if TYPE_CHECKING:  # pragma: no cover
+    import optuna
+
+    from ..account import PlatformMetadata
+    from ..brain.endpoints import BrainEndpoints
+    from ..db.sqlite import Database
+    from ..engine.slots import BatchEngine
+    from ..llm.service import LLMService
+    from ..vault.backfill import Backfill
+    from ..vault.store import AlphaVault
+
+log = structlog.get_logger(__name__)
+
+#: How often a running study looks for finished trials.
+POLL_SECONDS = 5.0
+
+#: Statistics the local Alpha store keeps, so objectives on them need no second BRAIN read.
+VAULT_STATS = frozenset(
+    {"sharpe", "fitness", "turnover", "returns", "drawdown", "margin"}
+    | {"train_sharpe", "train_fitness"}
+)
+#: How long a finished Alpha may take to reach the local store before BRAIN is asked.
+VAULT_WAIT = timedelta(minutes=5)
+
+
+def tpe(
+    *,
+    batch_size: int,
+    seed: int | None,
+    n_startup_trials: int = 20,
+    multivariate: bool = True,
+    group: bool = True,
+) -> Any:
+    from optuna.samplers import TPESampler
+
+    return TPESampler(
+        n_startup_trials=n_startup_trials,
+        multivariate=multivariate,
+        group=group,
+        constant_liar=batch_size > 1,
+        seed=seed,
+    )
+
+
+class Optimizer:
+    """Owns every running study."""
+
+    #: Set by ``AppState`` once the assistant exists; LLM Power Pool Lab tasks call it.
+    llm: LLMService
+
+    def __init__(
+        self,
+        db: Database,
+        engine: BatchEngine,
+        endpoints: BrainEndpoints,
+        metadata: PlatformMetadata,
+        *,
+        on_change: Any = None,
+        alphas: AlphaVault,
+        backfill: Backfill | None = None,
+    ) -> None:
+        self.db = db
+        self.engine = engine
+        self.endpoints = endpoints
+        self.metadata = metadata
+        self._on_change = on_change
+        #: Stored alphas: K-Ratio objectives, Evolution Lab parents, Power Pool Lab context.
+        self.alphas = alphas
+        self.backfill = backfill
+        self.studies: dict[int, optuna.Study] = {}
+        #: Live Optuna trial objects for the round in flight, keyed study -> our trial
+        #: number. Lost on restart, which :func:`_tell_many` handles by replaying.
+        self.open_trials: dict[int, dict[int, Any]] = {}
+        self._locks: dict[int, asyncio.Lock] = {}
+        self._task: asyncio.Task[None] | None = None
+        self._stopping = asyncio.Event()
+
+    # -- lifecycle -------------------------------------------------------
+
+    async def start(self) -> None:
+        if self._task is not None:
+            return
+        self._stopping.clear()
+        self._task = asyncio.create_task(self._run(), name="optimizer")
+
+    async def stop(self) -> None:
+        self._stopping.set()
+        if self._task is not None:
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+            self._task = None
+        log.info("optimize.stopped")
+
+    async def _run(self) -> None:
+        while not self._stopping.is_set():
+            try:
+                await self.tick()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("optimize.tick_failed")
+            try:
+                await asyncio.wait_for(self._stopping.wait(), timeout=POLL_SECONDS)
+            except TimeoutError:
+                continue
+
+    async def tick(self) -> dict[int, dict[str, int]]:
+        """Start waiting tasks that fit, then advance every running study by one round."""
+
+        try:
+            await scheduler.start_waiting(self)
+        except Exception:
+            log.exception("optimize.schedule_failed")
+        async with self.db.session() as session:
+            ids = list(
+                (
+                    await session.scalars(
+                        select(Study.id).where(Study.status == StudyStatus.RUNNING)
+                    )
+                ).all()
+            )
+        results: dict[int, dict[str, int]] = {}
+        for study_id in ids:
+            try:
+                results[study_id] = await self.advance(study_id)
+            except Exception as exc:
+                log.exception("optimize.study_failed", study_id=study_id)
+                await scheduler.finish(self, study_id, StudyStatus.FAILED, str(exc))
+        return results
+
+    def lock(self, study_id: int) -> asyncio.Lock:
+        return self._locks.setdefault(study_id, asyncio.Lock())
+
+    # -- control ---------------------------------------------------------
+
+    async def set_status(self, study_id: int, status: StudyStatus) -> Study:
+        async with self.db.session() as session:
+            row = await session.get(Study, study_id)
+            if row is None:
+                raise StudyNotFoundError(study_id)
+            row.status = status
+            if status in (StudyStatus.COMPLETE, StudyStatus.FAILED):
+                row.finished_at = utcnow()
+            await session.commit()
+            await session.refresh(row)
+        if status in (StudyStatus.COMPLETE, StudyStatus.FAILED):
+            # A finished task holds no cores; running it again hands them back.
+            await self.engine.set_quota(row.task, 0)
+        await self.notify()
+        return row
+
+    # -- the round -------------------------------------------------------
+
+    async def advance(self, study_id: int) -> dict[str, int]:
+        """Harvest what finished, then ask for the next round if there is room."""
+        async with self.lock(study_id):
+            row = await self.get(study_id)
+            if row is None:
+                return {"told": 0, "asked": 0}
+            if row.sampler not in TASK_SAMPLERS:
+                raise ValueError(f"No lab runs studies with the {row.sampler!r} sampler.")
+
+            # Evolution Lab breeds its own children: there is no sampler to tell.
+            told = await self._harvest(
+                study_id,
+                vault_first=True,
+                tell=row.sampler in (SEARCH_SAMPLER, TEMPLATE_SAMPLER),
+            )
+            asked = await scheduler.advance(self, study_id)
+        if told or asked:
+            await self.notify()
+        return {"told": told, "asked": asked}
+
+    async def _harvest(self, study_id: int, *, tell: bool = True, vault_first: bool = False) -> int:
+        """Score every trial whose simulation reached a terminal state.
+
+        ``tell=False`` stores the scores without reporting them to Optuna, for GA studies.
+        ``vault_first`` reads the Alpha the tracker already stored locally instead of asking
+        BRAIN for it again, which saves one request per simulation.
+        """
+        async with self.db.session() as session:
+            row = await session.get(Study, study_id)
+            if row is None:
+                return 0
+            open_trials = list(
+                (
+                    await session.scalars(
+                        select(Trial).where(
+                            Trial.study_id == study_id,
+                            Trial.state.in_([TrialState.QUEUED, TrialState.RUNNING]),
+                        )
+                    )
+                ).all()
+            )
+            records = {
+                r.id: r
+                for r in (
+                    await session.scalars(
+                        select(SimulationRecord).where(
+                            SimulationRecord.id.in_(
+                                [
+                                    t.simulation_record_id
+                                    for t in open_trials
+                                    if t.simulation_record_id
+                                ]
+                            )
+                        )
+                    )
+                ).all()
+            }
+
+        objective_list = obj.resolve(list(row.objectives or []))
+        saved: dict[str, dict[str, Any]] = {}
+        if vault_first and all(o.key in VAULT_STATS for o in objective_list):
+            wanted = [
+                (
+                    records[t.simulation_record_id].alpha_id
+                    if t.simulation_record_id in records
+                    else None
+                )
+                or t.alpha_id
+                for t in open_trials
+            ]
+            saved = await self.alphas.by_ids([a for a in wanted if a])
+        #: (live optuna trial | None, stored row, values | None, summary)
+        finished: list[tuple[Any, Trial, list[float] | None, dict[str, Any]]] = []
+        started: list[int] = []
+        live = self.open_trials.get(study_id, {})
+
+        for trial in open_trials:
+            record = records.get(trial.simulation_record_id or -1)
+            if record is None:
+                finished.append(
+                    (
+                        live.get(trial.number),
+                        trial,
+                        None,
+                        {"error": "The simulation row for this trial is gone."},
+                    )
+                )
+                continue
+
+            status = SimStatus(record.status)
+            if not status.terminal:
+                if status == SimStatus.RUNNING and trial.state != TrialState.RUNNING:
+                    started.append(trial.id)
+                continue
+
+            alpha_id = record.alpha_id or trial.alpha_id
+            if not alpha_id:
+                finished.append(
+                    (
+                        live.get(trial.number),
+                        trial,
+                        None,
+                        {
+                            "error": record.message
+                            or f"The simulation ended {record.status} with no alpha."
+                        },
+                    )
+                )
+                continue
+
+            if vault_first:
+                stored_alpha = saved.get(alpha_id)
+                # Every objective, not just Sharpe: a row a listing stored without its train
+                # block has Sharpe but no Train Fitness, and scoring it failed the trial for good.
+                if stored_alpha is not None and all(
+                    stored_alpha.get(o.key) is not None for o in objective_list
+                ):
+                    values = [float(stored_alpha[o.key]) for o in objective_list]
+                    summary = vault_summary(stored_alpha)
+                    finished.append((live.get(trial.number), trial, values, summary))
+                    continue
+                if record.finished_at is not None:
+                    ended = record.finished_at
+                    ended = ended if ended.tzinfo else ended.replace(tzinfo=UTC)
+                    now = utcnow()
+                    now = now if now.tzinfo else now.replace(tzinfo=UTC)
+                    if now - ended < VAULT_WAIT:
+                        continue  # The tracker stores it moments after it finishes.
+
+            try:
+                alpha = await self.endpoints.get_alpha(alpha_id)
+            # A lookup that fails for any reason fails that trial, not the whole study.
+            except Exception as exc:  # noqa: BLE001
+                finished.append(
+                    (
+                        live.get(trial.number),
+                        trial,
+                        None,
+                        {"error": f"Could not read the alpha back: {exc}"},
+                    )
+                )
+                continue
+
+            extra = obj.train_extra(alpha, objective_list)
+            values = obj.extract(alpha.in_sample, objective_list, extra)
+            summary = obj.summarise(alpha)
+            finished.append((live.get(trial.number), trial, values, summary))
+
+        if started:
+            await self._mark_running(started)
+        if not finished:
+            return 0
+
+        if tell:
+            study = await self.optuna_study(study_id, row)
+            await asyncio.to_thread(_tell_many, study, finished)
+
+        async with self.db.session() as session:
+            for _optuna_trial, trial, values, summary in finished:
+                live.pop(trial.number, None)
+                stored = await session.get(Trial, trial.id)
+                if stored is None:
+                    continue
+                stored.finished_at = utcnow()
+                if values is None:
+                    stored.state = TrialState.FAIL
+                    stored.message = summary.get("error")
+                else:
+                    stored.state = TrialState.COMPLETE
+                    stored.values = values
+                    stored.constraint = summary.get("constraint")
+                    stored.feasible = summary.get("feasible")
+                    stored.result = summary
+                    stored.alpha_id = summary.get("alphaId")
+            await session.commit()
+
+        log.info("optimize.told", study_id=study_id, trials=len(finished))
+        return len(finished)
+
+    async def _mark_running(self, trial_ids: list[int]) -> None:
+        async with self.db.session() as session:
+            for trial_id in trial_ids:
+                stored = await session.get(Trial, trial_id)
+                if stored is not None:
+                    stored.state = TrialState.RUNNING
+            await session.commit()
+
+    # -- optuna ----------------------------------------------------------
+
+    async def optuna_study(self, study_id: int, row: Study) -> optuna.Study:
+        """The Optuna study, rebuilt from the trial rows on first use."""
+        cached = self.studies.get(study_id)
+        if cached is not None:
+            return cached
+
+        async with self.db.session() as session:
+            trials = list(
+                (
+                    await session.scalars(
+                        select(Trial).where(Trial.study_id == study_id).order_by(Trial.number)
+                    )
+                ).all()
+            )
+            history = [
+                {
+                    "params": t.params or {},
+                    "distributions": t.distributions or {},
+                    "values": t.values,
+                    "state": t.state,
+                    "constraint": t.constraint or {},
+                }
+                for t in trials
+            ]
+
+        run = params_of(row, SearchParams)
+        sampler = tpe(
+            batch_size=row.batch_size,
+            seed=row.seed,
+            n_startup_trials=run.n_startup_trials,
+            multivariate=run.multivariate,
+            group=run.group,
+        )
+        study = await asyncio.to_thread(_rebuild, sampler, list(row.directions or []), history)
+        self.studies[study_id] = study
+        return study
+
+    def forget(self, study_id: int) -> None:
+        """Drop cached state — after deletion, or when a study is reset."""
+        self.studies.pop(study_id, None)
+        self._locks.pop(study_id, None)
+        self.open_trials.pop(study_id, None)
+
+    # -- reading ---------------------------------------------------------
+
+    async def _counts(self, session: Any, study_id: int) -> dict[str, int]:
+        rows = await session.execute(
+            select(Trial.state, func.count())
+            .where(Trial.study_id == study_id)
+            .group_by(Trial.state)
+        )
+        return {str(state): int(n) for state, n in rows.all()}
+
+    async def counts(self, study_id: int) -> dict[str, int]:
+        async with self.db.session() as session:
+            return await self._counts(session, study_id)
+
+    async def get(self, study_id: int) -> Study | None:
+        async with self.db.session() as session:
+            return await session.get(Study, study_id)
+
+    async def delete(self, study_id: int) -> None:
+        async with self.db.session() as session:
+            row = await session.get(Study, study_id)
+            if row is None:
+                raise StudyNotFoundError(study_id)
+            await session.delete(row)
+            await session.commit()
+        self.forget(study_id)
+
+    async def notify(self) -> None:
+        if self._on_change is None:
+            return
+        result = self._on_change({"kind": "studies"})
+        if asyncio.iscoroutine(result):
+            await result
+
+
+# --- optuna plumbing, all synchronous ------------------------------------
+
+
+def _tell_many(
+    study: optuna.Study,
+    finished: list[tuple[Any, Any, list[float] | None, dict[str, Any]]],
+) -> None:
+    """Report results.
+
+    Two routes, because a trial asked before a restart no longer has a live object:
+
+    * **live** — set each constraint on the trial, then tell it. The ordinary path.
+    * **replayed** — add it as an already-finished trial. Same information reaches the
+      sampler, through entirely public API, without depending on Optuna's own numbering
+      matching ours.
+
+    Constraints are named rather than positional (Optuna 5's ``set_constraint``), so the
+    keys are BRAIN's own check names and a check appearing later cannot silently change
+    what an earlier position meant.
+    """
+    from optuna.trial import TrialState as OptunaState
+    from optuna.trial import create_trial
+
+    for optuna_trial, stored, values, summary in finished:
+        constraint = {str(k): float(v) for k, v in (summary.get("constraint") or {}).items()}
+        try:
+            if optuna_trial is not None:
+                if values is None:
+                    study.tell(optuna_trial, state=OptunaState.FAIL, skip_if_finished=True)
+                else:
+                    for key, violation in constraint.items():
+                        optuna_trial.set_constraint(key, violation)
+                    study.tell(optuna_trial, values, skip_if_finished=True)
+                continue
+
+            if values is None:
+                continue  # A failed replayed trial teaches the sampler nothing.
+            distributions = _load_distributions(stored.distributions or {})
+            study.add_trial(
+                create_trial(
+                    params=_optuna_params(stored.params or {}, distributions),
+                    distributions=distributions,
+                    values=[float(v) for v in values],
+                    state=OptunaState.COMPLETE,
+                    constraints=constraint or None,
+                )
+            )
+        except Exception:
+            log.warning("optimize.tell_failed", number=stored.number, exc_info=True)
+
+
+def _load_distributions(raw: dict[str, Any]) -> dict[str, Any]:
+    from optuna.distributions import json_to_distribution
+
+    return {name: json_to_distribution(value) for name, value in raw.items()}
+
+
+def _rebuild(sampler: Any, directions: list[str], history: list[dict[str, Any]]) -> optuna.Study:
+    """Recreate a study from its finished trials.
+
+    Only terminal trials are replayed. Open ones are left out: their live objects did not
+    survive, so they are told later as replayed trials, and recreating them would only
+    reserve numbers we do not use — the application keeps its own.
+    """
+    import optuna
+    from optuna.trial import TrialState as OptunaState
+    from optuna.trial import create_trial
+
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    study = optuna.create_study(
+        directions=[optuna.study.StudyDirection[d.upper()] for d in directions or ["maximize"]],
+        sampler=sampler,
+    )
+
+    state_map = {
+        "COMPLETE": OptunaState.COMPLETE,
+        "FAIL": OptunaState.FAIL,
+        "PRUNED": OptunaState.PRUNED,
+    }
+
+    for entry in history:
+        state = state_map.get(str(entry["state"]))
+        if state is None:
+            continue
+        distributions = _load_distributions(entry["distributions"] or {})
+        params = _optuna_params(entry["params"] or {}, distributions)
+        values = (
+            [float(v) for v in (entry["values"] or [])] if state is OptunaState.COMPLETE else None
+        )
+        if state is OptunaState.COMPLETE and not values:
+            continue
+        constraints = {str(k): float(v) for k, v in (entry["constraint"] or {}).items()}
+        try:
+            study.add_trial(
+                create_trial(
+                    params=params,
+                    distributions=distributions,
+                    values=values,
+                    state=state,
+                    constraints=constraints or None,
+                )
+            )
+        except ValueError:
+            # One unreadable row costs the sampler one point of history. Raising here
+            # failed the whole task, with its sent simulations never scored.
+            log.warning("optimize.replay_skipped", params=sorted(params), exc_info=True)
+    return study
+
+
+def _optuna_params(params: dict[str, Any], distributions: dict[str, Any]) -> dict[str, Any]:
+    """A stored trial's values under the names Optuna asked them by.
+
+    The labs store what a point *means* (``field``), while Optuna names the slot it was
+    drawn from (``field@TOP3000``: fields are scoped by universe). Replaying by the stored
+    names dropped every scoped value, so ``create_trial`` refused the row as inconsistent
+    and each Search or Template task failed on its first restart after a finished trial.
+    """
+    found: dict[str, Any] = {}
+    for name in distributions:
+        key = name if name in params else name.rsplit("@", 1)[0]
+        if key in params:
+            found[name] = params[key]
+    return found
+
+
+def ranked(trials: list[Trial], directions: list[str] | None) -> list[dict[str, Any]]:
+    """Finished trials, best first on the first objective."""
+    maximize = (list(directions or []) or ["maximize"])[0] == "maximize"
+    done = [(t, t.values[0]) for t in trials if t.state == TrialState.COMPLETE and t.values]
+    done.sort(key=lambda pair: float(pair[1]), reverse=maximize)
+    rows = []
+    for t, value in done:
+        result = t.result or {}
+        stats = result.get("stats") or {}
+        rows.append(
+            {
+                "trialId": t.id,
+                "alphaId": t.alpha_id,
+                "expression": t.expression,
+                "settings": t.settings,
+                "value": value,
+                "sharpe": stats.get("sharpe"),
+                "fitness": stats.get("fitness"),
+                "turnover": stats.get("turnover"),
+                "returns": stats.get("returns"),
+                "drawdown": stats.get("drawdown"),
+                "margin": stats.get("margin"),
+                "kRatio": result.get("kRatio"),
+                "feasible": t.feasible,
+                "failedChecks": result.get("failedChecks") or [],
+            }
+        )
+    return rows
+
+
+def vault_summary(saved: dict[str, Any]) -> dict[str, Any]:
+    """The result row for an Alpha read from the local store instead of from BRAIN."""
+    try:
+        checks = json.loads(saved.get("checks") or "[]")
+    except ValueError:
+        checks = []
+    checks = [c for c in checks if isinstance(c, dict)] if isinstance(checks, list) else []
+    failed = [c.get("name") for c in checks if c.get("result") == "FAIL"]
+    return {
+        "alphaId": saved.get("alpha_id"),
+        "grade": saved.get("grade"),
+        "stats": {key: saved.get(key) for key in sorted(VAULT_STATS)},
+        "checks": checks,
+        "feasible": not failed if checks else None,
+        "failedChecks": failed,
+    }

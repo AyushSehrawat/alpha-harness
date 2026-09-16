@@ -1,0 +1,215 @@
+"""FastAPI application.
+
+Run with::
+
+    uvx alpha-harness                                          # built UI included
+    uv run uvicorn alpha_harness.main:app --reload --port 8000  # development, UI from Vite
+
+The frontend talks to this over HTTP + WebSocket only.
+Credentials never leave the backend.
+"""
+
+from __future__ import annotations
+
+import logging
+import sys
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, override
+
+import structlog
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+
+from .api import (
+    alphas,
+    auth,
+    catalog,
+    chat,
+    ga,
+    lab_tasks,
+    llm,
+    power_pool_lab,
+    search_lab,
+    sims,
+    tasks,
+    template_lab,
+    today,
+    vault,
+    ws,
+)
+from .api.auth import Session
+from .api.deps import install_exception_handlers
+from .config import Settings, get_settings
+from .schemas import Out
+from .state import AppState
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
+    from starlette.responses import Response
+    from starlette.types import Scope
+
+log = structlog.get_logger(__name__)
+
+DESCRIPTION = """
+Local research studio for the WorldQuant BRAIN platform.
+
+Runs entirely on your machine. BRAIN credentials are encrypted at rest and never
+reach the browser.
+"""
+
+
+def configure_logging(level: str = "INFO") -> None:
+    """Console-rendered structured logs, for a local tool a human is watching."""
+    numeric = getattr(logging, level.upper(), logging.INFO)
+    logging.basicConfig(format="%(message)s", stream=sys.stdout, level=numeric)
+
+    # uvicorn's access log duplicates what we already record and is noisy in a terminal
+    # that is also showing simulation telemetry.
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.processors.add_log_level,
+            structlog.processors.StackInfoRenderer(),
+            structlog.dev.set_exc_info,
+            structlog.processors.TimeStamper(fmt="%H:%M:%S", utc=False),
+            structlog.dev.ConsoleRenderer(colors=sys.stdout.isatty()),
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(numeric),
+        logger_factory=structlog.PrintLoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or get_settings()
+    configure_logging(settings.log_level)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+        state = AppState(settings)
+        app.state.harness = state
+        await state.startup()
+        try:
+            yield
+        finally:
+            await state.shutdown()
+
+    app = FastAPI(
+        title="Alpha Harness",
+        description=DESCRIPTION,
+        version="0.1.0",
+        lifespan=lifespan,
+        openapi_url="/openapi.json",
+        docs_url="/docs",
+    )
+
+    # DNS rebinding: a page whose hostname resolves to 127.0.0.1 is "same-origin" to the
+    # browser, so the header checks below pass. Its Host header still names that hostname.
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1"])
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    @app.middleware("http")
+    async def require_client_header(request: Request, call_next: Any) -> Any:
+        """Refuse requests another page started, and writes that lack the UI's custom header.
+
+        CORS does not stop a "simple" cross-site request (a form, an <img>, a no-cors fetch)
+        from running; it only hides the response. Some GETs spend BRAIN quota, so the browser's
+        Sec-Fetch-Site guards every method: the UI arrives through the Vite proxy as
+        same-origin, a typed URL as none. Other ports on localhost are same-site and refused.
+        The custom header covers writes from clients that send no Sec-Fetch-Site.
+        """
+        if request.headers.get("sec-fetch-site", "none") not in {"same-origin", "none"}:
+            return JSONResponse(
+                {"detail": {"code": "forbidden", "message": "Requests must come from the app."}},
+                status_code=403,
+            )
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"} and (
+            request.headers.get("x-harness-client") != "1"
+        ):
+            return JSONResponse(
+                {"detail": {"code": "forbidden", "message": "Writes must come from the app."}},
+                status_code=403,
+            )
+        return await call_next(request)
+
+    install_exception_handlers(app)
+
+    app.include_router(auth.router)
+    app.include_router(catalog.router)
+    app.include_router(sims.router)
+    app.include_router(alphas.router)
+    app.include_router(template_lab.router)
+    app.include_router(ga.router)
+    app.include_router(llm.router)
+    app.include_router(vault.router)
+    app.include_router(tasks.router)
+    app.include_router(today.router)
+    app.include_router(search_lab.router)
+    app.include_router(lab_tasks.router)
+    app.include_router(power_pool_lab.router)
+    app.include_router(chat.router)
+    app.include_router(ws.router)
+
+    @app.get("/api/health", tags=["meta"])
+    async def health() -> Health:
+        """Liveness plus a summary of local state, for the UI's status bar."""
+        state: AppState = app.state.harness
+        return Health(
+            ok=True,
+            version=app.version,
+            data_dir=str(state.settings.data_dir),
+            database=await state.db.healthcheck(),
+            session=Session.model_validate(state.auth.session.to_dict()),
+            active_simulations=len(await state.tracker.active()),
+            websocket_clients=state.hub.client_count,
+        )
+
+    # Last, so every API and socket route matches first.
+    app.mount("/", SinglePageApp(directory=WEB, html=True, check_dir=False), name="web")
+    return app
+
+
+class Health(Out):
+    ok: bool
+    version: str
+    data_dir: str
+    database: bool
+    session: Session
+    active_simulations: int
+    websocket_clients: int
+
+
+#: The built frontend (``lefthook run build``); absent in development, where Vite serves it.
+WEB = Path(__file__).parent / "web"
+
+
+class SinglePageApp(StaticFiles):
+    """Static files, with the UI's own routes (``/matrix``, ...) answered by ``index.html``."""
+
+    @override
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            # A missing file (``.js``) or API path stays a 404; only UI routes fall back.
+            if exc.status_code != 404 or "." in path.rsplit("/", 1)[-1] or path.startswith("api"):
+                raise
+            return await super().get_response("index.html", scope)
+
+
+app = create_app()

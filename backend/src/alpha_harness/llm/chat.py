@@ -1,0 +1,377 @@
+"""A conversation with the assistant, and the field picks that come out of it.
+
+The point of this lab is not conversation for its own sake. It is that **anything a
+consultant types steers the search**, and five hundred people describing their own
+hunches in their own words spread across the data in a way that four dropdowns never
+will. Someone typing "companies people are angry about online" and someone typing
+"factories that are quietly buying more machines" end up nowhere near each other.
+
+So the assistant's job here is narrow: read the hunch, and come back with **actual data
+fields** to run on. The conversation is the input; a field list is the output; the labs
+take it from there.
+
+Two controls, both deliberate:
+
+* **Model.** The daily budget varies twenty-five-fold across the roster, and running out
+  is the thing that ends a session. See :mod:`.registry`.
+* **Reasoning.** Thinking tokens are billed against the same per-minute budget as the
+  answer, so "think harder" is a real cost, not a free upgrade. Four levels, labelled in
+  plain words rather than as token counts.
+
+History lives in the database so a conversation survives a restart — a consultant who
+closes the laptop mid-thought should not lose it.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+import structlog
+from sqlalchemy import select
+
+from ..db.models import ChatMessage, ChatThread, utcnow
+from .context import clip, loads_or
+
+if TYPE_CHECKING:
+    from ..catalog.queries import CatalogQueries, Tuple4
+    from ..db.sqlite import Database
+    from .service import LLMService
+
+log = structlog.get_logger(__name__)
+
+#: How much of a conversation is replayed to the model. Long enough to hold a thread,
+#: short enough that prompt tokens do not eat the per-minute budget.
+HISTORY_TURNS = 12
+
+#: Reasoning effort, in words rather than token counts. The mapping is to Google's own
+#: thinking levels; the labels are what a consultant sees.
+REASONING: dict[str, dict[str, Any]] = {
+    "quick": {
+        "level": "MINIMAL",
+        "label": "Quick",
+        "description": "Answers straight away. Best for looking something up.",
+    },
+    "normal": {
+        "level": "LOW",
+        "label": "Normal",
+        "description": "Thinks a little first. The right choice almost always.",
+    },
+    "careful": {
+        "level": "MEDIUM",
+        "label": "Careful",
+        "description": "Works through it properly. Slower, and uses more of the daily budget.",
+    },
+    "deep": {
+        "level": "HIGH",
+        "label": "Deep",
+        "description": (
+            "Thinks hard before answering. Save it for a genuinely difficult question — "
+            "it is the most expensive setting."
+        ),
+    },
+}
+
+DEFAULT_REASONING = "normal"
+
+
+def reasoning_options() -> list[dict[str, Any]]:
+    return [{"value": key, **value} for key, value in REASONING.items()]
+
+
+#: What the assistant returns when asked to pick fields. Kept small on purpose: a
+#: consultant needs a handful of things to run, not a survey.
+FIELD_PICK_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "reply": {"type": "string"},
+        "picks": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "field": {"type": "string"},
+                    "why": {"type": "string"},
+                },
+                "required": ["field", "why"],
+            },
+        },
+        "datasets": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["reply"],
+}
+
+
+SYSTEM = """\
+You are the research assistant inside Alpha Harness. The person talking to you has no \
+background in finance and will give this ten minutes. Write for them: short sentences, \
+no jargon without a plain-language gloss, never "simply" or "just".
+
+Your job is to turn a hunch into something runnable. They describe an idea in ordinary \
+words; you find the data that could measure it.
+
+You are given a list of the data fields available to them. Use ONLY those names. Never \
+invent one — a made-up field becomes a simulation that fails, and they have a limited \
+number each day.
+
+Return JSON with:
+  "reply"    — two or three sentences. What you think they mean, and what you picked.
+  "picks"    — the fields worth running, each with one plain sentence on why.
+  "datasets" — the dataset ids those fields came from.
+
+Pick between three and ten fields. Fewer is better than padding the list. If nothing in \
+the data fits the idea, say so plainly in "reply", return an empty "picks", and suggest \
+the nearest thing that does exist.
+"""
+
+
+class ChatService:
+    """Conversations, and the field picks they produce."""
+
+    def __init__(self, db: Database, llm: LLMService, queries: CatalogQueries) -> None:
+        self.db = db
+        self.llm = llm
+        self.queries = queries
+
+    # -- threads ---------------------------------------------------------
+
+    async def threads(self, limit: int = 30) -> list[ChatThread]:
+        async with self.db.session() as session:
+            return list(
+                (
+                    await session.scalars(
+                        select(ChatThread).order_by(ChatThread.updated_at.desc()).limit(limit)
+                    )
+                ).all()
+            )
+
+    async def thread(self, thread_id: int) -> tuple[ChatThread, list[ChatMessage]] | None:
+        async with self.db.session() as session:
+            thread = await session.get(ChatThread, thread_id)
+            if thread is None:
+                return None
+            messages = list(
+                (
+                    await session.scalars(
+                        select(ChatMessage)
+                        .where(ChatMessage.thread_id == thread_id)
+                        .order_by(ChatMessage.id)
+                    )
+                ).all()
+            )
+            return thread, messages
+
+    async def start(self, title: str, scope: Tuple4) -> ChatThread:
+        async with self.db.session() as session:
+            thread = ChatThread(
+                title=title[:120],
+                instrument_type=scope.instrument_type,
+                region=scope.region,
+                delay=scope.delay,
+                universe=scope.universe,
+            )
+            session.add(thread)
+            await session.commit()
+            await session.refresh(thread)
+        return thread
+
+    async def delete(self, thread_id: int) -> None:
+        async with self.db.session() as session:
+            thread = await session.get(ChatThread, thread_id)
+            if thread is not None:
+                await session.delete(thread)
+                await session.commit()
+
+    # -- the turn --------------------------------------------------------
+
+    async def say(
+        self,
+        thread_id: int | None,
+        text: str,
+        *,
+        scope: Tuple4,
+        model: str | None = None,
+        reasoning: str = DEFAULT_REASONING,
+        dataset_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """One exchange: their words in, a reply and a set of field picks out."""
+        if reasoning not in REASONING:
+            raise ValueError(
+                f"{reasoning!r} is not a reasoning setting. Choose one of: "
+                + ", ".join(REASONING)
+                + "."
+            )
+
+        thread = None
+        if thread_id is not None:
+            found = await self.thread(thread_id)
+            if found is None:
+                raise ValueError(f"No conversation {thread_id}.")
+            thread, history = found
+        else:
+            thread = await self.start(text, scope)
+            history = []
+
+        fields, available, catalog_note = await self._field_menu(scope, dataset_ids)
+        if not fields:
+            raise ValueError(
+                f"No data has been downloaded for {scope.label} yet, so there is nothing "
+                "for the assistant to choose from. Download this market first."
+            )
+
+        await self._append(thread.id, "user", text)
+
+        prompt = "\n\n---\n\n".join(
+            [
+                f"DATA FIELDS AVAILABLE IN {scope.label}:\n{fields}",
+                _transcript(history),
+                f"THEIR MESSAGE:\n{text}",
+            ]
+        )
+
+        answer = await self.llm.generate(
+            system=SYSTEM,
+            user=prompt,
+            model_id=model,
+            temperature=0.6,
+            response_schema=FIELD_PICK_SCHEMA,
+            thinking=REASONING[reasoning]["level"],
+        )
+
+        parsed = _parse(answer.text)
+        # Anything the model named that is not really in the catalog is dropped rather
+        # than passed on. A hallucinated field costs a simulation to discover.
+        kept = [p for p in parsed["picks"] if p.get("field") in available]
+        dropped = [p["field"] for p in parsed["picks"] if p.get("field") not in available]
+        if dropped:
+            log.warning("chat.invented_fields", fields=dropped[:10], scope=scope.label)
+
+        await self._append(
+            thread.id,
+            "assistant",
+            parsed["reply"],
+            picks=kept,
+            # Stored, not just returned: reopening the conversation showed the picks but not
+            # which fields the model invented, which is the part worth remembering.
+            datasets=parsed["datasets"],
+            dropped=dropped,
+            catalogNote=catalog_note,
+            model=answer.model,
+            reasoning=reasoning,
+            tokens=answer.total_tokens,
+        )
+        await self._touch(thread.id)
+
+        return {
+            "threadId": thread.id,
+            "reply": parsed["reply"],
+            "picks": kept,
+            "datasets": parsed["datasets"],
+            "dropped": dropped,
+            "catalogNote": catalog_note,
+            "usage": answer.to_dict()["usage"],
+            "model": answer.model,
+            "reasoning": reasoning,
+        }
+
+    # -- helpers ---------------------------------------------------------
+
+    async def _field_menu(
+        self, scope: Tuple4, dataset_ids: list[str] | None
+    ) -> tuple[str, set[str], str | None]:
+        """The fields the assistant may choose from: the text, their ids, and a note.
+
+        Capped, and ordered by coverage: a field present on 4% of the market cannot
+        carry a signal about it however good the idea, and listing thousands would spend
+        the whole context window on names.
+
+        The floor is lifted once a dataset is named. Event-driven data is thin by nature
+        — in USA D1 TOP3000, sixteen datasets (``options_composite``, ``web_traffic_engage``
+        among them) have no field above the floor at all — so applying it to a market-wide
+        menu is a filter, and applying it to a dataset the user chose is a denial.
+
+        Both are read from one query: asking twice put the same 400-row scan on every turn.
+        """
+        from ..catalog.queries import FieldFilter
+
+        page = await self.queries.fields(
+            scope,
+            FieldFilter(
+                dataset_ids=list(dataset_ids or []),
+                coverage_min=None if dataset_ids else 0.5,
+                sort_by="coverage",
+                sort_desc=True,
+                limit=400,
+            ),
+        )
+        rows = page["results"]
+        if not rows:
+            return "", set(), None
+
+        lines = [
+            f"  {r['field_id']} ({r.get('dataset_id')}): {clip(r.get('description'), 110)}"
+            for r in rows
+        ]
+        note = None
+        if int(page["total"]) > len(rows):
+            note = (
+                f"The assistant was shown the {len(rows)} widest-coverage fields of "
+                f"{page['total']} in this market."
+            )
+        return "\n".join(lines), {str(r["field_id"]) for r in rows}, note
+
+    async def _append(self, thread_id: int, role: str, text: str, **meta: Any) -> None:
+        async with self.db.session() as session:
+            session.add(
+                ChatMessage(
+                    thread_id=thread_id,
+                    role=role,
+                    text=text,
+                    meta={k: v for k, v in meta.items() if v is not None},
+                )
+            )
+            await session.commit()
+
+    async def _touch(self, thread_id: int) -> None:
+        async with self.db.session() as session:
+            thread = await session.get(ChatThread, thread_id)
+            if thread is not None:
+                thread.updated_at = utcnow()
+                await session.commit()
+
+
+def _transcript(history: list[ChatMessage]) -> str:
+    recent = history[-HISTORY_TURNS:]
+    if not recent:
+        return "THE CONVERSATION SO FAR:\n  (this is the first message)"
+    lines: list[str] = []
+    for m in recent:
+        if m.role == "user":
+            lines.append(f"  They: {m.text.strip()[:600]}")
+            continue
+        # Its own picks, so "why the second one?" can be answered: the reply names them
+        # in prose the model no longer sees, and the picks were only stored as metadata.
+        picks = ", ".join(str(p.get("field")) for p in (m.meta or {}).get("picks") or [])
+        said = f"  You: {m.text.strip()[:600]}"
+        lines.append(f"{said} [picked: {picks}]" if picks else said)
+    return "THE CONVERSATION SO FAR:\n" + "\n".join(lines)
+
+
+def _parse(text: str) -> dict[str, Any]:
+    """Read the model's JSON, and degrade to plain text rather than failing.
+
+    A reply the consultant can read is worth more than a parse error, so an unparseable
+    response becomes the reply itself with no picks.
+    """
+    payload = loads_or(text)
+    if not payload:
+        return {"reply": text.strip(), "picks": [], "datasets": []}
+
+    picks = payload.get("picks")
+    datasets = payload.get("datasets")
+    return {
+        "reply": str(payload.get("reply") or "").strip() or text.strip(),
+        "picks": [p for p in picks if isinstance(p, dict) and p.get("field")]
+        if isinstance(picks, list)
+        else [],
+        "datasets": [str(d) for d in datasets if d] if isinstance(datasets, list) else [],
+    }

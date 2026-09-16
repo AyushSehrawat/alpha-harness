@@ -1,0 +1,211 @@
+import { useMutation } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
+import { useState } from 'react'
+import { toast } from 'sonner'
+import { errorMessage } from '@/api/http'
+import { DASH, fmt } from '@/lib/format'
+import { type LLMKey, llm, quotaDay } from '@/screens/ai/api'
+import { Badge, Button, Checkbox, Empty, ErrorNotice, LINK, Panel, Skeleton } from '@/ui/kit'
+import { Confirm } from '@/ui/overlay'
+import { type Column, DataTable } from '@/ui/table'
+import { useInvalidateKeys, useKeys, useProviderLabel } from './shared'
+
+const nameOf = (k: LLMKey) => k.label || k.hint
+
+export function Keys() {
+  const keys = useKeys()
+  const providerLabel = useProviderLabel()
+  const invalidate = useInvalidateKeys()
+  const [deleting, setDeleting] = useState<LLMKey | null>(null)
+
+  const checkAll = useMutation({
+    mutationFn: llm.checkAll,
+    onSuccess: (results) => {
+      const failures = results.flatMap((r) => (r.ok ? [] : [`Key ${r.keyId}: ${r.error}`]))
+      const summary = `${fmt.int(results.length - failures.length)} of ${fmt.int(results.length)} Keys work`
+      if (failures.length) toast.error(summary, { description: failures.join('\n') })
+      else toast.success(summary)
+      invalidate()
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+
+  const remove = useMutation({
+    mutationFn: (k: LLMKey) => llm.removeKey(k.id),
+    onSuccess: (_, k) => {
+      toast.success(`Removed ${nameOf(k)}`)
+      setDeleting(null)
+      invalidate()
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+
+  if (keys.isError) return <ErrorNotice title="Could not load the Keys" error={keys.error} />
+  if (!keys.data) return <Skeleton className="h-64" />
+
+  const { data } = keys
+  if (data.keys.length === 0) {
+    return (
+      <Panel>
+        <Empty title="No assistant Keys yet">
+          A Key is free, takes a minute, and is what lets the assistant explain the data to you.{' '}
+          <Link to="/ai/$tab" params={{ tab: 'providers' }} className={LINK}>
+            Choose a provider
+          </Link>
+        </Empty>
+      </Panel>
+    )
+  }
+
+  const day = quotaDay(data.quotaTimezone)
+  const today = (k: LLMKey) => k.usage.filter((u) => u.day === day)
+
+  const columns: Column<LLMKey>[] = [
+    {
+      key: 'provider',
+      header: 'Provider',
+      width: 'minmax(120px,1fr)',
+      cell: (k) => providerLabel(k.provider),
+    },
+    {
+      key: 'label',
+      header: 'Label',
+      width: 'minmax(120px,1fr)',
+      cell: (k) => k.label || <span className="text-ink-subtle">{DASH}</span>,
+    },
+    {
+      key: 'hint',
+      header: 'Key',
+      width: '130px',
+      cell: (k) => <span className="num text-ink-muted">{k.hint}</span>,
+    },
+    {
+      key: 'enabled',
+      header: 'Enabled',
+      width: '80px',
+      cell: (k) => <EnabledCell apiKey={k} />,
+    },
+    {
+      key: 'status',
+      header: 'Last check',
+      width: '150px',
+      cell: (k) => <KeyStatus apiKey={k} />,
+    },
+    {
+      key: 'requests',
+      header: 'Requests today',
+      width: '120px',
+      align: 'right',
+      cell: (k) => fmt.int(today(k).reduce((s, u) => s + u.requests, 0)),
+    },
+    {
+      key: 'tokens',
+      header: 'Tokens today',
+      width: '120px',
+      align: 'right',
+      cell: (k) => fmt.int(today(k).reduce((s, u) => s + u.tokens, 0)),
+    },
+    {
+      key: 'actions',
+      header: '',
+      width: '150px',
+      cell: (k) => <RowActions apiKey={k} onDelete={() => setDeleting(k)} />,
+    },
+  ]
+
+  return (
+    <Panel
+      title="Key Pool"
+      description={`${fmt.int(data.enabled)} of ${fmt.int(data.keys.length)} Keys enabled. Requests rotate across enabled Keys; usage counts the current Pacific day.`}
+      bodyClassName="p-0"
+      actions={
+        <Button size="sm" loading={checkAll.isPending} onClick={() => checkAll.mutate()}>
+          Check all
+        </Button>
+      }
+    >
+      <DataTable
+        label="API keys"
+        rows={data.keys}
+        columns={columns}
+        rowKey={(k) => String(k.id)}
+        rowHeight={40}
+      />
+      <Confirm
+        open={deleting !== null}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        title={`Remove ${deleting ? nameOf(deleting) : 'Key'}?`}
+        confirmLabel="Remove Key"
+        danger
+        pending={remove.isPending}
+        onConfirm={() => deleting && remove.mutate(deleting)}
+      >
+        The Key is deleted from the local vault and its daily budget leaves the pool. You can add it
+        again later.
+      </Confirm>
+    </Panel>
+  )
+}
+
+function EnabledCell({ apiKey: k }: { apiKey: LLMKey }) {
+  const invalidate = useInvalidateKeys()
+  const toggle = useMutation({
+    mutationFn: (enabled: boolean) => llm.setEnabled(k.id, enabled),
+    onSuccess: (updated) => {
+      toast.success(`${nameOf(k)} ${updated.enabled ? 'enabled' : 'disabled'}`)
+      invalidate()
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  return (
+    <Checkbox
+      label={null}
+      aria-label={`Enable ${nameOf(k)}`}
+      checked={k.enabled}
+      disabled={toggle.isPending}
+      onChange={(e) => toggle.mutate(e.target.checked)}
+    />
+  )
+}
+
+function RowActions({ apiKey: k, onDelete }: { apiKey: LLMKey; onDelete: () => void }) {
+  const invalidate = useInvalidateKeys()
+  const check = useMutation({
+    mutationFn: () => llm.checkKey(k.id),
+    onSuccess: (result) => {
+      if (result.ok)
+        toast.success(`${nameOf(k)} works · ${fmt.int(result.models)} models`, {
+          description: result.newModels.length
+            ? `New models: ${result.newModels.join(', ')}`
+            : undefined,
+        })
+      else
+        toast.error(`${nameOf(k)} failed the check`, {
+          description: result.error,
+        })
+      invalidate()
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  return (
+    <div className="flex w-full justify-end gap-1">
+      <Button variant="ghost" size="sm" loading={check.isPending} onClick={() => check.mutate()}>
+        Check
+      </Button>
+      <Button variant="danger" size="sm" onClick={onDelete}>
+        Delete
+      </Button>
+    </div>
+  )
+}
+
+function KeyStatus({ apiKey: k }: { apiKey: LLMKey }) {
+  if (k.lastError)
+    return (
+      <Badge tone="loss" title={k.lastError}>
+        Failing
+      </Badge>
+    )
+  if (k.lastOkAt) return <Badge tone="profit">Working · {fmt.ago(k.lastOkAt)}</Badge>
+  return <Badge tone="muted">Unchecked</Badge>
+}

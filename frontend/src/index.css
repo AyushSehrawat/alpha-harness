@@ -1,0 +1,472 @@
+@import "tailwindcss";
+@source not "../dist";
+
+/*
+ * Colour runs in three tiers (DESIGN.md → Colour), whose APCA floors, visible steps and
+ * colour-vision behaviour are measured by hand with the helpers in tools/oklch.ts.
+ *
+ * Tier 1, primitives: `spec-*` are the DESIGN.md hex values and the ramps are generated, both
+ * by tools/oklch.ts (SPEC and HUES), so edit there and paste the block it prints. They sit in
+ * :root, outside @theme, so no utility class can reach them.
+ */
+:root {
+  --white: oklch(1 0 0);
+  --black: oklch(0 0 0);
+  --spec-primary: #5e6ad2;
+  --spec-on-primary: #ffffff;
+  --spec-primary-hover: #828fff;
+  --spec-primary-focus: #5e69d1;
+  --spec-canvas: #010102;
+  --spec-surface-1: #0f1011;
+  --spec-surface-2: #141516;
+  --spec-surface-3: #18191a;
+  --spec-surface-4: #1f2022;
+  --spec-hairline: #23252a;
+  --spec-hairline-strong: #34343a;
+  --spec-hairline-subtle: #17181c;
+  --spec-ink: #f7f8f8;
+  --spec-ink-muted: #d0d6e0;
+  --spec-ink-subtle: #8a8f98;
+  --spec-ink-tertiary: #52565e;
+  --spec-pnl-positive: #27a644;
+  --spec-pnl-negative: #e5484d;
+  --spec-status-running: #3b82f6;
+  --spec-status-queued: #8a8f98;
+  --spec-status-warning: #f59e0b;
+  --spec-status-idle: #23252a;
+  --neutral-elev-0: oklch(0.12 0.002 264);
+  --neutral-elev-1: oklch(0.16 0.003 264);
+  --neutral-elev-2: oklch(0.2 0.004 264);
+  --neutral-elev-3: oklch(0.23 0.005 264);
+  --neutral-elev-4: oklch(0.26 0.006 264);
+  --neutral-elev-5: oklch(0.3 0.007 264);
+  --neutral-elev-6: oklch(0.35 0.008 264);
+  --neutral-050: oklch(0.98 0.002 270);
+  --neutral-100: oklch(0.94 0.003 269.3);
+  --neutral-200: oklch(0.88 0.004 268.1);
+  --neutral-300: oklch(0.8 0.007 266.7);
+  --neutral-400: oklch(0.7 0.009 264.8);
+  --neutral-500: oklch(0.6 0.011 262.9);
+  --neutral-600: oklch(0.5 0.011 262.9);
+  --neutral-700: oklch(0.4 0.009 264);
+  --neutral-800: oklch(0.3 0.007 264);
+  --neutral-900: oklch(0.2 0.004 264);
+  --neutral-950: oklch(0.12 0.002 264);
+  --lavender-050: oklch(0.98 0.009 284);
+  --lavender-100: oklch(0.94 0.028 283.3);
+  --lavender-200: oklch(0.88 0.057 282.1);
+  --lavender-300: oklch(0.8 0.096 280.7);
+  --lavender-400: oklch(0.7 0.133 278.8);
+  --lavender-500: oklch(0.6 0.156 276.9);
+  --lavender-600: oklch(0.5 0.156 275.1);
+  --lavender-700: oklch(0.4 0.133 273.2);
+  --lavender-800: oklch(0.3 0.096 271.3);
+  --lavender-900: oklch(0.2 0.058 269.5);
+  --lavender-950: oklch(0.12 0.035 268);
+  --sea-050: oklch(0.98 0.026 177);
+  --sea-100: oklch(0.94 0.069 177.7);
+  --sea-200: oklch(0.88 0.098 178.9);
+  --sea-300: oklch(0.8 0.137 180.3);
+  --sea-400: oklch(0.7 0.118 182.2);
+  --sea-500: oklch(0.6 0.1 184.1);
+  --sea-600: oklch(0.5 0.083 185.9);
+  --sea-700: oklch(0.4 0.066 187.8);
+  --sea-800: oklch(0.3 0.049 189.7);
+  --sea-900: oklch(0.2 0.032 191.5);
+  --sea-950: oklch(0.12 0.019 193);
+  --red-050: oklch(0.98 0.009 32);
+  --red-100: oklch(0.94 0.028 31.3);
+  --red-200: oklch(0.88 0.06 30.1);
+  --red-300: oklch(0.8 0.108 28.7);
+  --red-400: oklch(0.7 0.181 26.8);
+  --red-500: oklch(0.6 0.215 24.9);
+  --red-600: oklch(0.5 0.191 23.1);
+  --red-700: oklch(0.4 0.152 21.2);
+  --red-800: oklch(0.3 0.114 19.3);
+  --red-900: oklch(0.2 0.076 17.5);
+  --red-950: oklch(0.12 0.045 16);
+  --amber-050: oklch(0.98 0.017 80);
+  --amber-100: oklch(0.94 0.052 80);
+  --amber-200: oklch(0.88 0.082 80);
+  --amber-300: oklch(0.8 0.12 80);
+  --amber-400: oklch(0.7 0.137 79.8);
+  --amber-500: oklch(0.6 0.118 77.9);
+  --amber-600: oklch(0.5 0.099 76.1);
+  --amber-700: oklch(0.4 0.08 74.2);
+  --amber-800: oklch(0.3 0.06 72.3);
+  --amber-900: oklch(0.2 0.041 70.5);
+  --amber-950: oklch(0.12 0.024 69);
+  --orchid-050: oklch(0.98 0.015 330);
+  --orchid-100: oklch(0.94 0.037 329.3);
+  --orchid-200: oklch(0.88 0.053 328.1);
+  --orchid-300: oklch(0.8 0.078 326.7);
+  --orchid-400: oklch(0.7 0.108 324.8);
+  --orchid-500: oklch(0.6 0.127 322.9);
+  --orchid-600: oklch(0.5 0.127 321.1);
+  --orchid-700: oklch(0.4 0.108 319.2);
+  --orchid-800: oklch(0.3 0.078 317.3);
+  --orchid-900: oklch(0.2 0.047 315.5);
+  --orchid-950: oklch(0.12 0.028 314);
+  --teal-050: oklch(0.98 0.013 219);
+  --teal-100: oklch(0.94 0.034 219.7);
+  --teal-200: oklch(0.88 0.049 220.9);
+  --teal-300: oklch(0.8 0.072 222.3);
+  --teal-400: oklch(0.7 0.099 224.2);
+  --teal-500: oklch(0.6 0.109 226.1);
+  --teal-600: oklch(0.5 0.092 227.9);
+  --teal-700: oklch(0.4 0.075 229.8);
+  --teal-800: oklch(0.3 0.057 231.7);
+  --teal-900: oklch(0.2 0.039 233.5);
+  --teal-950: oklch(0.12 0.024 235);
+  --jade-050: oklch(0.98 0.026 150);
+  --jade-100: oklch(0.94 0.034 150.7);
+  --jade-200: oklch(0.88 0.049 151.9);
+  --jade-300: oklch(0.8 0.072 153.3);
+  --jade-400: oklch(0.7 0.099 155.2);
+  --jade-500: oklch(0.6 0.117 157.1);
+  --jade-600: oklch(0.5 0.109 158.9);
+  --jade-700: oklch(0.4 0.084 160.8);
+  --jade-800: oklch(0.3 0.061 162.7);
+  --jade-900: oklch(0.2 0.04 164.5);
+  --jade-950: oklch(0.12 0.023 166);
+  --copper-050: oklch(0.98 0.012 66);
+  --copper-100: oklch(0.94 0.037 65.3);
+  --copper-200: oklch(0.88 0.053 64.1);
+  --copper-300: oklch(0.8 0.078 62.7);
+  --copper-400: oklch(0.7 0.108 60.8);
+  --copper-500: oklch(0.6 0.127 58.9);
+  --copper-600: oklch(0.5 0.114 57.1);
+  --copper-700: oklch(0.4 0.093 55.2);
+  --copper-800: oklch(0.3 0.072 53.3);
+  --copper-900: oklch(0.2 0.047 51.5);
+  --copper-950: oklch(0.12 0.028 50);
+  --olive-050: oklch(0.98 0.023 89);
+  --olive-100: oklch(0.94 0.034 89.7);
+  --olive-200: oklch(0.88 0.049 90.9);
+  --olive-300: oklch(0.8 0.072 92.3);
+  --olive-400: oklch(0.7 0.099 94.2);
+  --olive-500: oklch(0.6 0.117 96.1);
+  --olive-600: oklch(0.5 0.098 97.9);
+  --olive-700: oklch(0.4 0.078 99.8);
+  --olive-800: oklch(0.3 0.059 101.7);
+  --olive-900: oklch(0.2 0.04 103.5);
+  --olive-950: oklch(0.12 0.024 105);
+  --rose-050: oklch(0.98 0.009 2);
+  --rose-100: oklch(0.94 0.03 1.3);
+  --rose-200: oklch(0.88 0.053 0.1);
+  --rose-300: oklch(0.8 0.078 358.7);
+  --rose-400: oklch(0.7 0.108 356.8);
+  --rose-500: oklch(0.6 0.127 354.9);
+  --rose-600: oklch(0.5 0.127 353.1);
+  --rose-700: oklch(0.4 0.108 351.2);
+  --rose-800: oklch(0.3 0.078 349.3);
+  --rose-900: oklch(0.2 0.047 347.5);
+  --rose-950: oklch(0.12 0.028 346);
+}
+
+/*
+ * Tier 3, kit component states: rest, hover, press, open, invalid and disabled for the
+ * primitives in ui/kit.tsx and ui/overlay.tsx. Tier 2 references only.
+ */
+:root {
+  --btn-primary-bg: var(--color-primary);
+  --btn-primary-bg-hover: var(--color-primary-hover);
+  --btn-primary-bg-active: var(--color-primary-focus);
+  --btn-primary-text: var(--color-on-primary);
+  --btn-danger-border-hover: var(--color-pnl-negative-dim);
+  --btn-disabled-bg: var(--color-surface-2);
+  --btn-disabled-text: var(--color-ink-disabled);
+  --field-border: var(--color-ink-tertiary);
+  --field-border-hover: var(--color-ink-subtle);
+  --field-border-open: var(--color-primary);
+  --field-border-invalid: var(--color-pnl-negative);
+  --field-border-disabled: var(--color-ink-disabled);
+  --field-text-disabled: var(--color-ink-disabled);
+  --focus-ring: var(--color-primary-hover);
+}
+
+/*
+ * Tier 2, semantic tokens: the only colours components use. The DESIGN.md colours are the
+ * `spec-*` primitives, taken verbatim; the rest are opaque oklab mixes over the surface they sit
+ * on, so the colour in the token is the colour on screen. Dark is the one theme. Tailwind's
+ * palette is dropped so no ad-hoc colour can slip in, and `static` emits every variable, because
+ * canvas charts read them at runtime.
+ */
+@theme static {
+  --color-*: initial;
+  --color-white: var(--white);
+  --color-black: var(--black);
+
+  /* Elevation by surface steps, not shadow. */
+  --color-canvas: var(--spec-canvas);
+  --color-surface-1: var(--spec-surface-1);
+  --color-surface-2: var(--spec-surface-2);
+  --color-surface-3: var(--spec-surface-3);
+  --color-surface-4: var(--spec-surface-4);
+
+  --color-hairline: var(--spec-hairline);
+  --color-hairline-strong: var(--spec-hairline-strong);
+  --color-hairline-subtle: var(--spec-hairline-subtle);
+
+  --color-ink: var(--spec-ink);
+  --color-ink-muted: var(--spec-ink-muted);
+  --color-ink-subtle: var(--spec-ink-subtle);
+  --color-ink-tertiary: var(--spec-ink-tertiary);
+  /* Inactive: disabled controls. */
+  --color-ink-disabled: var(--neutral-600);
+  /* Ink at 10% over surface-1. */
+  --color-ink-tint: color-mix(in oklab, var(--spec-ink) 10%, var(--spec-surface-1));
+  /* Pyramids ramp: ink at 4 / 8 / 13 / 19 / 26 / 34% over surface-1. */
+  --color-pyramid-0: color-mix(in oklab, var(--spec-ink) 4%, var(--spec-surface-1));
+  --color-pyramid-1: color-mix(in oklab, var(--spec-ink) 8%, var(--spec-surface-1));
+  --color-pyramid-2: color-mix(in oklab, var(--spec-ink) 13%, var(--spec-surface-1));
+  --color-pyramid-3: color-mix(in oklab, var(--spec-ink) 19%, var(--spec-surface-1));
+  --color-pyramid-4: color-mix(in oklab, var(--spec-ink) 26%, var(--spec-surface-1));
+  --color-pyramid-5: color-mix(in oklab, var(--spec-ink) 34%, var(--spec-surface-1));
+
+  /* Primary execution controls, focus and selection. */
+  --color-primary: var(--spec-primary);
+  --color-on-primary: var(--spec-on-primary);
+  --color-primary-hover: var(--spec-primary-hover);
+  --color-primary-focus: var(--spec-primary-focus);
+  /* Drawn opaque over surface-1, not as an alpha, so the contrast is measurable. */
+  --color-primary-subtle: color-mix(in oklab, var(--spec-primary) 12%, var(--spec-surface-1));
+  --color-link: var(--lavender-300);
+
+  --color-pnl-positive: var(--spec-pnl-positive);
+  --color-pnl-negative: var(--spec-pnl-negative);
+  --color-status-running: var(--spec-status-running);
+  --color-status-queued: var(--spec-status-queued);
+  --color-status-warning: var(--spec-status-warning);
+  --color-status-idle: var(--spec-status-idle);
+  /* Loss as a non-text state: danger hover border, failed tiles. */
+  --color-pnl-negative-dim: color-mix(
+    in oklab,
+    var(--spec-pnl-negative) 70%,
+    var(--spec-surface-1)
+  );
+  /* Notice fills: the tone at 12% over surface-1. */
+  --color-pnl-positive-tint: color-mix(
+    in oklab,
+    var(--spec-pnl-positive) 12%,
+    var(--spec-surface-1)
+  );
+  --color-pnl-negative-tint: color-mix(
+    in oklab,
+    var(--spec-pnl-negative) 12%,
+    var(--spec-surface-1)
+  );
+  --color-status-warning-tint: color-mix(
+    in oklab,
+    var(--spec-status-warning) 12%,
+    var(--spec-surface-1)
+  );
+  /* Status outlines: the tone at 40% over surface-2. */
+  --color-pnl-positive-edge: color-mix(
+    in oklab,
+    var(--spec-pnl-positive) 40%,
+    var(--spec-surface-2)
+  );
+  --color-pnl-negative-edge: color-mix(
+    in oklab,
+    var(--spec-pnl-negative) 40%,
+    var(--spec-surface-2)
+  );
+  --color-status-warning-edge: color-mix(
+    in oklab,
+    var(--spec-status-warning) 40%,
+    var(--spec-surface-2)
+  );
+
+  /* Template Lab operator categories: the hue at 10% (fill) and 45% (edge) over surface-2. */
+  --color-category-cross-sectional: color-mix(
+    in oklab,
+    var(--orchid-400) 10%,
+    var(--spec-surface-2)
+  );
+  --color-category-cross-sectional-edge: color-mix(
+    in oklab,
+    var(--orchid-400) 45%,
+    var(--spec-surface-2)
+  );
+  --color-category-time-series: color-mix(in oklab, var(--teal-400) 10%, var(--spec-surface-2));
+  --color-category-time-series-edge: color-mix(
+    in oklab,
+    var(--teal-400) 45%,
+    var(--spec-surface-2)
+  );
+  --color-category-group: color-mix(in oklab, var(--jade-400) 10%, var(--spec-surface-2));
+  --color-category-group-edge: color-mix(in oklab, var(--jade-400) 45%, var(--spec-surface-2));
+  --color-category-arithmetic: color-mix(in oklab, var(--copper-400) 10%, var(--spec-surface-2));
+  --color-category-arithmetic-edge: color-mix(
+    in oklab,
+    var(--copper-400) 45%,
+    var(--spec-surface-2)
+  );
+  --color-category-logical: color-mix(in oklab, var(--olive-400) 10%, var(--spec-surface-2));
+  --color-category-logical-edge: color-mix(in oklab, var(--olive-400) 45%, var(--spec-surface-2));
+  --color-category-transformational: color-mix(
+    in oklab,
+    var(--rose-400) 10%,
+    var(--spec-surface-2)
+  );
+  --color-category-transformational-edge: color-mix(
+    in oklab,
+    var(--rose-400) 45%,
+    var(--spec-surface-2)
+  );
+
+  /* Onboarding nudge: a slow amber flash on a nav item the consultant has not opened yet. */
+  --animate-attention: attention 1.6s ease-in-out infinite;
+  @keyframes attention {
+    0%,
+    100% {
+      background-color: transparent;
+    }
+    50% {
+      background-color: color-mix(in oklab, var(--color-status-warning) 22%, transparent);
+    }
+  }
+
+  /* Sync matrix: an ink shimmer sweeping across a market while its fields download. */
+  --animate-sweep: sweep 1.4s linear infinite;
+  @keyframes sweep {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
+
+  --font-sans: "Inter Variable", Inter, -apple-system, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Geist Mono", SFMono-Regular, monospace;
+
+  /* DESIGN.md → Typography, and nothing else: Tailwind's size scale is dropped. 20px is the cap. */
+  --text-*: initial;
+  --text-caption: 11px;
+  --text-caption--line-height: 1.25;
+  --text-caption--letter-spacing: 0.1px;
+  --text-body-compact: 12px;
+  --text-body-compact--line-height: 1.35;
+  --text-body: 13px;
+  --text-body--line-height: 1.4;
+  --text-body--letter-spacing: -0.05px;
+  --text-title: 15px;
+  --text-title--line-height: 1.3;
+  --text-title--letter-spacing: -0.2px;
+  --text-title--font-weight: 500;
+  --text-headline: 20px;
+  --text-headline--line-height: 1.25;
+  --text-headline--letter-spacing: -0.4px;
+  --text-headline--font-weight: 600;
+
+  /* DESIGN.md → Shapes. Pill is for the quota gauge and status LEDs only. */
+  --radius-*: initial;
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-pill: 9999px;
+}
+
+/* Inline figures: mono, tabular. */
+@utility num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: -0.2px;
+}
+
+/* DESIGN.md mono-metric: Sharpe, Fitness, Turnover and Margin in grids and badges. */
+@utility mono-metric {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.2px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* DESIGN.md eyebrow: uppercase taxonomy labels with slight positive tracking. */
+@utility eyebrow {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-ink-subtle);
+}
+
+/* DESIGN.md subtle top edge highlight for elevated panels: a faint "pixel rendered" feel. */
+@utility panel-highlight {
+  box-shadow: inset 0 1px 0 0 var(--color-hairline-strong);
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.4;
+    letter-spacing: -0.05px;
+    /* Figures inside sentences align too; standalone figures still take `num`. */
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-hairline);
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-hairline-strong) transparent;
+  }
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--color-primary) 35%, transparent);
+  }
+  code,
+  kbd,
+  pre {
+    font-family: var(--font-mono);
+    letter-spacing: 0;
+  }
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="range"] {
+    accent-color: var(--color-primary);
+  }
+  a {
+    color: inherit;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      /* biome-ignore lint/complexity/noImportantStyles: reduced motion must override every component transition */
+      animation-duration: 0.01ms !important;
+      /* biome-ignore lint/complexity/noImportantStyles: reduced motion must override every component transition */
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

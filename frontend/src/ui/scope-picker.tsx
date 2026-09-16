@@ -1,0 +1,69 @@
+/**
+ * Region, Delay and Universe from BRAIN's own settings schema. Keeps the universe legal:
+ * when the region changes to one without the current universe, the first legal one is chosen.
+ */
+
+import { useEffect } from 'react'
+import type { Scope } from '@/api/types'
+import { type Choice, useScopeOptions } from '@/lib/scope'
+import { Select } from './overlay'
+
+type ScopePart = 'region' | 'delay' | 'universe'
+
+const LABELS: Record<ScopePart, string> = {
+  region: 'Region',
+  delay: 'Delay',
+  universe: 'Universe',
+}
+
+export function ScopePicker({
+  scope,
+  onChange,
+  parts = ['region', 'delay', 'universe'],
+  disabled,
+}: {
+  scope: Scope
+  onChange: (change: Partial<Scope>) => void
+  parts?: ScopePart[]
+  disabled?: boolean
+}) {
+  const options = useScopeOptions(scope)
+
+  useEffect(() => {
+    const first = options.universes[0]
+    if (options.ready && first && !options.universes.some((u) => u.value === scope.universe))
+      onChange({ universe: first.value })
+  }, [options.ready, options.universes, scope.universe, onChange])
+
+  const lists: Record<ScopePart, Choice[]> = {
+    region: options.regions.length
+      ? options.regions
+      : [{ value: scope.region, label: scope.region }],
+    delay: options.delays.length
+      ? options.delays
+      : [{ value: String(scope.delay), label: String(scope.delay) }],
+    universe: options.universes.length
+      ? options.universes
+      : [{ value: scope.universe, label: scope.universe }],
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {parts.map((part) => (
+        <label key={part} className="flex items-center gap-1.5">
+          <span className="text-body-compact text-ink-subtle">{LABELS[part]}</span>
+          <Select
+            label={LABELS[part]}
+            mono
+            disabled={disabled}
+            items={lists[part]}
+            value={String(scope[part])}
+            onChange={(value) =>
+              onChange(part === 'delay' ? { delay: Number(value) } : { [part]: value })
+            }
+          />
+        </label>
+      ))}
+    </div>
+  )
+}

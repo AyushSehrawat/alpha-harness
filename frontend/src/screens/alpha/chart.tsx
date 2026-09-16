@@ -1,0 +1,154 @@
+/**
+ * The Alpha's history on one canvas, three ways: its cumulative PnL beside the
+ * investability-constrained PnL, how far under water it was each day, and its Sharpe over
+ * the trailing year against the submission cutoff. Figures stay neutral; loss is the only hue.
+ */
+
+import {
+  BaselineSeries,
+  ColorType,
+  createChart,
+  LineSeries,
+  LineStyle,
+  type Time,
+} from 'lightweight-charts'
+import { useEffect, useRef } from 'react'
+import { color, theme } from '@/screens/pool/pnl-chart'
+import type { Point } from './analysis'
+
+export type ChartView = 'pnl' | 'underwater' | 'sharpe'
+
+const compact = (price: number) =>
+  new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(price)
+
+export function AlphaChart({
+  view,
+  pnl,
+  constrained,
+  underwater,
+  sharpe,
+  cutoff,
+  label,
+}: {
+  view: ChartView
+  pnl: Point[]
+  constrained: Point[]
+  underwater: Point[]
+  sharpe: Point[]
+  /** The Sharpe a submission needs, drawn across the rolling view. */
+  cutoff: number | null
+  label: string
+}) {
+  const element = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const node = element.current
+    if (!node) return
+    const hairline = color('color-hairline')
+    const guide = color('color-ink-tertiary')
+    const chart = createChart(node, {
+      autoSize: true,
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor: color('color-ink-subtle'),
+        fontFamily: theme('font-mono'),
+        fontSize: 11,
+        attributionLogo: false,
+      },
+      grid: { vertLines: { visible: false }, horzLines: { color: hairline } },
+      rightPriceScale: { borderVisible: false },
+      // Ten years of days is ~2,500 bars; the default 0.5px minimum cannot fit them, and the
+      // chart silently drops the early years instead.
+      timeScale: { borderVisible: false, minBarSpacing: 0.01 },
+      localization: {
+        priceFormatter:
+          view === 'underwater'
+            ? (p: number) => `${(p * 100).toFixed(1)}%`
+            : view === 'sharpe'
+              ? (p: number) => p.toFixed(2)
+              : compact,
+      },
+      crosshair: {
+        vertLine: {
+          color: guide,
+          style: LineStyle.Dashed,
+          labelBackgroundColor: color('color-surface-4'),
+        },
+        horzLine: {
+          color: guide,
+          style: LineStyle.Dashed,
+          labelBackgroundColor: color('color-surface-4'),
+        },
+      },
+    })
+    const at = (points: Point[]) => points.map((p) => ({ time: p.date as Time, value: p.value }))
+    const zero = {
+      price: 0,
+      color: guide,
+      lineStyle: LineStyle.Dotted,
+      lineWidth: 1 as const,
+      axisLabelVisible: false,
+    }
+
+    if (view === 'pnl') {
+      if (constrained.length > 1) {
+        chart
+          .addSeries(LineSeries, {
+            color: color('color-ink-tertiary'),
+            lineWidth: 1,
+            lineStyle: LineStyle.Dashed,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            title: 'Investability constrained',
+          })
+          .setData(at(constrained))
+      }
+      const series = chart.addSeries(LineSeries, {
+        color: color('color-ink'),
+        lineWidth: 2,
+        priceLineVisible: false,
+        title: 'PnL',
+      })
+      series.setData(at(pnl))
+      series.createPriceLine(zero)
+    } else if (view === 'underwater') {
+      const loss = 'color-pnl-negative'
+      chart
+        .addSeries(BaselineSeries, {
+          baseValue: { type: 'price', price: 0 },
+          topLineColor: 'transparent',
+          topFillColor1: 'transparent',
+          topFillColor2: 'transparent',
+          bottomLineColor: color(loss),
+          bottomFillColor1: color(loss, 0.05),
+          bottomFillColor2: color(loss, 0.35),
+          lineWidth: 1,
+          priceLineVisible: false,
+        })
+        .setData(at(underwater))
+    } else {
+      const series = chart.addSeries(LineSeries, {
+        color: color('color-ink'),
+        lineWidth: 2,
+        priceLineVisible: false,
+        title: 'Sharpe, trailing year',
+      })
+      series.setData(at(sharpe))
+      series.createPriceLine(zero)
+      if (cutoff !== null) {
+        series.createPriceLine({
+          price: cutoff,
+          color: color('color-status-warning'),
+          lineStyle: LineStyle.Dashed,
+          lineWidth: 1,
+          axisLabelVisible: true,
+          title: 'Cutoff',
+        })
+      }
+    }
+    chart.timeScale().fitContent()
+    return () => chart.remove()
+  }, [view, pnl, constrained, underwater, sharpe, cutoff])
+
+  return <div ref={element} role="img" aria-label={label} className="h-80 w-full min-w-0" />
+}

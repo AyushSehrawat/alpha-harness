@@ -1,0 +1,17 @@
+# BRAIN Credentials and Local Settings.
+.env
+
+# References for Development
+/docs/
+/research-notes/
+
+.venv/
+node_modules/
+dist/
+# The built frontend, served by the backend (`lefthook run build`).
+backend/src/alpha_harness/web/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.tsbuildinfo
