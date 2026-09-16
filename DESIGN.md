@@ -318,8 +318,11 @@ mix over a named surface:
 - **`category-*`** — the six Template Lab operator categories (cross-sectional, time-series,
   group, arithmetic, logical, transformational), each a generated hue at 10% for the fill and 45%
   for the edge over `surface-2`. They identify a taxonomy and carry no judgement.
-- **`pyramid-*`** — six steps of ink over `surface-1` (4 / 8 / 13 / 19 / 26 / 34%) for the
-  Pyramid Multiplier map. Deliberately neutral: a multiplier is a magnitude, not a verdict.
+- **`pyramid-*`** — eleven steps of `pnl-positive` over `surface-1` (5 → 72%), one per Pyramid
+  Multiplier BRAIN offers, mapped from the values actually present rather than an assumed range.
+  Deepening rather than diverging: the lowest multiplier is the floor of the payout, not a loss,
+  so nothing on this map is ever red. It tops out at 72% so white figures hold APCA 78, and
+  because each step also rises in lightness the ordering survives red-green colour blindness.
 - **`*-tint` / `*-edge`** — a semantic hue at 12% (fill) and 40% (outline) over its surface, for
   judged badges and notices.
 

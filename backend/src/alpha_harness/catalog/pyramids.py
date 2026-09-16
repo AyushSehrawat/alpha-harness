@@ -9,6 +9,7 @@ from today's date in platform time.
 
 from __future__ import annotations
 
+import math
 import time
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
@@ -49,11 +50,16 @@ def next_quarter_start(today: date) -> date:
     return date(start.year + 1, 1, 1) if start.month == 10 else date(start.year, start.month + 3, 1)
 
 
+def _mean(values: list[float] | None) -> float:
+    """Average of what BRAIN offers. Nothing offered ranks last rather than ranking as zero,
+    which a literal 0.0 would not do if BRAIN ever sent a multiplier at or below it."""
+    return sum(values) / len(values) if values else -math.inf
+
+
 def assemble(
     multipliers: list[dict[str, Any]],
     counts: list[dict[str, Any]],
     synced: set[tuple[str, str, int]],
-    universes: dict[str, int],
 ) -> dict[str, Any]:
     """Merge the two activity lists and the download state into one grid.
 
@@ -96,15 +102,27 @@ def assemble(
         found["lit"] = found["alphaCount"] >= LIT_AT
         found["synced"] = key in synced
 
-    # Widest markets first, then alphabetically — the ordering the sync matrix uses, so the
-    # two screens read the same way whatever regions an account has.
+    # Both axes rank on the multiplier they average, richest first, ties alphabetical. A
+    # pyramid BRAIN does not offer is absent from the average rather than counted as zero,
+    # so a category in five markets is judged on those five and not punished for the rest.
+    by_category: dict[str, list[float]] = {}
+    by_column: dict[tuple[str, int], list[float]] = {}
+    for found in cells.values():
+        if found["multiplier"] is None:
+            continue
+        by_category.setdefault(found["categoryId"], []).append(found["multiplier"])
+        by_column.setdefault((found["region"], found["delay"]), []).append(found["multiplier"])
+
     columns = sorted(
         {(c["region"], c["delay"]) for c in cells.values()},
-        key=lambda column: (-universes.get(column[0], 0), column[0], column[1]),
+        key=lambda column: (-_mean(by_column.get(column)), column[0], column[1]),
+    )
+    ordered = sorted(
+        categories.items(), key=lambda item: (-_mean(by_category.get(item[0])), item[1])
     )
     return {
         "columns": [{"region": region, "delay": delay} for region, delay in columns],
-        "categories": [{"id": cid, "name": name} for cid, name in categories.items()],
+        "categories": [{"id": cid, "name": name} for cid, name in ordered],
         "cells": list(cells.values()),
     }
 
@@ -124,10 +142,6 @@ async def pyramid_grid(
         "SELECT DISTINCT category_id, region, delay FROM data_field WHERE category_id IS NOT NULL"
     )
     synced = {(r["category_id"], r["region"], int(r["delay"])) for r in rows}
-    widths = await catalog.query(
-        "SELECT region, count(DISTINCT universe) AS universes FROM data_field GROUP BY region"
-    )
-    universes = {r["region"]: int(r["universes"]) for r in widths}
-    return assemble(multipliers, counts, synced, universes) | {
+    return assemble(multipliers, counts, synced) | {
         "quarter": {"start": start.isoformat(), "end": end.isoformat(), "today": today.isoformat()}
     }

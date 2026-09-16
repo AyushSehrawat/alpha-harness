@@ -213,13 +213,19 @@
   /* Inactive: disabled controls. */
   --color-ink-disabled: var(--neutral-600);
   --color-ink-tint: color-mix(in oklab, var(--spec-ink) 10%, var(--spec-surface-1));
-  /* Pyramids ramp. */
-  --color-pyramid-0: color-mix(in oklab, var(--spec-ink) 4%, var(--spec-surface-1));
-  --color-pyramid-1: color-mix(in oklab, var(--spec-ink) 8%, var(--spec-surface-1));
-  --color-pyramid-2: color-mix(in oklab, var(--spec-ink) 13%, var(--spec-surface-1));
-  --color-pyramid-3: color-mix(in oklab, var(--spec-ink) 19%, var(--spec-surface-1));
-  --color-pyramid-4: color-mix(in oklab, var(--spec-ink) 26%, var(--spec-surface-1));
-  --color-pyramid-5: color-mix(in oklab, var(--spec-ink) 34%, var(--spec-surface-1));
+  /* Pyramids ramp: eleven steps of the positive hue over surface-1, one per Pyramid
+     Multiplier BRAIN offers. Tops out at 72% so white figures stay at APCA 78. */
+  --color-pyramid-0: color-mix(in oklab, var(--spec-pnl-positive) 5%, var(--spec-surface-1));
+  --color-pyramid-1: color-mix(in oklab, var(--spec-pnl-positive) 12%, var(--spec-surface-1));
+  --color-pyramid-2: color-mix(in oklab, var(--spec-pnl-positive) 18%, var(--spec-surface-1));
+  --color-pyramid-3: color-mix(in oklab, var(--spec-pnl-positive) 25%, var(--spec-surface-1));
+  --color-pyramid-4: color-mix(in oklab, var(--spec-pnl-positive) 32%, var(--spec-surface-1));
+  --color-pyramid-5: color-mix(in oklab, var(--spec-pnl-positive) 39%, var(--spec-surface-1));
+  --color-pyramid-6: color-mix(in oklab, var(--spec-pnl-positive) 45%, var(--spec-surface-1));
+  --color-pyramid-7: color-mix(in oklab, var(--spec-pnl-positive) 52%, var(--spec-surface-1));
+  --color-pyramid-8: color-mix(in oklab, var(--spec-pnl-positive) 59%, var(--spec-surface-1));
+  --color-pyramid-9: color-mix(in oklab, var(--spec-pnl-positive) 65%, var(--spec-surface-1));
+  --color-pyramid-10: color-mix(in oklab, var(--spec-pnl-positive) 72%, var(--spec-surface-1));
 
   /* Primary execution controls, focus and selection. */
   --color-primary: var(--spec-primary);

@@ -1,11 +1,11 @@
 /**
  * Sync with BRAIN: the sync matrix that downloads every market's Data Fields, above BRAIN's
- * Pyramid Multiplier for every Region · Delay · Dataset Category, with ✓ where 3 or more of your
- * Alphas formulate the pyramid this quarter.
+ * Pyramid Multiplier for every Region · Delay · Dataset Category.
  */
 
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
+import { useMemo } from 'react'
 import { catalog } from '@/api/catalog'
 import { cn } from '@/lib/cn'
 import { DASH, fmt } from '@/lib/format'
@@ -15,7 +15,10 @@ import { SyncHero } from './sync-matrix'
 
 const REFRESH_MS = 10 * 60 * 1000
 
-/** A neutral fill that deepens with the multiplier, ×1.0 → step 0 … ×2.0 → step 5; ink figures stay ≥ 6:1. */
+/** Where the ramp tops out unless BRAIN offers more; see {@link ramp}. */
+const TOP_MULTIPLIER = 2
+
+/** Deepening green, one step per Pyramid Multiplier; white figures stay at APCA 78 throughout. */
 const TINT = [
   'bg-pyramid-0',
   'bg-pyramid-1',
@@ -23,17 +26,74 @@ const TINT = [
   'bg-pyramid-3',
   'bg-pyramid-4',
   'bg-pyramid-5',
+  'bg-pyramid-6',
+  'bg-pyramid-7',
+  'bg-pyramid-8',
+  'bg-pyramid-9',
+  'bg-pyramid-10',
 ] as const
-const tint = (multiplier: number | null) =>
-  TINT[
-    multiplier == null
-      ? 0
-      : Math.max(0, Math.min(TINT.length - 1, Math.round((multiplier - 1) / 0.2)))
-  ]
+
+/**
+ * Colour means payout, not rank. A multiplier is a coefficient in a cash formula, so ×1.4 has
+ * to look like ×1.4 whatever else the quarter offers — ranking within the grid would paint the
+ * best of a lean quarter at full strength and read as a jackpot.
+ *
+ * Anchored at ×1.0, the floor of standard payout. The ceiling holds at ×2.0 unless BRAIN
+ * exceeds it, so a richer scale stretches rather than clipping.
+ */
+function ramp(multipliers: number[]) {
+  const ceiling = Math.max(TOP_MULTIPLIER, ...multipliers)
+  return (multiplier: number | null) => {
+    if (multiplier == null) return TINT[0]!
+    const ratio = Math.min(1, Math.max(0, (multiplier - 1) / (ceiling - 1)))
+    return TINT[Math.round(ratio * (TINT.length - 1))]!
+  }
+}
+
+/** The strongest multiplier in a row or column, when there is more than one to choose between. */
+function peaks(groups: Map<string, number[]>) {
+  const best = new Map<string, number>()
+  for (const [id, values] of groups) {
+    const top = Math.max(...values)
+    // Only where something is actually lower: a mark on every cell in a row says nothing.
+    if (Math.min(...values) !== top) best.set(id, top)
+  }
+  return best
+}
 
 const key = (categoryId: string, region: string, delay: number) =>
   `${categoryId}|${region}|${delay}`
 const times = (m: number | null) => (m == null ? DASH : `×${fmt.ratio(m, 1)}`)
+
+const SWATCH = 'h-4 w-6 shrink-0 rounded-xs border border-hairline-strong bg-pyramid-5'
+
+/** Three marks, three meanings: without this the edges are a puzzle rather than a signal. */
+function Legend() {
+  return (
+    <div className="mt-5 flex flex-wrap items-center gap-x-7 gap-y-3 border-t border-hairline pt-4 text-body-compact text-ink-subtle">
+      <span className="flex items-center gap-1.5">
+        <span className="flex gap-px">
+          {[0, 2, 4, 6, 8, 10].map((step) => (
+            <span key={step} className={cn('h-4 w-2 shrink-0', TINT[step])} />
+          ))}
+        </span>
+        lower → higher Multiplier
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className={cn(SWATCH, 'border-t-2 border-b-2 border-t-ink border-b-ink')} />
+        best market for this category
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className={cn(SWATCH, 'border-l-2 border-r-2 border-l-ink border-r-ink')} />
+        best category in this market
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className={cn(SWATCH, 'border-2 border-ink')} />
+        best in both
+      </span>
+    </div>
+  )
+}
 
 export function PyramidsScreen() {
   const query = useQuery({
@@ -43,7 +103,29 @@ export function PyramidsScreen() {
     staleTime: REFRESH_MS / 2,
   })
   const data = query.data
-  const cells = new Map((data?.cells ?? []).map((c) => [key(c.categoryId, c.region, c.delay), c]))
+  const { cells, tint, bestInRow, bestInColumn } = useMemo(() => {
+    const all = data?.cells ?? []
+    const byRow = new Map<string, number[]>()
+    const byColumn = new Map<string, number[]>()
+    const multipliers: number[] = []
+    for (const c of all) {
+      if (c.multiplier == null) continue
+      multipliers.push(c.multiplier)
+      const row = byRow.get(c.categoryId) ?? []
+      row.push(c.multiplier)
+      byRow.set(c.categoryId, row)
+      const id = `${c.region}-${c.delay}`
+      const column = byColumn.get(id) ?? []
+      column.push(c.multiplier)
+      byColumn.set(id, column)
+    }
+    return {
+      cells: new Map(all.map((c) => [key(c.categoryId, c.region, c.delay), c])),
+      tint: ramp(multipliers),
+      bestInRow: peaks(byRow),
+      bestInColumn: peaks(byColumn),
+    }
+  }, [data?.cells])
   const navigate = useNavigate()
   const [scope, update] = useScope('data')
 
@@ -65,65 +147,101 @@ export function PyramidsScreen() {
         ) : data.categories.length === 0 ? (
           <Empty title="No Dataset Categories">BRAIN returned no pyramids to show.</Empty>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-256 table-fixed border-separate border-spacing-1 text-body-compact">
-              <thead>
-                <tr>
-                  <th scope="col" className="w-32 pr-3 text-left font-medium text-ink-subtle">
-                    Category
-                  </th>
-                  {data.columns.map((column) => (
-                    <th
-                      key={`${column.region}-${column.delay}`}
-                      scope="col"
-                      className="num px-1 font-medium whitespace-nowrap text-ink-subtle"
-                    >
-                      {column.region} D{column.delay}
+          <div className="flex gap-2">
+            {/* Both axes run richest-first, so the strongest pyramids gather top-left. */}
+            <div
+              aria-hidden
+              className="flex shrink-0 flex-col items-center gap-2 pt-9 pb-1 text-caption text-ink-subtle"
+            >
+              <span className="border-x-4 border-b-5 border-x-transparent border-b-hairline-strong" />
+              <span className="w-px flex-1 bg-hairline-strong" />
+              <span className="rotate-180 whitespace-nowrap [writing-mode:vertical-rl]">
+                richer categories
+              </span>
+            </div>
+            <div className="min-w-0 flex-1 overflow-x-auto">
+              <div
+                aria-hidden
+                className="mb-2 flex items-center gap-2 text-caption text-ink-subtle"
+              >
+                <span className="border-y-4 border-r-5 border-y-transparent border-r-hairline-strong" />
+                <span className="h-px flex-1 bg-hairline-strong" />
+                <span className="shrink-0">richer markets</span>
+              </div>
+              <table className="w-full min-w-256 table-fixed border-separate border-spacing-1 text-body-compact">
+                <thead>
+                  <tr>
+                    <th scope="col" className="w-32 pr-3 text-left font-medium text-ink-subtle">
+                      Category
                     </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.categories.map((category) => (
-                  <tr key={category.id}>
-                    <th
-                      scope="row"
-                      className="truncate pr-3 text-left font-normal text-ink-muted"
-                      title={category.name}
-                    >
-                      {category.name}
-                    </th>
-                    {data.columns.map((column) => {
-                      const id = `${column.region}-${column.delay}`
-                      const cell = cells.get(key(category.id, column.region, column.delay))
-                      if (!cell) {
+                    {data.columns.map((column) => (
+                      <th
+                        key={`${column.region}-${column.delay}`}
+                        scope="col"
+                        className="num px-1 font-medium whitespace-nowrap text-ink-subtle"
+                      >
+                        {column.region} D{column.delay}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.categories.map((category) => (
+                    <tr key={category.id}>
+                      <th
+                        scope="row"
+                        className="truncate pr-3 text-left font-normal text-ink-muted"
+                        title={category.name}
+                      >
+                        {category.name}
+                      </th>
+                      {data.columns.map((column) => {
+                        const id = `${column.region}-${column.delay}`
+                        const cell = cells.get(key(category.id, column.region, column.delay))
+                        if (!cell) {
+                          return (
+                            <td key={id} className="num text-center text-ink-subtle">
+                              {DASH}
+                            </td>
+                          )
+                        }
+                        const topOfRow = cell.multiplier === bestInRow.get(category.id)
+                        const topOfColumn = cell.multiplier === bestInColumn.get(id)
+                        const notes = [
+                          topOfRow && 'best market for this category',
+                          topOfColumn && 'best category in this market',
+                        ].filter(Boolean)
                         return (
-                          <td key={id} className="num text-center text-ink-subtle">
-                            {DASH}
+                          <td key={id}>
+                            <span
+                              title={`${category.name} · ${column.region} D${column.delay} · Pyramid Multiplier ${times(cell.multiplier)} · ${fmt.int(cell.alphaCount)} of your Alphas this quarter${notes.length ? ` · ${notes.join(' · ')}` : ''}`}
+                              className={cn(
+                                'num flex h-8 items-center justify-center rounded-sm border whitespace-nowrap text-ink',
+                                tint(cell.multiplier),
+                                // Each mark runs along the axis it belongs to: horizontal rules
+                                // frame the row, vertical rules frame the column, and all four
+                                // enclose a cell that leads both.
+                                topOfRow
+                                  ? 'border-t-2 border-b-2 border-t-ink border-b-ink'
+                                  : 'border-t-hairline-strong border-b-hairline-strong',
+                                topOfColumn
+                                  ? 'border-l-2 border-r-2 border-l-ink border-r-ink'
+                                  : 'border-l-hairline-strong border-r-hairline-strong',
+                              )}
+                            >
+                              {times(cell.multiplier)}
+                            </span>
                           </td>
                         )
-                      }
-                      return (
-                        <td key={id}>
-                          <span
-                            title={`${category.name} · ${column.region} D${column.delay} · Pyramid Multiplier ${times(cell.multiplier)} · ${fmt.int(cell.alphaCount)} of your Alphas this quarter${cell.lit ? ' · formulated' : ''}`}
-                            className={cn(
-                              'num flex h-8 items-center justify-center rounded-sm border border-hairline-strong whitespace-nowrap text-ink',
-                              tint(cell.multiplier),
-                            )}
-                          >
-                            {times(cell.multiplier)}
-                            {cell.lit && ' ✓'}
-                          </span>
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
+        {data && data.categories.length > 0 && <Legend />}
       </Panel>
     </Page>
   )
