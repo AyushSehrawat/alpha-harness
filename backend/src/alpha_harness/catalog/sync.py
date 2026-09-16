@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from ..brain.schemas import DataCategory, DataSet
     from ..db.duck import Catalog
     from ..db.sqlite import Database
+    from ..tasks import Task, TaskRegistry
 
 log = structlog.get_logger(__name__)
 
@@ -104,12 +105,17 @@ class CatalogSync:
         catalog: Catalog,
         endpoints: BrainEndpoints,
         *,
+        tasks: TaskRegistry,
         on_progress: ProgressHook | None = None,
     ) -> None:
         self.db = db
         self.catalog = catalog
         self.endpoints = endpoints
+        self.tasks = tasks
         self._on_progress = on_progress
+        #: The background-task row a full sync reports through, so it shows up alongside
+        #: every other long job rather than only on the screen that started it.
+        self._task_by_run: dict[int, Task] = {}
         self._cancels: dict[int, asyncio.Event] = {}
         self._tasks: dict[int, asyncio.Task[None]] = {}
         self._targets: dict[int, SyncTarget] = {}
@@ -152,6 +158,9 @@ class CatalogSync:
             },
         }
 
+        self._task_by_run[run.id] = await self.tasks.start(
+            "catalog-sync", "Downloading BRAIN Data Fields", runId=run.id
+        )
         task = asyncio.create_task(
             self._guarded(run.id, ALL_LABEL, self._crawl_all(run.id, targets, cancel)),
             name=f"sync-all-{run.id}",
@@ -212,22 +221,29 @@ class CatalogSync:
     # -- the download ----------------------------------------------------
 
     async def _guarded(self, run_id: int, label: str, work: Awaitable[None]) -> None:
+        state, error = "done", None
         try:
             await work
         except SyncCancelled:
+            state = "cancelled"
             await self._finish(run_id, SyncStatus.CANCELLED)
             log.info("sync.cancelled", run_id=run_id, target=label)
         except asyncio.CancelledError:
-            await self._finish(run_id, SyncStatus.CANCELLED, error="Backend shut down")
+            state, error = "cancelled", "Backend shut down"
+            await self._finish(run_id, SyncStatus.CANCELLED, error=error)
             raise
         except BrainError as exc:
-            await self._finish(run_id, SyncStatus.FAILED, error=exc.message)
-            log.warning("sync.failed", run_id=run_id, error=exc.message)
+            state, error = "failed", exc.message
+            await self._finish(run_id, SyncStatus.FAILED, error=error)
+            log.warning("sync.failed", run_id=run_id, error=error)
         except Exception as exc:
-            await self._finish(run_id, SyncStatus.FAILED, error=str(exc))
+            state, error = "failed", str(exc)
+            await self._finish(run_id, SyncStatus.FAILED, error=error)
             log.exception("sync.crashed", run_id=run_id)
         finally:
             self._cancels.pop(run_id, None)
+            if (row := self._task_by_run.pop(run_id, None)) is not None:
+                await self.tasks.finish(row, state=state, error=error)
 
     async def _all_datasets(
         self, targets: list[SyncTarget]
@@ -474,13 +490,21 @@ class CatalogSync:
         return payload
 
     async def _emit(self, run_id: int) -> None:
-        if self._on_progress is None:
-            return
         run = await self.get_run(run_id)
         if run is None:
             return
+        payload = self._payload(run)
+        if (row := self._task_by_run.get(run_id)) is not None:
+            done, total = payload.get("scopesDone"), payload.get("scopesTotal")
+            await self.tasks.update(
+                row,
+                progress=payload.get("fraction"),
+                detail=f"{done} of {total} markets" if total else "",
+            )
+        if self._on_progress is None:
+            return
         try:
-            result = self._on_progress(self._payload(run))
+            result = self._on_progress(payload)
             if asyncio.iscoroutine(result):
                 await result
         except Exception:

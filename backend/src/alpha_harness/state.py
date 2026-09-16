@@ -98,6 +98,7 @@ class AppState:
             self.db,
             self.catalog,
             self.endpoints,
+            tasks=self.tasks,
             on_progress=lambda payload: self.hub.broadcast(TOPIC_SYNC, payload),
         )
         self.queries = CatalogQueries(self.catalog)
