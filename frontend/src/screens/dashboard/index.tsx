@@ -23,7 +23,6 @@ import {
   type Tone,
 } from '@/ui/kit'
 import { GettingStarted } from './getting-started'
-import { RunToday } from './run-today'
 import { WorkInFlight } from './work'
 
 export function DashboardScreen() {
@@ -44,10 +43,10 @@ export function DashboardScreen() {
         <Hero name={day.data?.you.fullName} text={sims.headline} />
       ) : (
         !day.isError && (
-          <Skeleton className="mx-1 mt-1 h-17 w-2/3" label="Loading today's figures" />
+          <Skeleton className="mx-1 mt-2 h-18 w-2/3" label="Loading today's figures" />
         )
       )}
-      <RunToday today={day.data} />
+      {/* `RunToday` (./run-today) is built and unused: dispatching from here comes back later. */}
       <GettingStarted today={day.data} />
       {day.isError && <ErrorNotice error={day.error} title="Today's figures could not load" />}
 
@@ -143,18 +142,21 @@ export function DashboardScreen() {
 function Hero({ name, text }: { name?: string | null | undefined; text: string }) {
   const parts = text.split(/(~?\d[\d,.]*%?)/)
   return (
-    <h1 className="text-headline px-1 pt-1 text-balance font-semibold text-ink">
-      {name && <span className="block text-body font-normal text-ink-muted">Welcome, {name}</span>}
-      {parts.map((part, i) =>
-        i % 2 === 1 ? (
-          <span key={i} className="num font-semibold text-primary">
-            {part}
-          </span>
-        ) : (
-          part
-        ),
-      )}
-    </h1>
+    <header className="flex flex-col px-1 pt-2 pb-1">
+      {name && <p className="text-display text-ink">Welcome, {name}</p>}
+      {/* text-wrap beats the base h1 balance rule, which splits this into an extra short line. */}
+      <h1 className="text-display text-wrap text-ink-muted">
+        {parts.map((part, i) =>
+          i % 2 === 1 ? (
+            <span key={i} className="num text-display text-primary">
+              {part}
+            </span>
+          ) : (
+            part
+          ),
+        )}
+      </h1>
+    </header>
   )
 }
 

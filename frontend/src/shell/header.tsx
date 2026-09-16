@@ -214,7 +214,7 @@ function Clocks() {
       <Clock
         icon={<ZapIcon className="size-3.5 text-primary" aria-hidden />}
         label="Simulations Left Today"
-        hint="Simulations left in today's quota"
+        hint="Simulations Left in Today's Quota"
         valueFirst
       >
         <span className="num font-medium text-ink">

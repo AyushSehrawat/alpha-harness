@@ -75,10 +75,6 @@ export function RunToday({ today }: { today: Today | undefined }) {
                 <PlayIcon />
                 Run {fmt.int(size)} Simulations
               </Button>
-              <span className="text-body text-ink-subtle">
-                chosen for you · {size <= DEFAULT_RUN ? 'about half an hour' : 'several hours'} with
-                this computer awake
-              </span>
             </div>
             <span className="num text-body-compact text-ink-subtle">
               {fmt.pct(

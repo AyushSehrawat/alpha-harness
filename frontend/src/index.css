@@ -342,7 +342,8 @@
   --font-sans: "Inter Variable", Inter, -apple-system, system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Geist Mono", SFMono-Regular, monospace;
 
-  /* DESIGN.md → Typography, and nothing else: Tailwind's size scale is dropped. 20px is the cap. */
+  /* DESIGN.md → Typography, and nothing else: Tailwind's size scale is dropped. 28px is the cap,
+     and `display` is spoken for: the Dashboard's one sentence about the day. */
   --text-*: initial;
   --text-caption: 11px;
   --text-caption--line-height: 1.25;
@@ -360,6 +361,10 @@
   --text-headline--line-height: 1.25;
   --text-headline--letter-spacing: -0.4px;
   --text-headline--font-weight: 600;
+  --text-display: 28px;
+  --text-display--line-height: 1.2;
+  --text-display--letter-spacing: -0.6px;
+  --text-display--font-weight: 600;
 
   /* DESIGN.md → Shapes. Pill is for the quota gauge and status LEDs only. */
   --radius-*: initial;

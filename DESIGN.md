@@ -1,7 +1,7 @@
 ---
 version: alpha
 name: Alpha Harness Workstation
-description: "The design system of Alpha Harness, a local-first quant workstation for WorldQuant BRAIN. A near-black canvas with a four-step surface ladder, hairline rules and no shadows; one chromatic accent, lavender, reserved for execution, focus and selection; every other hue earned by data — profit, loss, core status, operator category. Type is a five-step scale that stops at 20px, because the screens are dense grids of figures rather than pages of prose. Figures are mono and tabular wherever they can be compared. Nothing decorative: if a colour appears, a number or a state put it there."
+description: "The design system of Alpha Harness, a local-first quant workstation for WorldQuant BRAIN. A near-black canvas with a four-step surface ladder, hairline rules and no shadows; one chromatic accent, lavender, reserved for execution, focus and selection; every other hue earned by data — profit, loss, core status, operator category. Type is a six-step scale that stops at 20px for everything but the Dashboard's one sentence, because the screens are dense grids of figures rather than pages of prose. Figures are mono and tabular wherever they can be compared. Nothing decorative: if a colour appears, a number or a state put it there."
 
 colors:
   primary: "#5e6ad2"
@@ -57,6 +57,12 @@ typography:
     fontWeight: 600
     lineHeight: 1.25
     letterSpacing: -0.4px
+  display:
+    fontFamily: Inter Variable
+    fontSize: 28px
+    fontWeight: 600
+    lineHeight: 1.2
+    letterSpacing: -0.6px
   eyebrow:
     fontFamily: Inter Variable
     fontSize: 11px
@@ -162,6 +168,15 @@ components:
   focus-ring:
     backgroundColor: "{colors.primary-hover}"
     size: 2px
+  dashboard-hero-greeting:
+    textColor: "{colors.ink}"
+    typography: "{typography.display}"
+  dashboard-hero:
+    textColor: "{colors.ink-muted}"
+    typography: "{typography.display}"
+  dashboard-hero-figure:
+    textColor: "{colors.primary}"
+    typography: "{typography.display}"
   metric-label:
     textColor: "{colors.ink-subtle}"
     typography: "{typography.caption}"
@@ -341,11 +356,19 @@ Two rules hold regardless of contrast:
 Two families: **Inter Variable** for text, **JetBrains Mono Variable** for figures and code, both
 bundled through `@fontsource-variable` so nothing is fetched at runtime.
 
-Five text sizes — 11 / 12 / 13 / 15 / 20px — and Tailwind's scale is dropped (`--text-*: initial`)
-so there is no sixth. 20px is the cap: a page title. If something needs to be louder than 20px,
-the answer is a metric, not a bigger font.
+Six text sizes — 11 / 12 / 13 / 15 / 20 / 28px — and Tailwind's scale is dropped
+(`--text-*: initial`) so there is no seventh. `headline` at 20px is the ordinary ceiling: a page
+title. Anything that wants to be louder than that is a metric, not a bigger font.
 
-Tracking goes negative as size grows (−0.05px at `body`, −0.4px at `headline`) and slightly
+`display` at 28px is the single exception, and it is spoken for: the Dashboard hero, which is the
+greeting and the one sentence about the day. That sentence is the product's whole argument — a
+consultant's allowance expires unused every night — and the pair is the first thing read in a
+ten-minute visit, so it is the one place where type does the work instead of a figure. Within the
+block the greeting takes `ink` and the sentence `ink-muted`, so two lines of the same size still
+have an order to read them in. A use of `display` anywhere else is a bug in this file, not a new
+convention.
+
+Tracking goes negative as size grows (−0.05px at `body`, −0.6px at `display`) and slightly
 positive on `eyebrow` (+0.55px, i.e. 0.05em), which marks it as taxonomy rather than prose.
 `eyebrow` is always set uppercase; `caption` is uppercased when it labels a metric or a table
 column.
@@ -436,7 +459,7 @@ let a label be tinted as though it were a verdict.
 - Do add a state to tier 3 only when a second component needs the same one.
 - Do keep panels flush to the viewport width.
 - Don't add a hex code outside tier 1.
-- Don't introduce a sixth type size or a 24px heading.
+- Don't introduce a seventh type size, and don't reach for `display` outside the Dashboard hero.
 - Don't use a shadow for elevation; step the surface.
 - Don't colour something to draw attention. Attention is the `attention` animation, and it is for
   onboarding only.

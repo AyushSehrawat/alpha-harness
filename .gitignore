@@ -2,6 +2,7 @@
 .env
 
 # References for Development
+CLAUDE.md
 /docs/
 /research-notes/
 
