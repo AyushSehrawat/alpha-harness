@@ -45,7 +45,6 @@ class SessionInfo:
 
     @property
     def can_multi_simulate(self) -> bool:
-        # A real permission code, verified live 2026-09-14 (probe P8).
         return "MULTI_SIMULATION" in self.permissions
 
     @property
@@ -102,8 +101,8 @@ class Authenticator:
         try:
             state = await self.endpoints.get_auth()
         except BrainVerificationRequired as exc:
-            # The session exists but needs a browser check. Keep the cookies: clearing
-            # them here forced a full sign-in after the user had already verified.
+            # The session exists but needs a browser check. Keep the cookies: clearing them
+            # here would force a full sign-in after the user had already verified.
             return _needs_verification(exc)
         if state is None or state.user_id is None:
             log.info("brain.session.expired")

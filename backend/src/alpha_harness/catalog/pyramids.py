@@ -29,8 +29,7 @@ REGION_ORDER = ("USA", "GLB", "EUR", "ASI", "CHN", "JPN", "IND", "DEU", "GBR")
 MULTIPLIERS_TTL = 6 * 3600
 COUNTS_TTL = 600
 
-# ponytail: in-process cache; a restart costs two cheap GETs. Move to MetadataCache if
-# the multipliers start being read somewhere startup-sensitive.
+# In-process rather than persisted: a restart costs two cheap GETs.
 _cache: dict[str, tuple[float, Any]] = {}
 
 

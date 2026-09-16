@@ -1,28 +1,21 @@
 """Optuna, driven in rounds that fill whole batches.
 
-The loop is deliberately not Optuna's ``study.optimize``. That call owns the thread and
-evaluates one trial at a time; here a trial takes minutes on someone else's machine and
-eighty of them run at once. So the study is driven by ask/tell:
+``study.optimize`` owns the thread and evaluates one trial at a time; here a trial takes
+minutes on someone else's machine and eighty run at once, so the study is driven by
+ask/tell:
 
     ask N points  ->  build N simulations  ->  enqueue  ->  ... wait ...
     -> harvest finished alphas -> tell -> ask the next N
 
-**N is a multiple of ten.** A multi-simulation carries ten children and there are eight
-concurrent slots, so a round of eighty fills the platform exactly. Asking for 47 leaves
-part-empty batches occupying whole slots for the length of their run.
-
-Two consequences of batching are handled rather than ignored:
-
-* Points asked for together cannot learn from one another. :func:`tpe` compensates
-  where it can (``constant_liar`` for TPE) and says so where it cannot.
-* Batch-splitting settings — region, delay, instrument type, language — are pinned by
-  default instead of searched. Letting the sampler vary region across a round of eighty
-  produces eighty batch keys, which turns eighty concurrent simulations into eight. It
-  is still allowed, but only on purpose.
+**N is a multiple of ten.** A multi-simulation carries ten children across eight concurrent
+slots, so a round of eighty fills the platform exactly; asking for 47 leaves part-empty
+batches occupying whole slots for the length of their run. Batch-splitting settings —
+region, delay, instrument type, language — are pinned by default, because varying region
+across a round of eighty produces eighty batch keys and turns eighty concurrent simulations
+into eight.
 
 Restart safety: the Optuna study is rebuilt from the trial rows, never persisted
-separately. Trials live in the application's own database so they stay joinable to the
-simulations that produced them.
+separately, so trials stay joinable to the simulations that produced them.
 """
 
 from __future__ import annotations
@@ -316,8 +309,8 @@ class Optimizer:
 
             if vault_first:
                 stored_alpha = saved.get(alpha_id)
-                # Every objective, not just Sharpe: a row a listing stored without its train
-                # block has Sharpe but no Train Fitness, and scoring it failed the trial for good.
+                # Every objective, not just Sharpe: a row stored without its train block has
+                # Sharpe but no Train Fitness, and scoring it would fail the trial for good.
                 if stored_alpha is not None and all(
                     stored_alpha.get(o.key) is not None for o in objective_list
                 ):
@@ -480,16 +473,9 @@ def _tell_many(
 ) -> None:
     """Report results.
 
-    Two routes, because a trial asked before a restart no longer has a live object:
-
-    * **live** — set each constraint on the trial, then tell it. The ordinary path.
-    * **replayed** — add it as an already-finished trial. Same information reaches the
-      sampler, through entirely public API, without depending on Optuna's own numbering
-      matching ours.
-
-    Constraints are named rather than positional (Optuna 5's ``set_constraint``), so the
-    keys are BRAIN's own check names and a check appearing later cannot silently change
-    what an earlier position meant.
+    Two routes, because a trial asked before a restart no longer has a live object: a live
+    one is told directly, and one without is added as an already-finished trial so the same
+    information reaches the sampler without relying on Optuna's numbering matching ours.
     """
     from optuna.trial import TrialState as OptunaState
     from optuna.trial import create_trial
@@ -531,9 +517,8 @@ def _load_distributions(raw: dict[str, Any]) -> dict[str, Any]:
 def _rebuild(sampler: Any, directions: list[str], history: list[dict[str, Any]]) -> optuna.Study:
     """Recreate a study from its finished trials.
 
-    Only terminal trials are replayed. Open ones are left out: their live objects did not
-    survive, so they are told later as replayed trials, and recreating them would only
-    reserve numbers we do not use — the application keeps its own.
+    Only terminal trials are replayed. Open ones are told later as replayed trials, so
+    recreating them here would only reserve numbers the application does not use.
     """
     import optuna
     from optuna.trial import TrialState as OptunaState
@@ -574,8 +559,8 @@ def _rebuild(sampler: Any, directions: list[str], history: list[dict[str, Any]])
                 )
             )
         except ValueError:
-            # One unreadable row costs the sampler one point of history. Raising here
-            # failed the whole task, with its sent simulations never scored.
+            # One unreadable row costs the sampler a point of history; raising would fail
+            # the whole task and leave its sent simulations unscored.
             log.warning("optimize.replay_skipped", params=sorted(params), exc_info=True)
     return study
 
@@ -585,8 +570,8 @@ def _optuna_params(params: dict[str, Any], distributions: dict[str, Any]) -> dic
 
     The labs store what a point *means* (``field``), while Optuna names the slot it was
     drawn from (``field@TOP3000``: fields are scoped by universe). Replaying by the stored
-    names dropped every scoped value, so ``create_trial`` refused the row as inconsistent
-    and each Search or Template task failed on its first restart after a finished trial.
+    names drops every scoped value, and ``create_trial`` then refuses the row as
+    inconsistent.
     """
     found: dict[str, Any] = {}
     for name in distributions:

@@ -1,12 +1,9 @@
 """Keep the machine awake while simulations are pending.
 
-The daily allowance is dispatched in minutes but completes over hours, and a sleeping
-machine sends nothing. Nothing is lost on sleep (:mod:`.reconcile` re-adopts), but quota
-unspent by the US-Eastern reset is gone. So while work is pending the OS is asked, with
-its own tool, not to sleep.
-
-ponytail: lid-close sleep on laptops is not preventable by these APIs, and WSL cannot
-reach the Windows host; the Matrix tells the user instead.
+The daily allowance completes over hours, a sleeping machine sends nothing, and quota
+unspent by the US-Eastern reset is gone — so while work is pending the OS is asked, with
+its own tool, not to sleep. Lid-close sleep is not preventable by these APIs and WSL
+cannot reach the Windows host; the Matrix tells the user instead.
 """
 
 from __future__ import annotations
@@ -34,8 +31,8 @@ def _command() -> list[str] | None:
         return ["caffeinate", "-i", "-w", str(os.getpid())]
     if sys.platform.startswith("linux") and "microsoft" not in platform.release().lower():
         if shutil.which("systemd-inhibit"):
-            # ``cat`` on our stdin pipe, not ``sleep infinity``: if this process is killed
-            # the pipe closes, ``cat`` exits, and the lock goes with it.
+            # ``cat`` on our stdin pipe: if this process is killed the pipe closes, ``cat``
+            # exits, and the lock goes with it.
             return [
                 "systemd-inhibit",
                 "--what=sleep:idle",
@@ -61,8 +58,8 @@ class StayAwake:
             return
         if self._proc is not None:
             # The inhibitor died while holding (polkit refused it, say): the machine can
-            # sleep, so say so rather than report "held" over a fresh attempt every round.
-            # ``release`` clears it once the work drains, so the next busy spell tries again.
+            # sleep, so say so rather than report "held". ``release`` clears this once the
+            # work drains, so the next busy spell tries again.
             if self.state == "held":
                 log.warning("awake.inhibitor_exited", code=self._proc.returncode)
             self.state = "unavailable"

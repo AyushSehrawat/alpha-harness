@@ -35,9 +35,7 @@ async def telemetry(websocket: WebSocket) -> None:
     await state.hub.connect(websocket)
 
     try:
-        # The session is sent fresh: it may never have been broadcast since startup. The
-        # simulations snapshot comes from the hub's replay, and until the first change the
-        # matrix reads it over REST.
+        # The session is sent fresh: it may never have been broadcast since startup.
         await websocket.send_json({"topic": TOPIC_SESSION, "payload": state.auth.session.to_dict()})
 
         while True:

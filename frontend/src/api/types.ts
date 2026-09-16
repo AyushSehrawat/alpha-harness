@@ -1,13 +1,8 @@
 /**
- * Types shared by more than one screen. Screen-specific contracts live next to their
- * endpoints in `api/<domain>.ts`.
- *
- * Units: turnover, returns, drawdown, margin, coverage and truncation are FRACTIONS
- * (0.64 = 64%). Sharpe and Fitness are plain ratios. Timestamps are ISO strings; one
- * without an offset is UTC.
- *
- * Casing on the wire is not uniform. Routes with response models are typed from the
- * generated `generated.ts`.
+ * Types shared by more than one screen; screen-specific contracts live next to their endpoints
+ * in `api/<domain>.ts`. Turnover, returns, drawdown, margin, coverage and truncation are
+ * FRACTIONS (0.64 = 64%), Sharpe and Fitness are plain ratios, and a timestamp without an
+ * offset is UTC.
  */
 
 import type { components } from './generated.ts'
@@ -116,8 +111,6 @@ export type Session = Schemas['Session']
 export type Today = Schemas['Today']
 
 export type BarStatus = Schemas['Bar']
-
-/** One US Eastern day of BRAIN's own activity record. */
 
 export type BackgroundTask = Schemas['BackgroundTask']
 

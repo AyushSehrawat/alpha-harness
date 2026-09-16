@@ -102,8 +102,8 @@ export function EvolutionLabScreen() {
   })
   const choosing = job.data?.state === 'running'
   const found = job.data?.state === 'done' ? job.data.result : null
-  // Only a job the backend says it does not know (it restarted, or the job aged out) is let
-  // go. Dropping the id on any error abandoned a running Auto Select over one timeout.
+  // Only let the id go when the backend says it does not know the job; any other error may be a
+  // timeout over a run that is still going.
   useEffect(() => {
     const error = job.error
     if (error instanceof ApiError && (error.code === 'unknown_job' || error.status === 404))

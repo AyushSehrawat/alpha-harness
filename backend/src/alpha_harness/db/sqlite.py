@@ -3,23 +3,14 @@
 WAL mode plus a busy timeout: the background simulation tracker writes while HTTP
 handlers read, and SQLite's default rollback journal would make them block each other.
 
-``create_all`` creates missing *tables*. It does not touch a table that already exists,
-so a column added to a model after the database was created is simply never created —
-and the failure arrives much later, as ``no such column`` from whichever query happens
-to select it first. That is a bad way to find out.
+``create_all`` only creates missing *tables*, so a column added to a model after the
+database was created never appears and surfaces much later as ``no such column``.
+:func:`migrate` closes that gap on every startup by comparing the live schema against
+``Base.metadata``.
 
-:func:`migrate` closes that gap. On every startup the live schema is compared against
-``Base.metadata`` and missing columns and indexes are added.
-
-**Additive only, and it checks.** The policy in :mod:`.models` is that nothing is ever
-dropped or renamed — losing a row in ``simulation_record`` means losing the ability to
-cancel a running simulation. So a column that has *disappeared* from a model is not
-quietly reconciled; it is reported, because that is a change this migrator is
-deliberately not able to make safely and a real migration tool is then wanted.
-
-Why not Alembic: it solves coordination between environments and people, and there is
-one database on one machine here. What this application needs is that an existing
-database never falls behind its models without saying so, which is about sixty lines.
+**Additive only, and it checks.** Nothing is ever dropped or renamed, so a column that
+has *disappeared* from a model is reported rather than quietly reconciled — that change
+needs a real migration tool.
 """
 
 from __future__ import annotations
@@ -79,9 +70,8 @@ class Database:
     async def create_all(self) -> dict[str, Any]:
         """Bring the schema up to the models. Additive only — never drops.
 
-        Not just ``create_all``: that creates missing *tables* and leaves an existing
-        table alone, so a column added to a model later never appears and the first
-        query to select it fails with ``no such column``. See :func:`migrate`.
+        Not just ``create_all``: that leaves an existing table alone, so a column added to
+        a model later never appears. See :func:`migrate`.
         """
         async with self._engine.begin() as conn:
             return await migrate(conn)
@@ -158,9 +148,8 @@ async def migrate(connection: AsyncConnection) -> dict[str, Any]:
             detail="Declared in the models but not enforced by the database. Needs a migration.",
         )
     if unknown_columns:
-        # Not fatal: an extra column costs nothing at runtime and dropping it is exactly
-        # the destructive act this migrator refuses to perform. But it means the model
-        # and the database disagree, and that is worth saying out loud once per start.
+        # Not fatal: an extra column costs nothing at runtime and dropping it is the
+        # destructive act this migrator refuses. Still worth saying once per start.
         log.warning(
             "db.unknown_columns",
             columns=unknown_columns,
@@ -224,9 +213,8 @@ def _add_column_sql(table: Table, column: Any) -> str:
     """``ALTER TABLE ... ADD COLUMN`` for one column.
 
     SQLite will not add a ``NOT NULL`` column to a table that already has rows without a
-    constant default, and deriving one from a Python-side ``default`` has bitten before.
-    So a new column is nullable or declares a ``server_default``, which SQLAlchemy renders
-    into the DDL itself; anything else gets a real migration.
+    constant default, so a new column is nullable or declares a ``server_default``;
+    anything else gets a real migration.
     """
     if not column.nullable and column.server_default is None:
         raise MigrationError(

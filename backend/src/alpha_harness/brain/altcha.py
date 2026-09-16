@@ -1,12 +1,9 @@
 """ALTCHA proof-of-work solver for ``GET /captcha``.
 
-BRAIN gates sign-in behind ALTCHA. This is *not* image recognition — the server sends a
-target digest and a salt, and the client hashes ``salt + n`` for increasing integers ``n``
-until the digest matches. The solved payload is then base64-encoded into the
-``/authentication`` body.
-
-Solving is pure CPU. ``solve_async`` offloads to a worker thread so a ~1e6-iteration
-search cannot stall the event loop.
+BRAIN gates sign-in behind ALTCHA: the server sends a target digest and a salt, and the
+client hashes ``salt + n`` for increasing integers ``n`` until the digest matches. Solving
+is pure CPU, so ``solve_async`` offloads it to a worker thread and a ~1e6-iteration search
+cannot stall the event loop.
 """
 
 from __future__ import annotations

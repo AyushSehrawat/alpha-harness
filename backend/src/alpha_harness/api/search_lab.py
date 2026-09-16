@@ -181,9 +181,8 @@ async def add_task(body: SearchRequest, state: State, run: bool = False) -> Adde
 async def quick(body: QuickRequest, state: State) -> QuickRun:
     """Run some of today's unclaimed simulations now, split across the cores a task can hold.
 
-    :data:`DEFAULT_RUN` unless the body asks for more, never beyond what is left.
-
-    The datasets are the ones last chosen, else every synced dataset in a pyramid not yet
+    :data:`DEFAULT_RUN` unless the body asks for more, never beyond what is left. The
+    datasets are the ones last chosen, else every synced dataset in a pyramid not yet
     formulated this quarter, highest multiplier first. Nothing is added unless all of it can run.
     """
     left = (await simulations_today(state))["unspoken"]
@@ -233,7 +232,6 @@ async def quick(body: QuickRequest, state: State) -> QuickRun:
 
 async def open_pyramid_datasets(state: Any, region: str, delay: int) -> list[str]:
     """Synced datasets in the market's unformulated pyramids, highest multiplier first."""
-    # ponytail: ranked by multiplier alone; weigh in Self-Correlation if quick tasks cluster.
     try:
         grid = await pyramid_grid(state.endpoints, state.catalog)
     except BrainError as exc:

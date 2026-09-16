@@ -55,8 +55,7 @@ MIN_POLL_DELAY = 0.25
 class RateLimit:
     """Daily simulation quota from the ``x-ratelimit-*`` headers of ``POST /simulations``.
 
-    Not in docs/wqb-api; verified live 2026-09-14 (probe P15: limit 5000, remaining,
-    reset in seconds).
+    Undocumented, but sent on every send: limit, remaining, and reset in seconds.
     """
 
     limit: int | None
@@ -319,9 +318,9 @@ class BrainClient:
         """Issue a request, retrying ``429``, ``503``, other ``5xx`` and transport errors.
 
         Waits the server's ``Retry-After`` when it sends one, otherwise exponential backoff
-        with jitter. The thresholds behind a ``429`` are server-side and undocumented, so
-        nothing here guesses a request rate; a ``429`` instead pauses every caller of this
-        client for the wait. Never retries the daily cap.
+        with jitter. The thresholds behind a ``429`` are server-side, so nothing here
+        guesses a request rate: a ``429`` pauses every caller of this client for the wait.
+        Never retries the daily cap.
         """
         attempts = attempts or self._default_attempts
         last: BrainError | None = None

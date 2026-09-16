@@ -1,24 +1,20 @@
 """Which assistants can answer, and how to get a key for each.
 
 Every provider here has a **free tier that needs no card**. That is the whole selection
-rule. The assistant is optional in this application — nothing about generating or
-submitting alphas depends on it — so a provider that asks for payment details before it
-will answer a question is worse than no provider at all: it turns an optional convenience
-into a purchase decision, and people stop at that screen.
+rule: the assistant is optional, so a provider that asks for payment details first turns an
+optional convenience into a purchase decision.
 
 All of them except Google speak the OpenAI chat-completions protocol, which is why one
 small client in :mod:`.openai_compat` serves seven of them. Google keeps its own path
 because ``google-genai`` gives structured output and thinking levels that the
 chat-completions shape cannot express.
 
-**A key only ever answers for its own provider.** A Groq key cannot serve a Gemini
-request, so rotation filters on provider before it looks at budget — offering it would
-spend a retry to discover something already known.
+**A key only ever answers for its own provider**, so rotation filters on provider before it
+looks at budget.
 
-**The limits below are transcribed, not measured.** No provider publishes free-tier
-quotas in a machine-readable form, so these are read off documentation pages and will
-drift. They are deliberately conservative: a budget guessed high spends someone's day
-before anyone notices it was wrong, and a budget guessed low only costs a rotation.
+**The limits below are transcribed, not measured**, read off documentation pages and kept
+deliberately conservative: a budget guessed high spends someone's day before anyone notices
+it was wrong, and a budget guessed low only costs a rotation.
 """
 
 from __future__ import annotations

@@ -25,7 +25,7 @@ const queryClient = new QueryClient({
       staleTime: 15_000,
       refetchOnWindowFocus: false,
       // The backend says whether a failure is worth repeating: a 429 from BRAIN's throttle
-      // is, the daily limit is not, and a blanket "no 4xx" retried neither.
+      // is, the daily limit is not.
       retry: (count, error) => {
         if (count >= 2) return false
         if (error instanceof ApiError) return error.status === 0 || error.retryable

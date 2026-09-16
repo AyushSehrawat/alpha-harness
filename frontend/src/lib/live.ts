@@ -12,7 +12,6 @@ import { telemetry } from './ws'
 /**
  * One stable core assignment shared by every matrix view, so the Simulation Matrix page and
  * the header preview put each batch on the same core, and a cancel never shifts the rest.
- * ponytail: module-level and reset on reload; BRAIN has no slot ids to restore it from anyway.
  */
 let coreAssignment: ReadonlyMap<number, number> = new Map()
 

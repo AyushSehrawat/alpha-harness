@@ -339,11 +339,9 @@ async def add_task(body: EvolutionRequest, state: State) -> AddedTask:
         """The seeds, scored on their stored Train Fitness: nothing is simulated.
 
         Train Fitness, as the children are: whole-period Fitness includes the held-out
-        test years, so ranking seeds on it let those years pick the parents.
-
-        ponytail: a seed simulated without a test period has no train numbers and falls
-        back to whole-period Fitness, so it still breeds; its rank against children stays
-        mixed. Re-simulating such seeds with the test period would remove the fallback.
+        test years, so ranking seeds on it would let those years pick the parents. A seed
+        simulated without a test period has no train numbers and falls back to whole-period
+        Fitness.
         """
         trials: list[Trial] = []
         for number, seed in enumerate(seeds):

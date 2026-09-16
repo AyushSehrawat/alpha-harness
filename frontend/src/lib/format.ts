@@ -8,8 +8,8 @@ export const DASH = '—'
 export const isNum = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value)
 
-// Built once. A table of a few hundred rows formats thousands of figures per render, and
-// `toLocaleString` builds its formatter on every call: 15.7µs against 0.8µs here.
+// Built once: a table of a few hundred rows formats thousands of figures per render, and
+// `toLocaleString` rebuilds its formatter on every call.
 const INT = new Intl.NumberFormat('en-US')
 const COMPACT = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
 const DAY = { month: 'short', day: 'numeric', year: 'numeric' } as const

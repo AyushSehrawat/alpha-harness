@@ -4,11 +4,10 @@ Secrets (the BRAIN password, Google API keys) are sealed with AES-256-GCM and st
 opaque blobs in SQLite. The key lives in a single file created ``0600`` under the data
 directory.
 
-Threat model, stated plainly: this protects against casual disclosure — a stray backup,
-an accidental `git add`, someone reading the database file. It does **not** protect
-against an attacker who already has your user account, because the key is readable by
-that same account. That is the deliberate trade for a local-first tool that must resume
-polling simulations unattended after a restart without prompting for a passphrase.
+Threat model: this protects against casual disclosure — a stray backup, an accidental
+`git add`, someone reading the database file — but **not** against an attacker who already
+has your user account, since the key is readable by it. That is the deliberate trade for a
+tool that must resume polling unattended after a restart without prompting for a passphrase.
 """
 
 from __future__ import annotations

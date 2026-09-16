@@ -20,7 +20,6 @@ import { useCommandMenu } from './command-menu'
 export function Header() {
   const openMenu = useCommandMenu((s) => s.setOpen)
 
-  // No breadcrumb: every screen already names itself in its PageHeader, and the sidebar marks where you are.
   return (
     <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-hairline bg-canvas px-4">
       <HeaderCores />
@@ -40,11 +39,7 @@ export function Header() {
   )
 }
 
-/**
- * Physical 8-Core Concurrent Execution Matrix (DESIGN.md core-slot):
- * Persistent top bar status for concurrent workers, dynamically shifting
- * between status-idle, status-running, status-queued, and status-warning.
- */
+/** One tile per concurrent simulation core, always in the top bar (DESIGN.md core-slot). */
 function HeaderCores() {
   const live = useLive((s) => s.simulations)
   const active = useQuery({
@@ -305,7 +300,7 @@ function MiniMatrix() {
   const { cores } = useCores(live ?? active.data, slots, maxBatch)
 
   return (
-    // 16px cells with 6px gaps: about 214×170px for 8×10, legible at a glance without covering the page.
+    // Small cells, so the whole 8×10 reads at a glance without covering the page.
     <div className="flex items-stretch gap-2 p-1">
       {/* Y-axis label, read bottom-to-top like a chart axis. */}
       <span className="flex rotate-180 items-center justify-center text-caption font-medium tracking-wider uppercase whitespace-nowrap text-ink-subtle [writing-mode:vertical-rl]">

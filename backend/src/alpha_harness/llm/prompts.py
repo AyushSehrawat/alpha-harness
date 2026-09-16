@@ -1,28 +1,13 @@
 """The system prompts that ship with the application.
 
-This module is the whole story: the text below is what runs. :data:`PROMPTS` is the
-table the assistant calls them by, keyed on the slug, and a prompt declares the context
-it wants, so the caller knows what to put in front of the model.
+The text below is what runs. :data:`PROMPTS` is the table the assistant calls them by, keyed
+on the slug, and a prompt declares the context it wants so the caller knows what to put in
+front of the model. A system prompt is invisible in the output, so they are kept together
+here rather than scattered through the callers.
 
-A system prompt decides what an answer looks like and is invisible in the output, so
-these are kept readable and together rather than scattered through the callers.
-
-Three principles run through all of them.
-
-**The reader may know nothing about quantitative research.** The application exists so
-that someone with an economic idea and no finance training can act on it. So the prompts
-forbid unexplained jargon and require the reasoning to be in plain language. A correct
-answer nobody can act on has failed.
-
-**Never invent a name.** Data fields, dataset ids and operators are all supplied in the
-prompt from the local catalog and the platform's own operator list. A hallucinated field
-produces a simulation that fails, and failing costs a slice of a daily quota that cannot
-be recovered until midnight. Inventing is worse than admitting ignorance here, and the
-prompts say so directly.
-
-**Say what is uncertain.** These are hypotheses, not predictions. A model that hedges
-everything is useless, but one that presents a guess as a finding is worse — it will
-send someone to spend a day's simulations on it.
+Three principles run through all of them: write for a reader with no quantitative training,
+never invent a field or operator name (a hallucinated one costs a simulation from a daily
+quota that does not come back until midnight), and say plainly what is uncertain.
 """
 
 from __future__ import annotations
@@ -34,8 +19,8 @@ from enum import StrEnum
 class PromptContext(StrEnum):
     """What gets put in front of the model alongside a prompt.
 
-    A prompt declares the data it wants and the assistant assembles it, so the callers
-    do not each carry their own idea of what a given prompt needs.
+    A prompt declares the data it wants and the assistant assembles it, so callers do not
+    each carry their own idea of what a given prompt needs.
     """
 
     #: Nothing. The user's own words are the whole input.

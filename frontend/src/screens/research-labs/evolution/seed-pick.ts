@@ -1,9 +1,7 @@
 /**
- * Picking seed Alphas on Alphas › Stored for Evolution Lab, then going back to it.
- *
- * While `active`, Stored shows only the lab's market and unsubmitted Alphas, with checkboxes
- * and a Done / Cancel bar that return to the lab; Done leaves the choice in `result` for the
- * lab to take. Kept in sessionStorage, so a reload in the middle of a pick keeps it.
+ * Picking seed Alphas on Alphas › Stored for Evolution Lab, then going back to it: while
+ * `active`, Stored turns into a picker and Done leaves the choice in `result` for the lab to
+ * take. Kept in sessionStorage, so a reload in the middle of a pick keeps it.
  */
 
 import { create } from 'zustand'

@@ -3,20 +3,17 @@
 Google publishes no remaining-quota endpoint, so the only way to rotate keys sensibly is
 to count locally. Three windows, tracked differently because they behave differently:
 
-* **RPM and TPM** are sliding sixty-second windows. Kept in memory — losing them on a
-  restart costs at most one minute of over-caution, and persisting a timestamp per
-  request to buy that back would be a poor trade.
-* **RPD** is a calendar day and *must* survive a restart, because losing it means
-  believing a spent key is fresh and walking into a ``429`` on every rotation.
+* **RPM and TPM** are sliding sixty-second windows, kept in memory: losing them on a
+  restart costs at most one minute of over-caution.
+* **RPD** is a calendar day and *must* survive a restart, or a spent key looks fresh and
+  every rotation walks into a ``429``.
 
 **The day boundary is Pacific, not UTC.** AI Studio quotas reset at midnight
-America/Los_Angeles. Counting UTC days would hand back a key's daily budget seven or
-eight hours early, every day — the failure would look like Google randomly rejecting a
-key that this application insists is fine.
+America/Los_Angeles, and counting UTC days would hand a key's daily budget back seven or
+eight hours early.
 
-Local accounting is deliberately conservative: a request is refused here when it *would*
-exceed a limit. A refusal from this module can say which key to use instead, or which
-model has budget left. A ``429`` from Google says none of that.
+Accounting is deliberately conservative — a request is refused here when it *would* exceed
+a limit — because a local refusal can name another key or model, and a ``429`` cannot.
 """
 
 from __future__ import annotations
@@ -59,12 +56,9 @@ def quota_day(moment: datetime | None = None) -> str:
 def seconds_until_reset(moment: datetime | None = None, tz: tzinfo = QUOTA_TZ) -> float:
     """How long until a daily budget comes back.
 
-    Built from the next local *date* rather than by adding 24 hours, so the two days a
-    year that are 23 or 25 hours long do not shift the answer by an hour.
-
-    Both daily budgets in this application reset this way and neither resets in UTC, so
-    ``tz`` picks the clock: Pacific for the assistant's quota, US Eastern for the
-    platform's simulation allowance.
+    Built from the next local *date* rather than by adding 24 hours, so the two days a year
+    that are 23 or 25 hours long do not shift the answer. ``tz`` picks the clock: Pacific
+    for the assistant's quota, US Eastern for the platform's simulation allowance.
     """
     now = (moment or utcnow()).astimezone(tz)
     midnight = datetime.combine(now.date() + timedelta(days=1), clock.min, tzinfo=tz)
@@ -207,9 +201,8 @@ class Ledger:
     ) -> Headroom:
         """Headroom, also refusing a request whose *size* would breach TPM.
 
-        ponytail: nothing is reserved between this check and :meth:`record`, so callers
-        checking at once can overshoot a limit by their number; reserve per (key, model)
-        if concurrent LLM tasks start drawing 429s.
+        Nothing is reserved between this check and :meth:`record`, so callers checking at
+        once can overshoot a limit by their number.
         """
         state = await self.headroom(key_id, model)
         if state.available and state.tokens_this_minute + estimated_tokens > model.tpm:
@@ -228,8 +221,8 @@ class Ledger:
 
         day = quota_day()
         spent, now_at = max(0, tokens), utcnow()
-        # One atomic statement: calls finishing together each read-then-wrote the same
-        # count and lost increments, and the day's first two collided inserting its row.
+        # One atomic statement: calls finishing together otherwise read-then-write the same
+        # count and lose increments, and the day's first two collide inserting its row.
         statement = (
             insert(KeyUsage)
             .values(
@@ -261,9 +254,8 @@ class Ledger:
     async def penalise(self, key_id: int, model: ModelInfo, *, daily: bool) -> None:
         """Believe Google over our own arithmetic.
 
-        A ``429`` means the local count was wrong — an untracked request from elsewhere,
-        a limit that changed, a clock that disagrees. Rather than retry into it, the
-        count is moved to the ceiling so rotation immediately treats this pair as spent.
+        A ``429`` means the local count was wrong, so the count is moved to the ceiling and
+        rotation immediately treats this pair as spent rather than retrying into it.
         """
         if daily:
             day = quota_day()
@@ -276,9 +268,8 @@ class Ledger:
                     )
                 )
                 if row is None:
-                    # Explicit zeros: column defaults are only applied at flush, and
-                    # this row is read back before then. A key whose quota was spent
-                    # outside this application arrives here with no usage row at all.
+                    # Explicit zeros: column defaults are only applied at flush, and this
+                    # row is read back before then.
                     row = KeyUsage(api_key_id=key_id, model=model.id, day=day, requests=0, tokens=0)
                     session.add(row)
                 row.requests = max(row.requests or 0, model.rpd)

@@ -61,10 +61,7 @@ const AST_CLASS: Record<AstKind, string | undefined> = {
   other: undefined,
 }
 
-/**
- * AST Expression & Code Inspector (DESIGN.md ast-editor):
- * Canvas background, mono font, token syntax formatting, and one-click copy.
- */
+/** The Alpha's Fast Expression, syntax-coloured and copyable (DESIGN.md ast-editor). */
 export function AstInspector({
   expression,
   className,

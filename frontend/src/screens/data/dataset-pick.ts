@@ -1,11 +1,7 @@
 /**
- * Picking datasets in the Data Explorer's Fields filters for a lab, then going back to it.
- *
- * A lab starts a pick with its market, its current choice and its own route. While
- * `active`, the Fields tab opens More filters on the dataset tree, which reads and writes
- * the choice here, and a Done / Cancel bar returns to that route; Done leaves the choice in
- * `result` for that lab alone to take. Kept in sessionStorage, so a reload in the middle of
- * a pick keeps it.
+ * Picking datasets in the Data Explorer's Fields filters for a lab, then going back to its own
+ * route, where Done leaves the choice in `result` for that lab alone to take. Kept in
+ * sessionStorage, so a reload in the middle of a pick keeps it.
  */
 
 import { create } from 'zustand'

@@ -1,14 +1,9 @@
 """Simulation lifecycle tracking.
 
-The one invariant that matters:
-
-    **A simulation id is never held only in memory.**
-
-A ``201`` from ``POST /simulations`` returns the id *only* in the ``Location`` header,
-and for a multi-simulation that id is the parent — the sole handle that can cancel the
-batch. If the process dies before that id reaches disk, the simulation keeps running on
-BRAIN, occupies a concurrency slot, and cannot be stopped. Preventing exactly that is
-why this project exists.
+The one invariant that matters: **a simulation id is never held only in memory.** A
+``201`` from ``POST /simulations`` returns the id *only* in the ``Location`` header, and
+for a multi-simulation that id is the sole handle that can cancel the batch — lose it and
+the simulation runs on, holding a concurrency slot, unstoppable.
 
 So :meth:`SimulationTracker.submit` writes a row *before* the HTTP request and updates
 it with the id the instant the response lands. A crash between the two leaves a
@@ -130,9 +125,9 @@ class SimulationTracker:
                 await self._reconcile
             self._reconcile = None
 
-        # Alpha captures run detached, so they must be waited out here. Left running,
-        # one mid-query when the database is disposed raises out of the connection pool
-        # during teardown — noise that looks exactly like a real fault.
+        # Alpha captures run detached, so they must be waited out here: one still mid-query
+        # when the database is disposed raises out of the connection pool during teardown,
+        # noise that looks exactly like a real fault.
         if self._captures:
             for capture in list(self._captures):
                 capture.cancel()
@@ -354,9 +349,9 @@ class SimulationTracker:
     async def active(self) -> list[SimulationRecord]:
         """What is pending or running on BRAIN: at most the slots and their children.
 
-        Queued work is left out on purpose. It is counted by the engine's status, never
-        drawn, and a harvest can queue twenty thousand rows — reading and pushing those on
-        every tick would scale the hot path with the backlog instead of the slots.
+        Queued work is left out on purpose: a harvest can queue twenty thousand rows, and
+        reading and pushing those every tick would scale the hot path with the backlog
+        instead of the slots.
         """
         async with self.db.session() as session:
             result = await session.execute(
@@ -370,13 +365,9 @@ class SimulationTracker:
         """Simulations consumed since the platform's day began.
 
         Counted locally because nothing exposes the real figure until a simulation POST
-        comes back with its headers, and the Today page needs a number before the first
-        one runs.
-
-        Batch *parents* are excluded and their children counted instead: the platform
-        counts every child of a multi-simulation, so a batch of ten costs ten. Only rows
-        actually sent today count, by when they were sent: a row queued yesterday and
-        run today costs today, and one dropped from the queue never cost anything.
+        comes back with its headers, and the Today page needs a number before the first one
+        runs. Batch *parents* are excluded and their children counted instead, since the
+        platform charges for every child; rows count on the day they were actually sent.
         """
         start = platform_midnight()
         async with self.db.session() as session:
@@ -433,13 +424,10 @@ class SimulationTracker:
     async def orphan_stale(self) -> int:
         """Flag sends that never learned their id, so they stop holding a slot.
 
-        Runs at startup and then on a timer. A send cut off by a restart can be seconds old
-        when the next process starts, and checking only then would leave it PENDING, and
-        counted as in flight, until the restart after.
-
-        Judged by when the send began. A batch's children were queued long before they
-        were sent, so they go by their parent, whose row is written as the batch goes out.
-        Anything this process is sending right now is left alone.
+        Runs at startup and then on a timer, because a send cut off by a restart can be
+        seconds old when the next process starts and would otherwise stay counted as in
+        flight until the restart after. Judged by when the send began — a batch's children
+        go by their parent — and anything this process is sending right now is left alone.
         """
         cutoff = time.time() - PENDING_GRACE_SECONDS
         async with self.db.session() as session:
@@ -567,8 +555,8 @@ class SimulationTracker:
                     await self._on_unauthorized()
                 return False
             case "retry":
-                # A 403, 429 or 5xx is not a result. Treating it as one marked running
-                # simulations COMPLETE with no alpha and stopped polling them.
+                # A 403, 429 or 5xx is not a result: treating it as one would close a
+                # running simulation with no alpha and stop polling it.
                 log.warning("sim.poll_error", record_id=record.id, status=response.status)
                 self._next_poll[record.id] = time.monotonic() + (outcome.delay or 15.0)
                 return False
@@ -593,13 +581,11 @@ class SimulationTracker:
     async def _hand_over_children(self, record: SimulationRecord, outcome: Outcome) -> bool:
         """A multi-simulation has dispatched its children: the engine reads them from here.
 
-        A parent that says COMPLETE is done on BRAIN, children included, and finishes now:
-        a finished batch reads ``{children, status: "COMPLETE", ...}``, verified live
-        2026-09-14 (probe P15). A bare
-        ``{children}`` — the documented form while children may still run — keeps the
-        parent RUNNING, because its children occupy its slot on BRAIN and freeing it would
-        draw a concurrency 429. Either way polling it stops; :meth:`_tick` skips it for
-        good, restarts included, because ``child_ids`` is on disk.
+        A parent that says COMPLETE is done on BRAIN, children included, and finishes now.
+        A bare ``{children}`` — the documented form while children may still run — keeps
+        the parent RUNNING, because its children occupy its slot on BRAIN and freeing it
+        would draw a concurrency 429. Either way polling stops for good, restarts included,
+        because ``child_ids`` is on disk.
         """
         self._next_poll.pop(record.id, None)
         done = outcome.platform_status == SimulationStatus.COMPLETE
@@ -638,9 +624,9 @@ class SimulationTracker:
                 last_polled_at=utcnow(),
             )
 
-            # Remember what this payload produced. Without it, re-running an identical
-            # alpha spends daily quota to recreate something that already exists.
-            # Batch parents are excluded: their payload is the array, not an alpha.
+            # Without this, re-running an identical alpha spends daily quota to recreate
+            # something that already exists. Batch parents are excluded: their payload is
+            # the array, not an alpha.
             if won and alpha_id and not record.is_batch:
                 await remember(session, record, alpha_id)
 
@@ -653,10 +639,9 @@ class SimulationTracker:
     def alpha_landed(self, alpha_id: str) -> None:
         """Hand a finished alpha to :attr:`on_alpha` without waiting on it.
 
-        Fire and forget. Capturing an alpha's returns is a convenience for later
-        analysis; making a finished simulation wait on it, or fail with it, would be the
-        wrong trade. Public because a batch's children are resolved by the engine rather
-        than polled here, and they need exactly the same hand-off.
+        Fire and forget: capturing an alpha's returns is a convenience for later analysis,
+        not something a finished simulation should wait on or fail with. Public because a
+        batch's children are resolved by the engine and need exactly the same hand-off.
         """
         if self.on_alpha is None:
             return

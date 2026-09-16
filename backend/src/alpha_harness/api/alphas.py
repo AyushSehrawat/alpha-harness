@@ -1,12 +1,9 @@
 """The alpha pool on BRAIN: summary, the Alpha page, check, correlate, edit properties.
 
-**There is no submit endpoint, deliberately.** Submitting an alpha is irreversible, and
-the safest guard against doing it by accident is that no route, service method or client
-wrapper for it exists. Editing an alpha's name, tags, colour, category or description is
-the one write, and it changes nothing about the alpha itself.
-
-Correlations are asynchronous jobs that can be rate limited (``429``). Their answers are
-kept in ``brain_cache`` and only asked for again when the user refreshes.
+**There is no submit endpoint, deliberately.** Submitting an alpha is irreversible, so the
+guard against doing it by accident is that no route, service or client wrapper for it
+exists. Correlations are slow, rate-limited jobs, so their answers are kept in
+``brain_cache`` until the user refreshes.
 """
 
 from __future__ import annotations
@@ -434,8 +431,7 @@ async def update_properties(alpha_id: str, body: AlphaProperties, state: State) 
 async def check_alpha(alpha_id: str, state: State) -> BrainPayload:
     """Re-run the submission checks without submitting.
 
-    The whole point of this endpoint: it tells you whether an alpha *would* pass, and
-    changes nothing on the platform. It does update the local copy, so an alpha that has
+    Changes nothing on the platform. It does update the local copy, so an alpha that has
     just resolved appears on the submit screen without waiting for the next backfill.
     """
     body = await state.endpoints.check_alpha(alpha_id)

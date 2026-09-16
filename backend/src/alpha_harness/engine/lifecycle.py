@@ -2,15 +2,13 @@
 
 Both :class:`~alpha_harness.engine.tracker.SimulationTracker` (one simulation at a time)
 and :class:`~alpha_harness.engine.slots.BatchEngine` (multi-simulations) move the same
-``SimulationRecord`` rows through the same statuses. What must be identical between them
-lives here: the compare-and-set that changes a status, the durable write of a platform
-id, how a finished body maps to a local outcome, and the dedup memory that stops an
-identical request from spending quota twice.
+``SimulationRecord`` rows through the same statuses, so what must be identical between
+them lives here: the compare-and-set that changes a status, the durable write of a
+platform id, how a finished body maps to a local outcome, and the dedup memory.
 
 Re-running an identical alpha consumes quota for nothing — the platform counts it even
-though the alpha already exists. Hashing the full request (settings *and* expression)
-lets us recognise a repeat and reuse the previous alpha id instead. See
-``docs/wqb-documentation/brain-api/how-can-you-avoid-duplicate-simulations.md``.
+though the alpha already exists — so the full request is hashed to recognise a repeat
+(``docs/wqb-documentation/brain-api/how-can-you-avoid-duplicate-simulations.md``).
 """
 
 from __future__ import annotations
@@ -43,9 +41,9 @@ _STATUS_MAP = {
 #: Platform statuses of a simulation that has not finished.
 _RUNNING = (SimulationStatus.WAITING, SimulationStatus.SIMULATING)
 
-#: Not yet finished. Every other status is final and no transition may leave it.
-#: ``ORPHANED`` belongs here: its outcome is still being reconciled, and an identical
-#: request arriving meanwhile must share the row rather than pay for a second run.
+#: Not yet finished; every other status is final and no transition may leave it.
+#: ``ORPHANED`` belongs here because an identical request arriving while its outcome is
+#: reconciled must share the row rather than pay for a second run.
 ACTIVE = (SimStatus.QUEUED, SimStatus.PENDING, SimStatus.RUNNING, SimStatus.ORPHANED)
 
 
@@ -151,12 +149,9 @@ async def record_launch(
     """Commit the id BRAIN just returned and flip the row to ``RUNNING``.
 
     Returns ``False`` when a cancel won the race while the POST was out: the id is still
-    kept on the row for the record, and the caller must cancel the simulation on BRAIN.
-
-    ``ORPHANED`` is accepted too: the stale-send sweep may have given up on a slow send
-    whose id has now arrived, and a known id is exactly what it was missing. A batch's
-    ``children`` ride along only when the parent itself moved; otherwise expansion closes
-    them once the parent is read as finished.
+    kept on the row, and the caller must cancel the simulation on BRAIN. ``ORPHANED`` is
+    accepted too, since the stale-send sweep may have given up on a slow send whose id has
+    now arrived. A batch's ``children`` ride along only when the parent itself moved.
     """
     now = utcnow()
     sent_from = [SimStatus.PENDING, SimStatus.ORPHANED]
@@ -251,12 +246,9 @@ class Outcome:
 def read_outcome(status_code: int, body: Any, retry_after: float | None) -> Outcome:
     """Classify a simulation read, in the order BRAIN's own client checks it.
 
-    See ``docs/wqb-api/endpoints/simulations.md`` ("a discriminated union; the client
-    checks the variants in this order"). The order is the point: ``{progress}``,
-    ``{children}`` and ``{detail}`` bodies carry no ``status``, and defaulting a missing
-    status to COMPLETE once closed running simulations — and whole batches — with no
-    alpha, after the quota for them was already spent. Nothing here finishes as COMPLETE
-    without the platform saying so or an alpha to show for it.
+    The order is the point (``docs/wqb-api/endpoints/simulations.md``): ``{progress}``,
+    ``{children}`` and ``{detail}`` bodies carry no ``status``, and nothing here may finish
+    as COMPLETE without the platform saying so or an alpha to show for it.
     """
     if status_code == 401:
         return Outcome("unauthorized", delay=retry_after)

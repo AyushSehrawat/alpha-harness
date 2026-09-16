@@ -1,7 +1,6 @@
 /**
- * Resizable split panes on react-resizable-panels. Wide screens get a draggable hairline
- * gutter that turns lavender on hover, drag or keyboard focus; narrow screens stack as a
- * column. Each layout persists per id in localStorage.
+ * Resizable split panes on react-resizable-panels: wide screens get a draggable hairline
+ * gutter, narrow screens stack as a column. Each layout persists per id in localStorage.
  */
 
 import { Children, type ReactNode, useSyncExternalStore } from 'react'

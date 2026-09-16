@@ -1,10 +1,8 @@
 /**
- * The market a screen is pointed at: instrument type, region, delay and universe.
- *
- * Each screen keeps its own scope (exploring USA while relocating into Europe is an
- * ordinary morning), persisted so a screen reopens where it was left. What is legal in a
- * region comes from the platform's own settings schema, never a hardcoded table: CHN
- * offers only TOP2000U, and a simulation with an illegal universe still spends quota.
+ * The market a screen is pointed at: instrument type, region, delay and universe, kept per
+ * screen and persisted so a screen reopens where it was left. What is legal in a region comes
+ * from the platform's own settings schema, never a hardcoded table — a simulation with an
+ * illegal universe still spends quota.
  */
 
 import { useQuery } from '@tanstack/react-query'

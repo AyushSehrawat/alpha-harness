@@ -7,8 +7,8 @@ export interface AstToken {
   kind: AstKind
 }
 
-// The number branch takes an exponent too: `1e-5` split into a number, a field `e` and a
-// minus, and the stray `e` was coloured as a data field.
+// The number branch takes an exponent too, so `1e-5` stays one token instead of leaving a
+// stray `e` to be coloured as a data field.
 const TOKEN =
   /([a-zA-Z_][a-zA-Z0-9_]*(?=\s*\())|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|([a-zA-Z_][a-zA-Z0-9_]*)|([(),])|(\s+)|([^a-zA-Z0-9_\s(),]+)/g
 

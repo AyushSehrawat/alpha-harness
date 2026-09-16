@@ -47,10 +47,8 @@ const BATCH_KEY: { label: string; value: (row: SimulationRow) => string }[] = [
   { label: 'Language', value: (r) => r.language },
 ]
 
-/** How long a batch has been out, ticking in its own component.
- *
- * At the screen's root the second hand re-rendered all eight rows and their eighty cells
- * once a second, for the hours a full run takes; here it touches one span per core. */
+/** How long a batch has been out. Its own component, so the second hand touches one span per
+ * core rather than re-rendering all eighty cells every second. */
 function Elapsed({ since }: { since: string | null | undefined }) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -65,11 +63,8 @@ function Elapsed({ since }: { since: string | null | undefined }) {
   )
 }
 
-/** One tab stop for the whole matrix, arrows between the Alphas that are in it.
- *
- * Every cell being focusable meant up to eighty presses to get past the matrix. The empty
- * slots are skipped rather than navigated around: a core holding three Alphas and a core
- * holding ten are one list, so a finished Alpha shortens it instead of leaving a hole. */
+/** One tab stop for the whole matrix, arrows between the Alphas in it, so getting past it never
+ * costs eighty presses. Empty slots are left out of the walk entirely. */
 interface Roving {
   current: number
   cells: { current: (HTMLElement | null)[] }

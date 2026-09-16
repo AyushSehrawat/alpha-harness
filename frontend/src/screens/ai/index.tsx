@@ -1,7 +1,6 @@
 /**
  * LLM Integration (CLAUDE.md §4.6), provider first: until a key exists the page is only the
- * provider grid. After that the tabs appear: providers, the key pool, the daily budget on the
- * Pacific clock, every prompt word for word, and the assistant. `/ai/$tab`, `/ai/assistant/$threadId`.
+ * provider grid, and only then do the tabs appear (`/ai/$tab`, `/ai/assistant/$threadId`).
  */
 
 import { Link, useParams } from '@tanstack/react-router'

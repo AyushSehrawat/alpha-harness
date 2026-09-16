@@ -1,12 +1,10 @@
 """Pydantic models of BRAIN API objects.
 
-Shapes are taken from ``docs/wqb-api`` (schemas/ and examples/); fields beyond it are
-marked with the live probe that verified them. The wire format is camelCase; models
-accept either spelling and serialise back to camelCase.
+Shapes are taken from ``docs/wqb-api``. The wire format is camelCase; models accept either
+spelling and serialise back to camelCase.
 
-Deliberately permissive: ``extra="allow"`` everywhere, because the platform adds fields
-over time and the studio's promise is to hide nothing from the user. Unknown fields
-survive into the UI rather than being silently dropped.
+Deliberately permissive — ``extra="allow"`` everywhere — because the platform adds fields
+over time and unknown ones should survive into the UI rather than be silently dropped.
 """
 
 from __future__ import annotations
@@ -89,7 +87,7 @@ class AuthState(BrainModel):
 
     @property
     def can_multi_simulate(self) -> bool:
-        """Gates batching. A real permission code, verified live 2026-09-14 (probe P8)."""
+        """Gates batching."""
         return "MULTI_SIMULATION" in self.permissions
 
 
@@ -126,9 +124,8 @@ class SimulationSettings(BrainModel):
         """The fields a multi-simulation's children must agree on.
 
         ``type`` is held on the request rather than the settings, so the packer combines
-        this with it. See ``docs/wqb-documentation/consultant-information/
-        multi-alpha-simulation.md`` — region, delay, language and instrument type must
-        match across all children of one batch.
+        this with it (``docs/wqb-documentation/consultant-information/
+        multi-alpha-simulation.md``).
         """
         return (self.instrument_type, self.region, self.delay, self.language)
 
@@ -152,14 +149,12 @@ class SimulationRequest(BrainModel):
 
     @model_validator(mode="after")
     def _handle_nans(self) -> Self:
-        """Every simulation this application sends has NaN Handling on, whatever it was given.
+        """Force NaN Handling on, and hold out a test period unless one was named.
 
-        The owner's rule (2026-09-11). Enforced here because every request, from a lab, a
-        template or the simulations API, becomes this model before it is hashed or sent.
-
-        Every request also holds out the last years as a test period unless it names one,
-        so the Pool can hide Alphas that collapse out of sample. BRAIN still runs the
-        submission checks on the whole period.
+        Enforced here because every request — from a lab, a template or the simulations
+        API — becomes this model before it is hashed or sent. The held-out years let the
+        Pool hide Alphas that collapse out of sample; BRAIN still runs the submission
+        checks on the whole period.
         """
         update: dict[str, Any] = {}
         if self.settings.nan_handling != "ON":
@@ -245,7 +240,7 @@ class Alpha(BrainModel):
     # `is` is a Python keyword; the wire name is restored on serialisation.
     in_sample: SampleStats | None = Field(default=None, alias="is")
     os: SampleStats | None = None
-    #: Not in the docs: the years before a test period, verified live 2026-09-14 (probe P9).
+    #: Undocumented: the years before a test period.
     train: SampleStats | None = None
     test: SampleStats | None = None
     prod: SampleStats | None = None

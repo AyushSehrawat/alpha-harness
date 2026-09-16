@@ -36,8 +36,7 @@ export type FieldSortKey =
   | 'field_type'
 
 /** The backend's own filter, every field optional, with the sort key narrowed to the columns
- * it will actually sort on. Written out by hand it had already fallen behind: `has_theme`
- * existed on the server and could not be set from here. */
+ * it will actually sort on. */
 export type FieldFilter = Omit<Partial<Schemas['FieldFilter']>, 'sort_by'> & {
   sort_by?: FieldSortKey
 }

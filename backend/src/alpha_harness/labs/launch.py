@@ -1,9 +1,8 @@
 """From a lab's form to a task in Tasks: what the account and market allow, and the Study row.
 
-Every lab router starts from the same questions — which operators the account has, which
-universes and neutralizations BRAIN allows in the market, whether it is downloaded — and
-ends the same way, with a named ``Study`` the scheduler can run. Those answers live here so
-the four labs cannot drift apart on them; what a lab searches stays in its own router.
+Every lab router asks the same questions — which operators the account has, which universes
+and neutralizations BRAIN allows, whether the market is downloaded — so the answers live
+here and the four labs cannot drift apart on them.
 
 Nothing here raises HTTP errors: a problem is returned as a sentence, and the router
 decides whether it blocks.
@@ -135,9 +134,8 @@ class SearchRequest(BaseModel):
 async def market_for(body: SearchRequest, state: Any, need: tuple[str, ...] = ()) -> dict[str, Any]:
     """The market a task searches, checked: universes, fields, neutralizations, vector operators.
 
-    Search Lab and Template Lab start here. ``need`` names the fixed fields a template reads;
-    a universe that does not have one is left out, and that is said as a warning rather
-    than left unsaid.
+    ``need`` names the fixed fields a template reads; a universe that does not have one is
+    left out, with a warning rather than in silence.
     """
     problems: list[str] = []
     warnings: list[str] = []

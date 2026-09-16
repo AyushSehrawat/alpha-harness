@@ -1,9 +1,7 @@
 /**
  * Alphas (spec §4.5): the local store of Alphas, their submission checks and correlations.
- *
- * Every request body here is snake_case ONLY — camelCase keys are silently dropped.
- * Correlation endpoints are slow, rate-limited BRAIN jobs: call them on a click.
- * Nothing here submits an alpha, and nothing ever will.
+ * Request bodies are snake_case ONLY — camelCase keys are silently dropped — and nothing here
+ * submits an alpha.
  */
 
 import type { components } from '@/api/generated'

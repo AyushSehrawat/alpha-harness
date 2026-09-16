@@ -3,16 +3,13 @@
 Everything here is small, transactional, and must survive a crash. The bulk analytical
 data — the data-field catalog — lives in DuckDB instead (see :mod:`.duck`).
 
-Schema evolution: additive only, applied by :func:`.sqlite.migrate` on every startup. It adds
-missing columns and indexes as well as missing tables — ``create_all`` alone does *not*,
-and the gap was a real bug: a column added to a model after a database was created never
-appeared, and the failure surfaced much later as ``no such column`` from whichever query
-selected it first.
+Schema evolution is additive only, applied by :func:`.sqlite.migrate` on every startup:
+missing columns and indexes as well as missing tables, which ``create_all`` alone does
+*not* add.
 
 Never drop or rename a column on ``simulation_record``. Losing a row there means losing
 the ability to cancel a running simulation, which is the exact failure this project
-exists to prevent. A change that is not additive is out of scope for the migrator by
-design; it reports the drift rather than acting on it.
+exists to prevent.
 """
 
 from __future__ import annotations
@@ -44,10 +41,9 @@ def utcnow() -> datetime:
 class UtcDateTime(TypeDecorator[datetime]):
     """A timestamp stored as UTC and read back UTC-aware.
 
-    SQLite has no zone: the stock type writes an aware value's wall-clock time and drops
-    the offset without converting, so ``12:00-04:00`` was stored, and read back, as
-    ``12:00``. Converting on the way in makes the stored text UTC; a naive value is
-    refused rather than guessed at.
+    SQLite has no zone: the stock type drops an aware value's offset without converting,
+    so ``12:00-04:00`` came back as ``12:00``. Converting on the way in makes the stored
+    text UTC; a naive value is refused rather than guessed at.
     """
 
     impl = DateTime(timezone=True)
@@ -116,20 +112,14 @@ class BrainSessionRow(Base):
 class SimStatus(StrEnum):
     """Local lifecycle. Distinct from the platform's own status.
 
-    Two of these carry weight:
+    ``PENDING`` is the crash window: the request is in flight and the platform id is not
+    known yet, so a row left there after a restart may be a real running simulation and
+    must be reconciled rather than discarded.
 
-    ``QUEUED`` — accepted locally, waiting for a free slot. Nothing has been sent to
-    BRAIN, so a queued row can be dropped or re-queued freely.
-
-    ``PENDING`` — the request is in flight and we do not yet know the platform id. This
-    is the crash window: a row stuck here after a restart may correspond to a real
-    running simulation, and must be reconciled rather than discarded.
-
-    ``ORPHANED`` — sent, but the platform's answer never gave us an id: the process
-    stopped mid-send, the POST timed out after leaving, or a 201 came without a
-    ``Location``. Not final: :mod:`alpha_harness.engine.reconcile` looks for the alpha it
-    produced and either adopts it or queues the request again. Treating it as final
-    either loses the alpha or, if resent at once, spends the quota twice.
+    ``ORPHANED`` means it was sent but no id came back. Not final:
+    :mod:`alpha_harness.engine.reconcile` adopts the alpha it produced or queues the
+    request again, because treating it as final either loses the alpha or spends the
+    quota twice.
     """
 
     QUEUED = "QUEUED"
@@ -159,8 +149,7 @@ class SimulationRecord(Base):
     """One simulation we asked BRAIN to run.
 
     The row is written **before** the HTTP request and updated with ``platform_id`` the
-    moment a ``201`` lands. That ordering is what guarantees a simulation can always be
-    cancelled: the id is never held only in memory.
+    moment a ``201`` lands, so a simulation can always be cancelled.
 
     For a multi-simulation, ``platform_id`` is the *parent* id — the only cancellable
     handle. Child ids only exist once the parent completes and are stored in
@@ -325,9 +314,8 @@ class SyncRun(Base):
     #: time because the platform refuses any offset at or beyond 10,000, so the whole
     #: scope cannot be paged as one list — see :mod:`alpha_harness.catalog.sync`.
     cursor_dataset: Mapped[str | None] = mapped_column(String(64))
-    #: Datasets whose own field count exceeds what pagination can reach. Empty in
-    #: practice, and recorded rather than ignored because the alternative is a catalog
-    #: that is quietly incomplete.
+    #: Datasets whose own field count exceeds what pagination can reach. Recorded rather
+    #: than ignored, so an incomplete catalog is never silent.
     truncated_datasets: Mapped[list[Any]] = mapped_column(JSON, default=list)
 
     datasets_synced: Mapped[int] = mapped_column(Integer, default=0)
@@ -568,11 +556,9 @@ class KeyUsage(Base):
     """Local budget ledger per (key, model, quota day).
 
     Google exposes no remaining-quota endpoint, so RPM/TPM/RPD have to be tracked
-    client-side or rotation is guesswork.
-
-    The day is **America/Los_Angeles**, which is where AI Studio's quota clock lives.
-    Counting UTC days would hand a key's daily budget back seven or eight hours early
-    and produce 429s that look like the platform misbehaving.
+    client-side or rotation is guesswork. The day is **America/Los_Angeles**, where AI
+    Studio's quota clock lives; counting UTC days would hand a key's daily budget back
+    hours early and produce 429s that look like the platform misbehaving.
     """
 
     __tablename__ = "key_usage"

@@ -1,26 +1,15 @@
 """Yield Rate: how much of the allowance each lab turns into submittable alphas.
 
-The research notes give this product its objective function directly::
+The objective function::
 
     Y = submittable alphas / simulated alphas,   target Y >= 0.1%
 
-At the full daily allowance that is five submittable alphas a day, which is the
-submission target with margin left for correlation filtering. A yield far below 0.1% is
-the search failing, not the market being hard.
+At the full daily allowance that is five submittable alphas a day. Yield rather than
+Sharpe, because compute is the resource actually being spent: ranking labs by the quality
+of their best result would fund the expensive one forever.
 
-**Why yield and not Sharpe.** A lab returning three brilliant alphas from two thousand
-simulations is worse, to a consultant with a fixed daily allowance, than one returning
-six adequate alphas from one thousand. Ranking labs by the quality of their best result
-would fund the expensive one forever. Ranking by yield funds the one that converts
-compute, which is the only resource actually being spent.
-
-This module measures; it does not judge. It joins what was simulated (SQLite, which
-knows the task each simulation belonged to) against what came back (DuckDB, which knows
-whether every submission check passed). The PM reads the result and allocates cores.
-
-**On honesty of the denominator.** Only *finished* simulations count. Work still queued
-has not had its chance yet, and counting it would make every lab look worse the moment
-it was funded — which would teach the PM to defund whatever it just funded.
+Only *finished* simulations count in the denominator. Counting queued work would make
+every lab look worse the moment it was funded.
 """
 
 from __future__ import annotations
@@ -44,14 +33,12 @@ if TYPE_CHECKING:
 log = structlog.get_logger(__name__)
 
 #: Checks that label an alpha rather than gate it. The platform reports these as
-#: ``WARNING`` on every alpha checked, passing or failing (verified live 2026-09-14,
-#: probe P11) — so judging them would make nothing submittable. Whether a candidate matches a
-#: competition, theme or cluster says nothing about whether the search is working.
+#: ``WARNING`` on every alpha checked, passing or failing, so judging them would make
+#: nothing submittable.
 #:
-#: ``SELF_CORRELATION`` is deliberately *not* here. An alpha too close to the pool
-#: genuinely cannot be submitted, so it is a real failure to produce something new — and
-#: it is precisely the failure the Diversify lab exists to answer. Excusing it would hide
-#: the signal that should reallocate cores.
+#: ``SELF_CORRELATION`` is deliberately *not* here: an alpha too close to the pool
+#: genuinely cannot be submitted, and excusing it would hide the signal that should
+#: reallocate cores.
 IGNORED_CHECKS = frozenset(
     {
         "MATCHES_COMPETITION",
@@ -109,15 +96,11 @@ def is_submittable(checks_json: str | None) -> bool:
 def is_promising(checks_json: str | None) -> bool:
     """Whether the platform is worth asking to finish judging this alpha.
 
-    A finished simulation comes back with ``SELF_CORRELATION``, ``PROD_CORRELATION``,
-    ``REGULAR_SUBMISSION`` and ``IS_LADDER_SHARPE`` still ``PENDING`` — the platform
-    computes those on demand, through ``GET /alphas/{id}/check``. Until that runs, an
-    alpha that will turn out to be submittable is indistinguishable from one that will
-    not, and :func:`is_submittable` says no to both.
-
-    So something has to ask. Asking about every finished alpha would be thousands of
-    requests a day; asking about the ones where nothing has failed *yet* is a few dozen,
-    and it is exactly the set that could still become submittable.
+    A finished simulation leaves ``SELF_CORRELATION``, ``PROD_CORRELATION``,
+    ``REGULAR_SUBMISSION`` and ``IS_LADDER_SHARPE`` ``PENDING`` until
+    ``GET /alphas/{id}/check`` is asked to compute them. Asking about every finished alpha
+    would be thousands of requests a day; the ones where nothing has failed *yet* are a
+    few dozen, and are exactly the set that could still become submittable.
     """
     results = judged_results(checks_json)
     if results is None or "PENDING" not in results:
@@ -144,13 +127,10 @@ class YieldBook:
         """Every alpha that passed all of BRAIN's submission checks, best Sharpe first, and
         a shortlist of the few worth submitting.
 
-        The one screen a consultant actually came for. Alphas already submitted are left
-        out — they are on the platform's own list, and re-offering them is how someone
-        submits the same idea twice.
-
-        Best Sharpe first is also most overfit first, so the shortlist ignores it: only
-        Alphas that held up in the test years, ranked by :func:`stability_order`, each
-        kept unless it moves with a better-ranked pick.
+        Alphas already submitted are left out, so nobody submits the same idea twice. Best
+        Sharpe first is also most overfit first, so the shortlist ignores it: only Alphas
+        that held up in the test years, ranked by :func:`stability_order`, each kept
+        unless it moves with a better-ranked pick.
         """
         clauses = ["(a.status IS NULL OR a.status = 'UNSUBMITTED')"]
         params: list[Any] = []
@@ -339,9 +319,9 @@ def failed_checks(checks_json: str | None) -> set[str]:
 def _tally(rows: list[dict[str, Any]]) -> tuple[list[str], int, int]:
     """Submittable ids, promising count and near-miss count, reading each row's JSON once.
 
-    The same judgements as :func:`is_submittable` and :func:`is_promising`, which parse the
-    array each; three parses per row was the cost. A near miss is one or two fixable
-    failures and nothing else wrong.
+    The same judgements as :func:`is_submittable` and :func:`is_promising`, which would
+    parse the array three times per row. A near miss is one or two fixable failures and
+    nothing else wrong.
     """
     ready: list[str] = []
     pending = near = 0

@@ -164,8 +164,8 @@ export function Assistant({ threadId }: { threadId: number | null }) {
 
   const extrasFor = last && last.threadId === threadId ? last : null
   const lastAssistantId = messages.findLast((m) => m.role === 'assistant')?.id
-  // `scopes.isPending` counts against sending: until the answer is in, an undownloaded
-  // market looks downloaded, and the send it allowed came back as an error.
+  // `scopes.isPending` blocks sending: until the answer is in, an undownloaded market looks
+  // downloaded and the send fails.
   const canSend =
     !!text.trim() && !say.isPending && !notDownloaded && !scopes.isPending && modelValue !== null
   const send = () => canSend && say.mutate(text.trim())
@@ -226,8 +226,8 @@ export function Assistant({ threadId }: { threadId: number | null }) {
           description="Describe a hunch in your own words. The assistant answers with fields that really exist in this market."
           actions={
             <>
-              {/* Fixed once a conversation exists: its earlier turns were answered from the
-                  market it started in, and the backend keeps the thread pinned there. */}
+              {/* Fixed once a conversation exists: the backend pins a thread to the market it
+                  started in. */}
               <ScopePicker
                 scope={scope}
                 onChange={setScope}

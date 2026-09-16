@@ -9,18 +9,13 @@ important:
   recover until midnight Pacific, and it varies by a factor of twenty-five across the
   roster: twenty a day on Gemini 3.8 Flash, five hundred on 3.5 Flash Lite.
 
-That last point drives the whole design. Someone who picks the newest model because it
-sounds best gets twenty questions and then nothing until tomorrow, with no warning. So
-every model carries its daily budget where it is chosen, the Lite models are marked as
-the ones to use for bulk work, and :mod:`.budget` refuses a request that would exceed a
-limit rather than letting Google refuse it — because a local refusal can suggest a
-different key or a cheaper model, and a ``429`` cannot.
+That last point drives the design: every model carries its daily budget where it is chosen,
+the Lite models are marked for bulk work, and someone who picks the newest model because it
+sounds best does not get twenty questions and then silence.
 
-**Nothing here is authoritative except as a starting point.** Google publishes no
-endpoint for free-tier quotas, so the numbers below are transcribed from the AI Studio
-rate-limit page and *will* drift; correcting one is a one-line edit here. The model
-list itself is refreshed from ``client.models.list()``, and anything that turns up
-unrecognised gets the most restrictive real budget until someone says otherwise.
+**Nothing here is authoritative except as a starting point.** Google publishes no endpoint
+for free-tier quotas, so the numbers below are transcribed and *will* drift; correcting one
+is a one-line edit here.
 """
 
 from __future__ import annotations
@@ -90,8 +85,7 @@ class LLMModels(Out):
     note: str
 
 
-#: Transcribed from the AI Studio free-tier rate limits, which are not published
-#: anywhere machine-readable. Expect to correct these.
+#: Transcribed from the AI Studio free-tier rate limits. Expect to correct these.
 BUILTIN: tuple[ModelInfo, ...] = (
     ModelInfo(
         "gemini-3.8-flash",
@@ -230,9 +224,8 @@ BUILTIN: tuple[ModelInfo, ...] = (
     ),
 )
 
-#: Used when a model is discovered from the API and we have no published limits. Chosen
-#: to be the *most* restrictive real row rather than something optimistic, so an unknown
-#: model cannot silently burn a day's quota before anyone notices.
+#: For a model discovered from the API with no published limits. The *most* restrictive real
+#: row, so an unknown model cannot silently burn a day's quota.
 UNKNOWN_LIMITS = {"rpm": 5, "tpm": 250_000, "rpd": 20}
 
 DEFAULT_MODEL = "gemini-3.5-flash-lite"
@@ -295,8 +288,7 @@ class ModelRegistry:
         """Add models the API reports that we have never heard of.
 
         Their limits are unknown, so they get the most restrictive real budget and are
-        flagged ``discovered`` — a guess presented as a measurement would be worse than
-        no entry at all.
+        flagged ``discovered`` rather than passing a guess off as a measurement.
         """
         added: list[str] = []
         for raw in names:

@@ -1,10 +1,9 @@
 """The BRAIN account: its stored credential, its session, and what the platform allows it.
 
-Ties three things together: the sealer (sealing secrets), SQLite (persisting them), and
-the BRAIN authenticator (using them). The account's operators and settings schema are
-cached here too, because both depend on the account's permissions.
+The account's operators and settings schema are cached here too, because both depend on
+the account's permissions.
 
-The session cookie jar is persisted deliberately. Signing in costs a proof-of-work solve
+The session cookie jar is persisted deliberately: signing in costs a proof-of-work solve
 and counts against a lockout budget, so a backend restart must not trigger a new one.
 """
 
@@ -57,9 +56,8 @@ class AuthService:
         self.auth = authenticator or Authenticator(endpoints)
         self._session = SessionInfo.anonymous()
         self._user_profile: dict[str, Any] | None = None
-        #: One session change at a time: a UI sign-in, the engine's silent re-login and a
-        #: status refresh would otherwise overwrite each other's result, and the loser's
-        #: credential would become the current one.
+        #: One session change at a time: a UI sign-in, a silent re-login and a status
+        #: refresh would otherwise overwrite each other, leaving the loser's credential current.
         self._lock = asyncio.Lock()
 
     @property
@@ -167,8 +165,7 @@ class AuthService:
                 await self._touch_last_login(email)
                 await self._save_cookies(info)
                 # Warm the profile so the first screen can greet them by name without a
-                # second round trip. Failure is swallowed inside; a missing name is a
-                # cosmetic loss, never a reason to fail a successful sign-in.
+                # second round trip. Failure is swallowed inside; a missing name is cosmetic.
                 await self.get_user_profile()
                 await self._warm_operators()
             return info
@@ -199,8 +196,8 @@ class AuthService:
     async def _warm_operators(self) -> None:
         """Cache the account's own operator list once signed in.
 
-        Labs and validation read it, and it was never fetched before. A failure is logged,
-        never raised: signing in must not fail because this list could not be read.
+        A failure is logged, never raised: signing in must not fail because Labs and
+        validation could not read their operator list.
         """
         try:
             await self.metadata.refresh_operators()
@@ -300,11 +297,11 @@ class PlatformMetadata:
         self.endpoints = endpoints
 
     async def refresh_metadata(self) -> dict[str, Any]:
-        """Cache ``OPTIONS /simulations``.
+        """Cache ``OPTIONS /simulations``: region / universe / neutralization and their
+        interdependencies.
 
-        The authoritative region / universe / neutralization values and their
-        interdependencies. Refreshed on login rather than hardcoded, because the set
-        changes as the platform adds markets and as the account's permissions change.
+        Refreshed rather than hardcoded, because the set changes with new markets and with
+        the account's permissions.
         """
         schema = await self.endpoints.settings_schema()
         await self._cache("settings_schema", schema)
@@ -313,10 +310,8 @@ class PlatformMetadata:
     async def cached_settings_schema(self) -> dict[str, Any] | None:
         """The settings schema, re-read from BRAIN once the stored copy is an hour old.
 
-        Refreshing only at sign-in left a restored session on a stale copy for hours: on
-        2026-09-14 BRAIN withdrew USA ILLIQUID_MINVOL1M, the copy from that morning still
-        offered it, and Search Lab sent simulations the platform then rejected. A failed
-        refresh keeps the old copy, which is still right for almost every setting.
+        Refreshing only at sign-in left a restored session offering universes BRAIN had
+        withdrawn. A failed refresh keeps the old copy, still right for almost every setting.
         """
         async with self.db.session() as session:
             row = await session.get(MetadataCache, "settings_schema")
@@ -359,8 +354,8 @@ class PlatformMetadata:
 async def _current_credential(session: Any) -> Credential | None:
     """The credential in use: the one that signed in most recently.
 
-    Oldest-first meant signing in with a different email stored a second row that
-    silent re-login and the cookie jar never used.
+    Most-recent rather than oldest-first, so signing in with a different email is the
+    account silent re-login and the cookie jar then use.
     """
     return (
         (

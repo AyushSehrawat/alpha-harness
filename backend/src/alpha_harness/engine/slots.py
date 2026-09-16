@@ -2,17 +2,12 @@
 
 Throughput on BRAIN is eight *concurrent simulations*, each of which may be a
 multi-simulation carrying up to ten children — so eighty at once, but only when the work
-packs. Children of one batch must share a 5-tuple (see :mod:`.packer`), so the engine's
-job is to hold a queue, group it, and keep the slots full without ever losing an id.
+packs, since children of one batch must share a 5-tuple (see :mod:`.packer`).
 
-Responsibilities are split deliberately:
-
-* :mod:`.packer` decides *what* to send and matches children back — pure, no I/O.
-* :mod:`.lifecycle` owns the atomic write of a platform id, shared with the tracker.
-* :class:`~alpha_harness.engine.tracker.SimulationTracker` polls the parent until it
-  lists its children.
-* This module owns the queue, the slot accounting, and reading a batch's children to
-  completion.
+This module owns the queue, the slot accounting, and reading a batch's children to
+completion; :mod:`.packer` decides what to send, :mod:`.lifecycle` owns the atomic write
+of a platform id, and :class:`~alpha_harness.engine.tracker.SimulationTracker` polls the
+parent until it lists its children.
 """
 
 from __future__ import annotations
@@ -75,8 +70,8 @@ if TYPE_CHECKING:
 
 log = structlog.get_logger(__name__)
 
-#: Concurrent simulations the platform allows. Accounts without MULTI_SIMULATION (a real
-#: permission code, verified live 2026-09-14, probe P8) get the same slots, one per batch.
+#: Concurrent simulations the platform allows. Accounts without MULTI_SIMULATION get the
+#: same slots, one simulation per batch.
 DEFAULT_SLOTS = 8
 
 #: How often the engine looks for work.
@@ -195,12 +190,9 @@ class BatchEngine:
         """Accept work. Returns what was queued and what was skipped as a duplicate.
 
         Duplicates are checked before anything is sent: re-running an identical alpha
-        spends daily quota and produces an alpha that already exists.
-
-        ``outcomes`` carries one entry per request, in the order given, because a caller
-        that generated the requests needs to know which of *its* items became which row.
-        The optimizer depends on this: a trial matched to an existing alpha can be scored
-        immediately, so the search learns from a repeated point without paying for it.
+        spends daily quota on an alpha that already exists. ``outcomes`` carries one entry
+        per request, in the order given, so a caller can tell which of *its* items became
+        which row — the optimizer scores a trial matched to an existing alpha immediately.
         """
         queued: list[int] = []
         skipped: list[dict[str, Any]] = []
@@ -214,8 +206,9 @@ class BatchEngine:
             #: Hash -> an active row's id, or the row this call is adding for it.
             in_flight: dict[str, int | SimulationRecord] = {}
             if skip_duplicates:
-                # Looked up in bulk: a harvest enqueues thousands, and two reads per request
-                # made queueing scale with round-trips. Chunked under SQLite's variable cap.
+                # Looked up in bulk — a harvest enqueues thousands, and two reads per
+                # request would scale queueing with round-trips — and chunked to stay
+                # under SQLite's variable cap.
                 distinct = list(set(hashes))
                 for start in range(0, len(distinct), ENQUEUE_CHUNK):
                     chunk = distinct[start : start + ENQUEUE_CHUNK]
@@ -363,7 +356,7 @@ class BatchEngine:
                 if self._last_pause
                 else None
             ),
-            # ponytail: straight-line rate over the last 15 minutes; ignores quota and batch timing.
+            # Straight-line rate over the last 15 minutes; ignores quota and batch timing.
             "minutesLeft": round(waiting / per_minute) if waiting and per_minute else None,
         }
 
@@ -399,11 +392,10 @@ class BatchEngine:
     async def tick(self) -> int:
         """One scheduling round. Returns how many batches were submitted.
 
-        Finished batches are read back in a task of their own, outside the lock. Reading
-        back costs a request per child, and holding the lock through it left
-        slots idle that the next round would have filled (most of the idle slot time
-        the engine measured). It touches only a finished parent's children, never
-        the QUEUED rows a round claims, and every write is a compare-and-set.
+        Finished batches are read back in a task of their own, outside the lock: a read-back
+        costs a request per child, and holding the lock through it leaves slots idle that
+        the next round would have filled. It touches only a finished parent's children,
+        never the QUEUED rows a round claims, and every write is a compare-and-set.
         """
         # The background loop and the manual tick route share this: two concurrent rounds
         # would read the same QUEUED rows and submit them twice.
@@ -524,8 +516,8 @@ class BatchEngine:
     async def _reject_invalid(self, items: tuple[WorkItem, ...]) -> list[WorkItem]:
         """Reject rows whose stored payload no longer validates, and return the rest.
 
-        Such a row can never be sent. Left queued, its error escaped the round every tick,
-        and every batch sorted after it waited behind it forever.
+        Such a row can never be sent; left queued, its error would escape every round and
+        every batch sorted after it would wait behind it forever.
         """
         valid: list[WorkItem] = []
         for item in items:
@@ -713,10 +705,9 @@ class BatchEngine:
     ) -> None:
         """Reject only the children BRAIN objected to; the rest go back in the queue.
 
-        A multi-simulation's ``400`` body is an array lined up with the request array, one
-        entry per child, empty where that child was fine. Rejecting all ten for one bad
-        expression would drop nine good alphas; the survivors are packed afresh next round.
-        Any other shape keeps the old, safe behaviour of rejecting the whole batch.
+        A multi-simulation's ``400`` body is an array lined up with the request array, empty
+        where that child was fine. Rejecting all ten for one bad expression would drop nine
+        good alphas; any other body shape falls back to rejecting the whole batch.
         """
         entries = exc.body if isinstance(exc.body, list) else None
         if entries is None or len(entries) != len(record_ids):
@@ -796,10 +787,9 @@ class BatchEngine:
     async def _expand_finished_batches(self) -> None:
         """Resolve the children of every batch that has dispatched them.
 
-        Two kinds of parent qualify: one still RUNNING whose read listed its children (the
-        tracker hands it over and stops polling it), and one that ended — failed and
-        cancelled included, or their children would stay RUNNING, holding counts, forever.
-        Selected from disk, so a restart picks up exactly where the last process stopped.
+        Two kinds of parent qualify: one still RUNNING whose read listed its children, and
+        one that ended — failed and cancelled included, or their children would stay RUNNING
+        forever. Selected from disk, so a restart picks up where the last process stopped.
         """
         async with self.db.session() as session:
             candidates = (

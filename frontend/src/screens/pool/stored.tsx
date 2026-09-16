@@ -187,8 +187,7 @@ export function Stored({ onOpen }: { onOpen: (alphaId: string) => void }) {
   const [limit, setLimit] = useState(100)
   const [offset, setOffset] = useState(0)
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  // Debounced, not deferred: `useDeferredValue` yields to rendering but still asks the
-  // backend once per keystroke, and the range boxes asked on every digit of "150".
+  // Debounced rather than deferred: `useDeferredValue` still asks the backend once per keystroke.
   const quietSearch = useDebounced(search, 300)
   const quietBounds = useDebounced(bounds, 400)
   // Picking seeds for Evolution Lab: only its market's unsubmitted Alphas, ticked into the pick.

@@ -61,15 +61,12 @@ def _problem(
     )
 
 
-#: ``exception -> (status, code, message, retryable)`` for the failures that need
-#: nothing but those. Anything carrying a payload of its own — which fields were
-#: rejected, how long to wait — stays an explicit handler below.
+#: ``exception -> (status, code, message, retryable)``. Anything carrying a payload of its
+#: own — which fields were rejected, how long to wait — stays an explicit handler below.
 #:
-#: ``message`` of ``None`` means the exception already phrases itself for a person; a
-#: message written here belongs to a ``BrainError``, whose own text is the platform's
-#: wording and goes in ``detail``. ``retryable`` of ``None`` omits the key, which is not
-#: the same as ``False``: the client then falls back to "retryable if 5xx", right for a
-#: poll timeout and wrong for a daily limit.
+#: ``message`` of ``None`` means the exception already phrases itself for a person.
+#: ``retryable`` of ``None`` omits the key, which is not the same as ``False``: the client
+#: then falls back to "retryable if 5xx", right for a poll timeout and wrong for a daily limit.
 SIMPLE: dict[type[Exception], tuple[int, str, str | None, bool | None]] = {
     BrainAuthError: (
         401,
@@ -183,9 +180,8 @@ def install_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(BudgetExhaustedError)
     async def _budget(_r: Request, exc: BudgetExhaustedError) -> JSONResponse:
-        # A daily exhaustion is not retryable in any useful sense; a per-minute one is.
-        # Saying which, and for how long, is the difference between a useful error and a
-        # spinner.
+        # A daily exhaustion is not retryable in any useful sense; a per-minute one is, so
+        # the client is told which and for how long.
         return _problem(
             429,
             "llm_budget_exhausted",

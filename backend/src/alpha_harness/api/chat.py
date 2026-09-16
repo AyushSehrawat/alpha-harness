@@ -1,12 +1,8 @@
 """Talking to the assistant.
 
-The lab where diversity actually comes from. Four dropdowns give the same answer to
-everyone who picks the same options; a sentence someone types in their own words does
-not. Five hundred consultants describing five hundred hunches end up spread across the
-data in a way no menu arranges.
-
-What comes back is not advice — it is a list of **real data fields**, checked against the
-catalogue, ready to hand to a lab that runs them.
+Where diversity comes from: dropdowns give everyone who picks the same options the same
+answer, a sentence in someone's own words does not. What comes back is a list of real data
+fields, checked against the catalogue, ready to hand to a lab that runs them.
 """
 
 from __future__ import annotations
@@ -209,7 +205,6 @@ async def say(body: Say, state: State) -> ChatReply:
         )
     except ValueError as exc:
         # A market with nothing downloaded, an unknown conversation, a reasoning setting
-        # that does not exist: all of them phrase themselves, and all of them reached the
-        # screen as a bare 500 with no explanation.
+        # that does not exist: each phrases itself, so say it rather than raising a bare 500.
         raise refuse(400, "cannot_answer", str(exc)) from exc
     return ChatReply.model_validate(answered)

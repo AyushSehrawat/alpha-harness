@@ -23,10 +23,9 @@ const cellState = (status: SimulationRow['status']): CellState =>
 const EMPTY: Cell = { row: null, state: 'EMPTY' }
 
 /**
- * Give each holder a stable core. BRAIN exposes no slot numbers, so positions are ours: a
- * holder keeps the core it was first drawn in until it leaves, and a newcomer takes the
- * lowest free core. Without this, cancelling core 1 shifts every other batch up a row.
- * `holderIds` should be in arrival order (record id) so newcomers fill cores in that order.
+ * Give each holder a stable core: BRAIN exposes no slot numbers, so a holder keeps the core it
+ * was first drawn in and a newcomer takes the lowest free one — without this, cancelling core 1
+ * shifts every other batch up a row. Pass `holderIds` in arrival order (record id).
  */
 export function assignCores(
   holderIds: number[],
@@ -54,14 +53,9 @@ export function assignCores(
 }
 
 /**
- * Group active rows into cores.
- *
- * A child belongs to its batch by `parentId`. When BRAIN finishes a batch, the parent leaves
- * the active set a little before its children are collected; those children no longer hold
- * a core (the engine has already freed the slot), so they are not drawn. A row without a
- * `parentId` is a single simulation holding its own core.
- *
- * Pass the previous `assignment` to keep every holder on its core between snapshots.
+ * Group active rows into cores, passing the previous `assignment` to keep every holder on its
+ * core between snapshots. When BRAIN finishes a batch the parent leaves the active set before
+ * its children are collected, so those orphans no longer hold a core and are not drawn.
  */
 export function buildCores(
   active: SimulationRow[],

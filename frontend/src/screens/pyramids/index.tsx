@@ -1,7 +1,7 @@
 /**
  * Sync with BRAIN: the sync matrix that downloads every market's Data Fields, above BRAIN's
  * Pyramid Multiplier for every Region · Delay · Dataset Category, with ✓ where 3 or more of your
- * Alphas formulate the pyramid this quarter. The pyramid map is read-only and refreshes itself.
+ * Alphas formulate the pyramid this quarter.
  */
 
 import { useQuery } from '@tanstack/react-query'
@@ -56,7 +56,6 @@ export function PyramidsScreen() {
       <SyncHero
         scope={scope}
         onPick={(change) => {
-          // Clicking a market opens it in the Data Explorer.
           update(change)
           void navigate({ to: '/data/$tab', params: { tab: 'fields' } })
         }}

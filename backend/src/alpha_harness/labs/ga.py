@@ -9,10 +9,9 @@ A hybrid of the research notes' gene GA and tree GP, because seeds are arbitrary
   of one is grafted into the other, never growing past the larger parent.
 
 Every child is simulated holding the last two years out as a test and scored on Fitness
-over the first eight, which BRAIN reports in the ``train`` block
-(verified live 2026-09-14, probe P9).
-Parents are the best of everything scored so far, kept apart by the correlation of their
-daily PnL over the train years.
+over the first eight, which BRAIN reports in the ``train`` block. Parents are the best of
+everything scored so far, kept apart by the correlation of their daily PnL over the train
+years.
 """
 
 from __future__ import annotations
@@ -249,8 +248,8 @@ def build_market(
 ) -> Market:
     table = operator_table(operators)
     levels = {o.get("name"): o.get("level") for o in operators}
-    # ponytail: swaps only ALL-level operators, as the Template Lab presets use; an operator
-    # listed without a level is never swapped in, though a seed may keep one.
+    # Only ALL-level operators are swapped in; one listed without a level is never swapped
+    # in, though a seed may keep one.
     leveled = any(level is not None for level in levels.values())
     swappable: dict[str, list[OperatorInfo]] = defaultdict(list)
     for info in table.values():
@@ -281,7 +280,7 @@ def build_market(
     )
 
 
-#: ponytail: kept until restart, so a market downloaded again or new operators are seen then.
+#: Kept until restart, so a market downloaded again or new operators are only seen then.
 _markets: dict[tuple[Any, ...], Market] = {}
 
 

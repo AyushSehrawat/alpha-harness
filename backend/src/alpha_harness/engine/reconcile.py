@@ -1,17 +1,13 @@
 """Resolve simulations whose send outcome is unknown.
 
-``POST /simulations`` has no idempotency key. When the answer to one is lost — a read
-timeout after the request left, a 502 from a gateway, a crash between sending and saving
-the id — BRAIN may be running it anyway. Resending at once pays twice for the same alpha
-(the platform charges identical re-sends and hands back the very same alpha id); giving
-up loses the alpha the quota already paid for. Neither is acceptable when the daily
-allowance is the product.
+``POST /simulations`` has no idempotency key, so when the answer to one is lost BRAIN may
+be running it anyway: resending at once pays twice for the same alpha, and giving up loses
+the alpha the quota already paid for.
 
 So such rows wait as ``ORPHANED`` while this pass looks for the alpha they produced among
-the account's alphas created around the send. A match is adopted exactly as if the id had
-arrived. A row with no match once :data:`WINDOW` has passed is queued again: by then a
-simulation BRAIN accepted would have finished, so the likeliest story is that the request
-never ran. The window is the owner's choice (2026-09-14).
+the account's alphas created around the send. A row with no match once :data:`WINDOW` has
+passed is queued again: by then a simulation BRAIN accepted would have finished, so the
+likeliest story is that the request never ran.
 """
 
 from __future__ import annotations
@@ -41,11 +37,10 @@ log = structlog.get_logger(__name__)
 WINDOW = timedelta(minutes=30)
 #: Tolerance between our clock and BRAIN's ``dateCreated``.
 CLOCK_SLACK = timedelta(minutes=2)
-#: The alpha list serves at most 100 rows a page, verified live 2026-09-14 (probe P4).
+#: The alpha list serves at most 100 rows a page.
 PAGE = 100
-#: The alpha list refuses offsets past 1,000: ``offset=1000`` is served (probe P3,
-#: 2026-09-14) and ``offset=1100`` is rejected (seen live 2026-09-14). Past it the listing
-#: continues by ``dateCreated`` instead.
+#: The alpha list refuses offsets past 1,000; beyond it the listing continues by
+#: ``dateCreated`` instead.
 MAX_OFFSET = 1_000
 
 _EXPRESSION_KEYS = ("regular", "combo", "selection")

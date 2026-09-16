@@ -56,9 +56,8 @@ export function Sidebar({ you, collapsed }: { you: Today['you']; collapsed: bool
   const signOut = useMutation({
     mutationFn: () => auth.logout(),
     onSuccess: async () => {
-      // Dropped, not invalidated: invalidating refetches every mounted screen's queries
-      // against a session that no longer exists, so signing out drew a burst of 401s —
-      // and the last account's data sat in the cache behind the sign-in screen.
+      // Dropped, not invalidated: invalidating would refetch every mounted screen against a
+      // dead session, and leave the last account's data in the cache behind the sign-in screen.
       queryClient.clear()
       await queryClient.refetchQueries({ queryKey: ['today'] })
     },

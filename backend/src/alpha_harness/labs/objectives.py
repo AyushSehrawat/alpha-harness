@@ -5,16 +5,12 @@ Two different things come out of a finished alpha:
 **Objectives** are the numbers being optimised — Sharpe, fitness, train fitness.
 They come from the in-sample statistics block.
 
-**Constraints** are the submission checks. BRAIN returns them with the alpha, each with
-its own ``value`` and ``limit``, and the limits differ by region and delay. That is
-exactly why they are read from the response rather than written down here: a Sharpe
-threshold of 1.25 is true for USA delay 1 and wrong for delay 0, and hardcoding either
-would quietly mislead every study run in the other.
+**Constraints** are the submission checks, read from the response rather than written down
+here because the limits differ by region and delay.
 
-The encoding follows Optuna's convention — a constraint value at or below zero is
-feasible, above zero is not, and the magnitude says by how much. A sampler that
-understands constraints (NSGA-II, NSGA-III, TPE) will then prefer a nearly-passing alpha
-over a badly-failing one instead of treating both as equally useless.
+The encoding follows Optuna's convention — at or below zero is feasible, and the magnitude
+says by how much — so a sampler that understands constraints prefers a nearly-passing alpha
+over a badly-failing one.
 """
 
 from __future__ import annotations
@@ -46,8 +42,8 @@ class Objective:
     label: str
     direction: Direction
     summary: str
-    #: Value used when the alpha produced no number at all. Deliberately terrible, so a
-    #: broken trial is never mistaken for a good one.
+    #: Used when the alpha produced no number at all. Deliberately terrible, so a broken
+    #: trial is never mistaken for a good one.
     failure_value: float
 
 
@@ -104,11 +100,8 @@ def extract(
     """Objective values from an alpha's in-sample statistics.
 
     ``extra`` carries numbers the statistics block does not have, such as the train-years
-    fitness.
-
-    A missing number becomes the objective's failure value rather than being skipped —
-    Optuna needs one number per objective, and silently substituting zero would make a
-    broken simulation look mediocre instead of bad.
+    fitness. A missing number becomes the objective's failure value: Optuna needs one number
+    per objective, and a zero would make a broken simulation look mediocre instead of bad.
     """
     values: list[float] = []
     for objective in objectives:
@@ -131,7 +124,7 @@ def train_extra(alpha: Alpha, objectives: list[Objective]) -> dict[str, float | 
     """Objectives read from the ``train`` block.
 
     A simulation with a test period reports its train years there, while ``is`` stays the
-    whole period (verified live 2026-09-14, probe P9).
+    whole period.
     """
     return {
         o.key: getattr(alpha.train, o.key.removeprefix("train_"), None) if alpha.train else None
@@ -146,15 +139,10 @@ def train_extra(alpha: Alpha, objectives: list[Objective]) -> dict[str, float | 
 def constraints(alpha: Alpha) -> tuple[dict[str, float], list[dict[str, Any]]]:
     """Violation magnitudes from the alpha's own submission checks.
 
-    Keyed by the platform's check name — ``LOW_SHARPE``, ``HIGH_TURNOVER`` — which is
-    what Optuna 5's named-constraint API wants and what the UI already shows. Naming
-    them also means BRAIN adding a check later does not shift the meaning of an existing
-    position, the way a bare vector would.
-
-    Each value is ``0.0`` when the check passed, and otherwise how far the value sits
-    the wrong side of its limit. The direction is inferred from the numbers themselves,
-    because the platform does not label a check as an upper or lower bound — and
-    hardcoding which is which would go stale the moment a threshold changes by region.
+    Keyed by the platform's check name — ``LOW_SHARPE``, ``HIGH_TURNOVER`` — so BRAIN
+    adding a check later cannot shift the meaning of an existing position the way a bare
+    vector would. Each value is ``0.0`` when the check passed, and otherwise how far the
+    value sits the wrong side of its limit.
     """
     checks = alpha.in_sample.checks if alpha.in_sample else []
     violations: dict[str, float] = {}
@@ -191,8 +179,8 @@ def _violation(check: Check) -> float:
         # Failed, but gave us no usable numbers — feasibility is binary here. A NaN would
         # be refused by Optuna and leave the trial RUNNING in the sampler for good.
         return 1.0
-    # Which side of the limit the value fell on says whether the check was a floor or a
-    # ceiling, without needing a table of check names that BRAIN may extend at any time.
+    # The distance alone: the platform does not label a check as a floor or a ceiling, and a
+    # table of check names would go stale as BRAIN adds them.
     return abs(float(check.limit) - float(check.value))
 
 

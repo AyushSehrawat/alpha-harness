@@ -1,7 +1,7 @@
 """Resolving ``OPTIONS /simulations`` into usable settings options.
 
-The schema returned by the platform is *recursive*, and this is the part that catches
-people out. A field's ``choices`` is either a flat list::
+The schema returned by the platform is *recursive*. A field's ``choices`` is either a flat
+list::
 
     {"choices": [{"value": "EQUITY", "label": "Equity"}]}
 
@@ -12,11 +12,6 @@ or a dependency node keyed by the field it depends on::
 So the legal universes depend on the region, which depends on the instrument type
 (``docs/wqb-api/endpoints/simulations.md``). Hardcoding any of it would show users options
 their account cannot run.
-
-:func:`resolve_options` walks that structure for a given partial settings dict, so the
-UI can render a form that is correct by construction, and :func:`validate_settings`
-catches an impossible combination locally rather than spending a round trip — and, on
-``POST /simulations``, a slice of the daily quota.
 """
 
 from __future__ import annotations
@@ -114,15 +109,11 @@ def valid_values(schema: dict[str, Any], field: str, settings: dict[str, Any]) -
 def validate_settings(
     schema: dict[str, Any], settings: dict[str, Any], *, require_all: bool = False
 ) -> list[str]:
-    """Check a settings dict against the schema.
+    """Check a settings dict against the schema; returns human-readable problems.
 
-    Returns human-readable problems, empty when the combination is legal. Catching this
-    locally matters: a rejected ``POST /simulations`` still costs a round trip, and the
-    daily quota is the binding constraint on a day's research.
-
-    By default only *supplied* values are checked: while a user is filling the form,
-    fields they have not reached yet are not errors. Missing-required is opt-in via
-    ``require_all``.
+    Catching an impossible combination locally saves a round trip and a slice of the daily
+    quota. Only *supplied* values are checked by default, since a half-filled form is not
+    an error; missing-required is opt-in via ``require_all``.
     """
     problems: list[str] = []
 

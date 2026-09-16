@@ -79,11 +79,8 @@ type Payload =
   | { from: 'canvas'; path: Path; label: string }
 
 /**
- * Native drag and drop. The payload lives in React state rather than dataTransfer, since
- * a drag never leaves the page; the surface handlers go on the builder's root so nested
- * blocks and slots need no listeners of their own.
- * ponytail: native DnD ignores touch; click-to-place covers it. A pointer polyfill if
- * touch dragging is ever asked for.
+ * Native drag and drop, which ignores touch — click-to-place is the path that works there. The
+ * payload lives in React state rather than dataTransfer, since a drag never leaves the page.
  */
 function useDragDrop(onDrop: (payload: Payload, target: string) => void) {
   const [dragging, setDragging] = useState<Payload | null>(null)

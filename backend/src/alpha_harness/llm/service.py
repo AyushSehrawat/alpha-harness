@@ -5,9 +5,8 @@ the same order: pick a key with budget, send, record what it actually cost, and 
 Google disagrees with our accounting — mark that pair spent and try the next key rather
 than retrying into the same wall.
 
-Rotation is only worth having if it is *informed*. A retry loop that tries each key in
-turn until one works will burn a request from every key on a bad day. Choosing by
-remaining daily budget, and believing a ``429`` immediately, spends one.
+Rotation chooses by remaining daily budget and believes a ``429`` immediately, because a
+retry loop that tries each key in turn burns a request from every key on a bad day.
 """
 
 from __future__ import annotations
@@ -83,10 +82,8 @@ def _is_rate_limit(exc: Exception) -> tuple[bool, bool]:
 def _plain_reason(exc: Exception) -> str | None:
     """The common failures, said in words the person reading them can act on.
 
-    Google's errors arrive as a wall of JSON. Someone who has been using this for ten
-    minutes and pasted a key with a character missing should be told that, not shown
-    ``INVALID_ARGUMENT`` and a list of ``@type`` URLs. The raw text is still kept against
-    the key as ``lastError`` for anyone who wants it.
+    Google's errors arrive as a wall of JSON; the raw text is still kept against the key as
+    ``lastError`` for anyone who wants it.
     """
     text = str(exc).lower()
     if "api_key_invalid" in text or "api key not valid" in text:
@@ -115,8 +112,8 @@ _NO_MINIMAL = ("gemini-3.7", "gemini-3.8")
 def _thinking_config(model: ModelInfo, thinking: str | None) -> Any:
     """Callers ask for a level; this speaks whichever form the chosen model accepts.
 
-    Each generation rejects the other's form, so the wrong one is a 400 on every chat
-    message: Gemini 3 takes ``thinking_level`` (with no ``minimal`` from 3.7), 2.5 takes
+    Each generation rejects the other's form, so the wrong one is a 400 on every message:
+    Gemini 3 takes ``thinking_level`` (with no ``minimal`` from 3.7), 2.5 takes
     ``thinking_budget``, and Gemma, embeddings and older models take neither.
     """
     if not thinking or model.provider != "google" or model.kind != "text":
@@ -192,9 +189,8 @@ class LLMService:
     ) -> Answer:
         """Send one prompt, rotating keys by remaining budget.
 
-        ``thinking`` is one of Google's thinking levels. It is not a free upgrade:
-        thinking tokens are billed against the same per-minute budget as the answer, so
-        asking the model to think harder costs the consultant real allowance.
+        ``thinking`` is one of Google's thinking levels. Not a free upgrade: thinking tokens
+        are billed against the same per-minute budget as the answer.
         """
         from google.genai import types
 
@@ -269,8 +265,8 @@ class LLMService:
                 attempts.append({"keyId": key_id, "error": str(exc)[:300], "rateLimited": limited})
                 await self.keys.mark(key_id, error=str(exc)[:300])
                 if limited:
-                    # Google is the authority. Mark this pair spent and rotate rather
-                    # than retrying into a limit we evidently mis-tracked.
+                    # Google is the authority: mark this pair spent and rotate rather than
+                    # retrying into a limit we evidently mis-tracked.
                     await self.ledger.penalise(key_id, model, daily=daily)
                     self.forget(key_id)
                     log.warning("llm.rate_limited", key_id=key_id, model=model.id, daily=daily)

@@ -1,16 +1,10 @@
 """What is running right now.
 
-Several things in this application take minutes and run in the background: a catalog
-sync is roughly 1,700 requests, a returns backfill is one request per alpha, a template
-sweep waits on the platform. Each of those already reports its own progress somewhere,
-which is exactly the problem — there was no single answer to "is anything happening?"
+One registry every long background job reports into, so the interface has a single
+answer to "is anything happening?" rather than a per-job progress readout.
 
-This is that answer: one registry every long job reports into, so the interface can show
-a single indicator and, on hover, everything behind it.
-
-Deliberately in-memory. A task is a thing happening *now*; if the process restarts it is
-not happening any more, and a task list that survives the work it describes would be
-worse than none.
+Deliberately in-memory: a task is a thing happening *now*, and a task list that survives
+the work it describes would be worse than none.
 """
 
 from __future__ import annotations
@@ -72,7 +66,7 @@ class TaskRegistry:
     """Every background job, in one place.
 
     No lock: every mutation here is a single dict operation with no ``await`` in it, so
-    the event loop cannot interleave two of them. A lock would only be ceremony.
+    the event loop cannot interleave two of them.
     """
 
     def __init__(self, on_change: ChangeHook | None = None) -> None:

@@ -68,7 +68,7 @@ SCHEMA = {
     "required": ["alphas"],
 }
 
-#: ponytail: in memory, so a restart loses at most one in-flight LLM request per task.
+#: In memory, so a restart loses at most one in-flight LLM request per task.
 _calls: dict[int, asyncio.Task[None]] = {}
 _retry: dict[int, float] = {}
 
@@ -561,9 +561,8 @@ FENCE = re.compile(r"```(?:ya?ml|json)?\s*\n(.*?)```", re.DOTALL)
 def parse_alphas(text: str) -> list[dict[str, Any]]:
     """Pull the candidate list out of a response.
 
-    The schema asks for JSON and models mostly comply, but "mostly" is not a contract
-    and a batch that cannot be parsed is a whole request wasted. A fenced block is tried
-    next, and an empty list is returned rather than raising.
+    A batch that cannot be parsed is a whole request wasted, so a fenced block is tried next
+    and an empty list is returned rather than raising.
     """
     for candidate in (text, *(m.group(1) for m in FENCE.finditer(text))):
         try:

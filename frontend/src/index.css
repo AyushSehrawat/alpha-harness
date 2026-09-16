@@ -2,8 +2,7 @@
 @source not "../dist";
 
 /*
- * Colour runs in three tiers (DESIGN.md → Colour), whose APCA floors, visible steps and
- * colour-vision behaviour are measured by hand with the helpers in tools/oklch.ts.
+ * Colour runs in three tiers (DESIGN.md → Colour).
  *
  * Tier 1, primitives: `spec-*` are the DESIGN.md hex values and the ramps are generated, both
  * by tools/oklch.ts (SPEC and HUES), so edit there and paste the block it prints. They sit in
@@ -186,11 +185,10 @@
 }
 
 /*
- * Tier 2, semantic tokens: the only colours components use. The DESIGN.md colours are the
- * `spec-*` primitives, taken verbatim; the rest are opaque oklab mixes over the surface they sit
- * on, so the colour in the token is the colour on screen. Dark is the one theme. Tailwind's
- * palette is dropped so no ad-hoc colour can slip in, and `static` emits every variable, because
- * canvas charts read them at runtime.
+ * Tier 2, semantic tokens: the only colours components use. The `spec-*` primitives are taken
+ * verbatim; the rest are opaque oklab mixes over the surface they sit on, so the colour in the
+ * token is the colour on screen. Tailwind's palette is dropped so no ad-hoc colour can slip in,
+ * and `static` emits every variable because canvas charts read them at runtime.
  */
 @theme static {
   --color-*: initial;
@@ -214,9 +212,8 @@
   --color-ink-tertiary: var(--spec-ink-tertiary);
   /* Inactive: disabled controls. */
   --color-ink-disabled: var(--neutral-600);
-  /* Ink at 10% over surface-1. */
   --color-ink-tint: color-mix(in oklab, var(--spec-ink) 10%, var(--spec-surface-1));
-  /* Pyramids ramp: ink at 4 / 8 / 13 / 19 / 26 / 34% over surface-1. */
+  /* Pyramids ramp. */
   --color-pyramid-0: color-mix(in oklab, var(--spec-ink) 4%, var(--spec-surface-1));
   --color-pyramid-1: color-mix(in oklab, var(--spec-ink) 8%, var(--spec-surface-1));
   --color-pyramid-2: color-mix(in oklab, var(--spec-ink) 13%, var(--spec-surface-1));
@@ -245,7 +242,7 @@
     var(--spec-pnl-negative) 70%,
     var(--spec-surface-1)
   );
-  /* Notice fills: the tone at 12% over surface-1. */
+  /* Notice fills. */
   --color-pnl-positive-tint: color-mix(
     in oklab,
     var(--spec-pnl-positive) 12%,
@@ -261,7 +258,7 @@
     var(--spec-status-warning) 12%,
     var(--spec-surface-1)
   );
-  /* Status outlines: the tone at 40% over surface-2. */
+  /* Status outlines. */
   --color-pnl-positive-edge: color-mix(
     in oklab,
     var(--spec-pnl-positive) 40%,
@@ -278,7 +275,7 @@
     var(--spec-surface-2)
   );
 
-  /* Template Lab operator categories: the hue at 10% (fill) and 45% (edge) over surface-2. */
+  /* Template Lab operator categories. */
   --color-category-cross-sectional: color-mix(
     in oklab,
     var(--orchid-400) 10%,

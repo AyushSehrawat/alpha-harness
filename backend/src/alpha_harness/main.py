@@ -127,11 +127,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def require_client_header(request: Request, call_next: Any) -> Any:
         """Refuse requests another page started, and writes that lack the UI's custom header.
 
-        CORS does not stop a "simple" cross-site request (a form, an <img>, a no-cors fetch)
-        from running; it only hides the response. Some GETs spend BRAIN quota, so the browser's
-        Sec-Fetch-Site guards every method: the UI arrives through the Vite proxy as
-        same-origin, a typed URL as none. Other ports on localhost are same-site and refused.
-        The custom header covers writes from clients that send no Sec-Fetch-Site.
+        CORS only hides the response of a "simple" cross-site request; it does not stop it
+        running, and some GETs spend BRAIN quota, so Sec-Fetch-Site guards every method
+        (same-origin from the Vite proxy, none from a typed URL). The custom header covers
+        writes from clients that send no Sec-Fetch-Site.
         """
         if request.headers.get("sec-fetch-site", "none") not in {"same-origin", "none"}:
             return JSONResponse(

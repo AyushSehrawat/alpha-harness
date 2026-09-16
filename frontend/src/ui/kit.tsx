@@ -127,7 +127,7 @@ export const LINK = 'text-link underline underline-offset-2 transition-colors ho
 
 // ── Actions ─────────────────────────────────────────────────────────────────────────────
 
-/** DESIGN.md button-primary…button-danger: 6px 12px padding, 13px body label, 5px radius; hover lightens, press takes primary-focus. */
+/** DESIGN.md button-primary…button-danger. */
 const BUTTON =
   'inline-flex shrink-0 items-center justify-center gap-1.5 font-medium whitespace-nowrap transition-colors select-none disabled:pointer-events-none disabled:bg-(--btn-disabled-bg) disabled:text-(--btn-disabled-text) aria-disabled:pointer-events-none aria-disabled:bg-(--btn-disabled-bg) aria-disabled:text-(--btn-disabled-text) [&_svg]:shrink-0'
 const BUTTON_VARIANT = {
@@ -511,10 +511,7 @@ export function Progress({
   )
 }
 
-/**
- * Simulation Quota Track & Depletion Indicator (DESIGN.md quota-gauge):
- * 6px pill track (surface-2) with primary fill indicating 5,000 budget consumption.
- */
+/** How much of the day's simulation quota is spent (DESIGN.md quota-gauge). */
 export function QuotaGauge({
   used,
   limit = 5000,

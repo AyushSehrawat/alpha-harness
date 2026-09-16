@@ -1,20 +1,12 @@
 """Keeping every alpha and its daily returns.
 
-Two reasons this exists, and the second is the interesting one.
+An alpha is a permanent result, so a local copy means never spending quota on it twice.
 
-**Nothing should be simulated twice.** An alpha is a permanent result. Once the platform
-has computed it there is no reason to spend quota on it again, and a local copy makes
-that free rather than a round trip.
-
-**Daily returns are what make mixing possible.** The platform reports one Sharpe per
-alpha; the daily profit-and-loss series behind it is 2,500 numbers, and two alphas with
-mediocre Sharpe that move independently combine into something better than either. That
-question — which pairs move independently — is only answerable if the series are kept.
-
-The series is also *sufficient*: Sharpe recomputed as ``mean / stdev * sqrt(252)`` from
-the stored daily PnL matches the platform's own figure to within 0.01, verified against
-live alphas. So a mix's Sharpe can be predicted before a single simulation is spent on
-it, which is the entire point of the exercise.
+The daily returns matter more: two alphas with mediocre Sharpe that move independently
+combine into something better than either, and which pairs those are is only answerable
+if the series are kept. Sharpe recomputed as ``mean / stdev * sqrt(252)`` from the stored
+series matches the platform's own figure closely, so a mix can be judged before a
+simulation is spent on it.
 """
 
 from __future__ import annotations
@@ -39,9 +31,8 @@ log = structlog.get_logger(__name__)
 def checks_json(alpha: Alpha) -> str | None:
     """An alpha's submission checks as the string the vault stores.
 
-    Pulled out of :func:`alpha_row` because the backfill has to read the same array to
-    decide whether the platform is worth asking to finish checking it, and two spellings
-    of "the checks" would eventually disagree.
+    Shared with the backfill, which reads the same array to decide whether the platform
+    is worth asking to finish checking an alpha.
     """
     stats = alpha.in_sample
     if stats is None:
@@ -199,10 +190,8 @@ class AlphaVault:
         return await self._save(alphas, utcnow())
 
     async def _save(self, alphas: list[Alpha], fetched_at: datetime) -> int:
-        """Train and test statistics go in the same write, and only for Alphas that carry them.
-
-        A harvest therefore never reads a stored child without them, and a listing that
-        leaves them out never blanks them.
+        """Store alphas, carrying train and test statistics only for the ones that have
+        them, so a listing that leaves them out never blanks stored values.
 
         Refused when no Alpha carries metrics or settings: every stored Alpha has both, so
         that is BRAIN's format changing, and writing it would blank the stored rows.
@@ -321,9 +310,8 @@ class AlphaVault:
     async def awaiting_checks(self, limit: int = 200) -> list[str]:
         """Alphas the platform has not finished judging, best first.
 
-        ``LIKE '%PENDING%'`` is a cheap prefilter over the stored JSON — the caller
-        decides what is actually worth asking about, because "nothing has failed yet"
-        needs the array parsed.
+        ``LIKE '%PENDING%'`` is a cheap prefilter over the stored JSON; the caller decides
+        what is actually worth asking about, which needs the array parsed.
         """
         rows = await self.catalog.query(
             """

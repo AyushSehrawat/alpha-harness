@@ -180,9 +180,8 @@ async def submittable(
 ) -> SubmittableResponse:
     """Alphas that passed every submission check, ready to submit on BRAIN.
 
-    The end of the whole pipeline. Each entry carries the platform's own check results,
-    the numbers behind them, and a link to the alpha on BRAIN — which is where it gets
-    submitted. This application never submits.
+    Each entry carries the platform's own check results, the numbers behind them, and a
+    link to the alpha on BRAIN — which is where it gets submitted. This application never does.
     """
     found = await state.yields.submittable(
         region=region,
@@ -223,11 +222,10 @@ async def query_alphas(body: AlphaPageRequest, state: State) -> AlphaPage:
 async def sync_alphas(state: State) -> SyncStarted:
     """Bring the stored alphas up to date with BRAIN.
 
-    Incremental — only alphas newer than the newest stored, with a day of overlap because
-    the platform's date filter works in whole days — once the store holds at least as
-    many alphas as BRAIN reports. Otherwise everything is listed, which is also what
-    finishes an earlier sync that was interrupted. Only the listing itself — a hundred alphas a
-    request, with their metrics — and nothing per alpha: no daily PnL, no submission checks.
+    Incremental once the store holds as many alphas as BRAIN reports — only alphas newer
+    than the newest stored, with a day of overlap because the platform's date filter works
+    in whole days. Otherwise everything is listed, which also finishes an interrupted sync.
+    The listing only: metrics, but no daily PnL and no submission checks.
     """
     remote = await state.endpoints.list_alphas(AlphaQuery(limit=1, hidden=None))
     stored = await state.alphas.stored_count()
@@ -259,8 +257,7 @@ async def alpha_detail(alpha_id: str, state: State) -> AlphaDetail:
         except Exception as exc:  # noqa: BLE001
             problem = f"Could not download the daily PnL: {exc}"
     rows = await state.alphas.pnl_series(alpha_id)
-    # Stored rows are daily PnL; the chart is the running total, every day with its date. A
-    # few thousand points is nothing for the chart, and a sparkline showed years as "120 days".
+    # Stored rows are daily PnL; the chart wants the running total, every day with its date.
     values: list[float] = []
     total = 0.0
     for r in rows:

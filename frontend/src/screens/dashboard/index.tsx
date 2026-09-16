@@ -46,7 +46,8 @@ export function DashboardScreen() {
           <Skeleton className="mx-1 mt-2 h-18 w-2/3" label="Loading today's figures" />
         )
       )}
-      {/* `RunToday` (./run-today) is built and unused: dispatching from here comes back later. */}
+      {/* `RunToday` (./run-today) is deliberately unmounted, not dead: dispatching from the
+          Dashboard is coming back. */}
       <GettingStarted today={day.data} />
       {day.isError && <ErrorNotice error={day.error} title="Today's figures could not load" />}
 

@@ -97,11 +97,8 @@ export function move(root: Slot, from: Path, to: Path, blocks: Blocks): Slot | u
   return put(put(root, from, at(root, to)), to, node)
 }
 
-/** Whether a placed block may be dropped on ``to``.
- *
- * A swap is two placements, not one: the block being displaced has to be legal where the
- * dragged one came from. Checking only the dragged block let a lookback count trade places
- * with an operator, leaving the operator in a socket that rejects it. */
+/** Whether a placed block may be dropped on ``to``. A swap is two placements, so the displaced
+ * block has to be legal where the dragged one came from, not just the dragged one. */
 export function canMove(root: Slot, from: Path, to: Path, blocks: Blocks): boolean {
   const node = at(root, from)
   if (node === null || within(to, from)) return false

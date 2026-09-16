@@ -102,8 +102,6 @@ class AppState:
         )
         self.queries = CatalogQueries(self.catalog)
 
-        # Every alpha ever simulated, its daily returns, and what can be learned from
-        # correlating them. The tracker feeds this as simulations complete.
         self.alphas = AlphaVault(self.catalog)
         self.backfill = Backfill(
             self.alphas,
@@ -118,7 +116,6 @@ class AppState:
         self.models = ModelRegistry()
         self.llm = LLMService(self.db, self.sealer, self.queries, self.models)
         self.chat = ChatService(self.db, self.llm, self.queries)
-        # The fund's books: yield measured from what actually ran.
         self.yields = YieldBook(self.db, self.catalog)
         self.optimizer = Optimizer(
             self.db,
@@ -152,9 +149,8 @@ class AppState:
         except Exception:
             log.warning("startup.session_restore_failed", exc_info=True)
 
-        # Adopt anything that was in flight when we last stopped. Not caught: dispatching
-        # new work on top of an unreconciled queue is how orphans and double sends start,
-        # so a failure here stops startup and says why.
+        # Not caught: dispatching new work on top of an unreconciled queue is how orphans
+        # and double sends start, so a failure here stops startup and says why.
         result = await self.tracker.reconcile()
         if result["orphaned"]:
             log.warning("startup.orphaned_simulations", count=result["orphaned"])
@@ -217,10 +213,9 @@ class AppState:
     async def renew_session(self, *, expiring: bool = False) -> bool:
         """Whether BRAIN will take requests now, signing in again if it will not.
 
-        Called by the engine and tracker whenever BRAIN answers 401, so it is guarded
-        three ways: one renewal at a time; the platform asked at most once a minute; and
-        one silent sign-in per hour, because each failed sign-in spends BRAIN's lockout
-        budget. A user signing in from the UI clears the problem on the next check.
+        Called on every 401, so it is guarded three ways: one renewal at a time, the
+        platform asked at most once a minute, and one silent sign-in per hour — each
+        failed sign-in spends BRAIN's lockout budget.
         """
         async with self._renew_lock:
             now = time.monotonic()
@@ -234,8 +229,6 @@ class AppState:
                 except Exception:
                     log.warning("session.check_failed", exc_info=True)
                     return False
-            # ponytail: one silent re-login per hour at most. Raise only if sessions
-            # shorter than an hour appear.
             if now - self._last_login_attempt < LOGIN_RETRY_SECONDS:
                 return False
             if await self.auth.get_credential() is None:

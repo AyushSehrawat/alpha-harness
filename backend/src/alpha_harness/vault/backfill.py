@@ -1,16 +1,9 @@
 """Filling the vault: every alpha you own, and its daily returns.
 
-Two passes, and they cost very different amounts.
-
-**Metadata** comes from the alpha listing — a hundred alphas per request, so a pool of a
-thousand is ten requests. Cheap.
-
-**Daily returns** are one request per alpha, and each goes through the
-``Retry-After`` protocol because the platform computes them on demand. A thousand alphas
-is a thousand requests and the better part of an hour. That is why it runs as a
-background task with visible progress rather than blocking anything, and why it is
-ordered by Sharpe: the alphas most likely to be worth mixing arrive first, so the
-feature becomes useful long before the backfill finishes.
+Metadata is cheap: a hundred alphas per listing request. Daily returns are one
+``Retry-After`` request per alpha, so a thousand alphas is the better part of an hour —
+hence a background task with visible progress, ordered by Sharpe so the alphas most
+likely to be worth mixing arrive first.
 
 None of this spends simulation quota. It is all reading results that already exist.
 """
@@ -37,12 +30,10 @@ if TYPE_CHECKING:
 
 log = structlog.get_logger(__name__)
 
-#: The alpha list's largest page: a bigger ``limit`` is served as 100, verified live
-#: 2026-09-14 (probe P4).
+#: The alpha list's largest page: a bigger ``limit`` is served as 100 anyway.
 PAGE = 100
-#: The alpha list refuses offsets past 1,000: ``offset=1000`` is served (probe P3,
-#: 2026-09-14) and ``offset=1100`` is rejected (seen live 2026-09-14). Past it the listing
-#: continues by ``dateCreated`` instead.
+#: The alpha list refuses offsets past 1,000. Beyond it the listing continues by
+#: ``dateCreated`` instead.
 MAX_OFFSET = 1_000
 
 #: How many submission checks may be in flight at once. Each one is a ``Retry-After``
@@ -50,8 +41,8 @@ MAX_OFFSET = 1_000
 CHECK_SLOTS = 2
 
 #: Captures landing within this long of each other share one alpha-list request. A batch's
-#: children land within a second or two of each other, and one list page replaces ten
-#: ``GET /alphas/{id}``; list rows carry the same blocks as the detail (probe P10).
+#: children land within a second or two of each other, and one list page carries the same
+#: blocks as ten ``GET /alphas/{id}``.
 CAPTURE_DEBOUNCE_SECONDS = 2.0
 #: List pages read per capture batch before the rest fall back to a request each. Alphas
 #: from batches not yet read back sit ahead of the landed ones on the newest page, so one
@@ -210,10 +201,9 @@ class Backfill:
                 break
             offset += PAGE
             if offset > MAX_OFFSET:
-                # Newest first, so continue below the oldest alpha seen. The bound is one
-                # second past it because a multi-simulation creates several alphas in the
-                # same second and ``dateCreated<`` is strict; that second is listed again,
-                # which the upsert makes harmless. A window that cannot move stops.
+                # Newest first, so continue below the oldest alpha seen. One second past
+                # it, because a multi-simulation creates several alphas in the same second
+                # and ``dateCreated<`` is strict; the upsert makes the overlap harmless.
                 oldest = alphas[-1].date_created
                 if oldest is None:
                     break
@@ -286,11 +276,10 @@ class Backfill:
     async def capture(self, alpha_id: str) -> None:
         """Record one alpha as soon as its simulation finishes. Returns once it is stored.
 
-        Called by the tracker so the vault stays current without anyone asking. Alphas that
-        land together are read from one list page rather than a request each. Daily
-        returns are *not* fetched here: they cost a request per alpha and are pulled on
-        demand (opening an alpha, a K-Ratio goal, a K-Ratio sort). Failure is logged and
-        dropped, never a reason to fail the simulation that produced the alpha.
+        Alphas that land together are read from one list page rather than a request each.
+        Daily returns are *not* fetched here — they cost a request per alpha and are
+        pulled on demand. Failure is logged and dropped, never a reason to fail the
+        simulation that produced the alpha.
         """
         future = self._landed.get(alpha_id)
         if future is None:
@@ -375,8 +364,7 @@ class Backfill:
                 log.warning("vault.capture_notify_failed", alpha_id=alpha_id, exc_info=True)
 
         # A finished simulation leaves the submission checks PENDING, so nothing is
-        # submittable until the platform is asked to finish them. Doing that here is
-        # what makes Yield Rate a real measurement rather than a permanent zero.
+        # submittable until the platform is asked to finish them.
         if is_promising(checks_json(alpha)):
             self.schedule_check(alpha_id)
 

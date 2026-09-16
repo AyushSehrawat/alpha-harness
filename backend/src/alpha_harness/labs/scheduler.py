@@ -1,9 +1,8 @@
 """Tasks: what every research lab shares once its work is added.
 
-A lab adds a task and the Tasks tab runs it. The running is the same for every lab:
-waiting for cores, keeping them full as batches come back, and taking unsent work off the
-queue. A lab only decides how one point of its search is drawn (its ``draw``), so Search
-Lab and Template Lab differ in the Alphas they write, not in how those are run.
+A lab adds a task and the Tasks tab runs it. Running is the same for every lab: waiting for
+cores, keeping them full as batches come back, and taking unsent work off the queue. A lab
+only decides how one point of its search is drawn (its ``draw``).
 """
 
 from __future__ import annotations
@@ -135,9 +134,8 @@ def ask_points(
             and schema
             and (problems := validate_settings(schema, request.to_wire()["settings"]))
         ):
-            # A task's space is fixed when it is added, but BRAIN withdraws settings (USA
-            # ILLIQUID_MINVOL1M, 2026-09-14). Sent, the point is only rejected; pruned, it
-            # costs nothing and the search asks again.
+            # A task's space is fixed when it is added, but BRAIN withdraws settings. Sent,
+            # the point is only rejected; pruned, it costs nothing and the search asks again.
             log.warning("tasks.point_unavailable", problem=problems[0])
             study.tell(trial, state=OptunaState.PRUNED)
             continue
@@ -447,9 +445,8 @@ async def resize_task(
 async def finish(optimizer: Optimizer, study_id: int, status: StudyStatus, message: str) -> None:
     """End a task, and stop it spending: its unsent simulations leave the queue.
 
-    Only the status used to change, so a task that failed mid-round kept its queued
-    simulations and its cores, and the engine went on sending work nobody would score.
-    Simulations already sent are left to finish; running the task again scores them.
+    Dropping the queue matters as much as the status, or the engine goes on sending work
+    nobody will score. Simulations already sent finish; running the task again scores them.
     """
     async with optimizer.db.session() as session:
         stored = await session.get(Study, study_id)

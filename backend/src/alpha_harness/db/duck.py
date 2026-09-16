@@ -1,16 +1,13 @@
 """DuckDB store for the data catalog.
 
-Why a second engine: the catalog is ~85k fields *per* (instrumentType, region, delay,
-universe) tuple, and the Data Explorer's whole point is set operations across those
-tuples — "which fields exist in delay 0 but not delay 1", "which are in both TOP3000 and
-TOP1000". Those are columnar aggregate queries, which is what DuckDB is for. SQLite
-keeps the transactional state that must never be lost; DuckDB keeps the bulk data that
-can always be re-synced.
+A second engine because the catalog is ~85k fields *per* (instrumentType, region, delay,
+universe) tuple and the Data Explorer's queries are columnar set operations across those
+tuples. SQLite keeps the transactional state that must never be lost; DuckDB keeps the
+bulk data that can always be re-synced.
 
-The Python driver is synchronous and a connection is not safe for concurrent use. Writes
-are serialised behind a lock; reads each take their own cursor, which DuckDB's MVCC lets
-run beside a write, so a long correlation read never stalls a sync. All of it runs off
-the event loop.
+The driver is synchronous and a connection is not safe for concurrent use, so writes are
+serialised behind a lock, all off the event loop. Reads take their own cursor instead, which
+MVCC lets run beside a write, so a long correlation read never stalls a sync.
 """
 
 from __future__ import annotations
@@ -101,13 +98,9 @@ CREATE INDEX IF NOT EXISTS ix_field_id ON data_field (field_id);
 CREATE INDEX IF NOT EXISTS ix_set_tuple
     ON data_set (instrument_type, region, delay, universe);
 
--- Every alpha ever simulated, and its daily profit-and-loss series.
---
--- Here rather than in SQLite because the interesting question is analytical and
--- pairwise: which two alphas move independently of each other. That is a correlation
--- over ~2,500 daily values per alpha across every pair, which is what a columnar engine
--- is for. It is also re-fetchable from the platform, so it belongs with the data that
--- can be rebuilt rather than the state that must never be lost.
+-- Every alpha ever simulated, and its daily profit-and-loss series. Here rather than in
+-- SQLite because pairwise correlation over ~2,500 daily values per alpha is a columnar
+-- query, and because it is all re-fetchable from the platform.
 CREATE TABLE IF NOT EXISTS alpha (
     alpha_id          VARCHAR PRIMARY KEY,
     expression        VARCHAR,
@@ -263,13 +256,9 @@ _KEYS = {
 
 # Explicit Arrow types per column, matching the DuckDB schema above.
 #
-# Writes go through Arrow rather than parameter binding, and the difference is not
-# marginal: binding a 10,000-row batch as SQL parameters measured ~59s, while handing
-# DuckDB the same rows as an Arrow table and doing INSERT ... SELECT measured ~78ms.
-# Parameter binding, not storage, was the bottleneck.
-#
-# The types are stated rather than inferred because a column that happens to be all
-# NULL in one page (a metric the platform has not populated) would otherwise infer as
+# Writes go through Arrow rather than SQL parameter binding, which was the bottleneck on
+# large batches by three orders of magnitude. The types are stated rather than inferred
+# because a column that happens to be all NULL in one page would otherwise infer as
 # Arrow's null type and fail to insert into a typed column.
 _STR = pa.string()
 _F64 = pa.float64()
@@ -408,8 +397,7 @@ def _to_arrow(table: str, columns: tuple[str, ...], rows: list[tuple[Any, ...]])
 class CatalogLockedError(RuntimeError):
     """Another Alpha Harness backend already has the catalog open.
 
-    DuckDB allows exactly one writer. This is a documented constraint rather than a
-    fault, and the fix is always the same: stop the other one.
+    DuckDB allows exactly one writer, so the fix is always the same: stop the other one.
     """
 
     def __init__(self, path: Path, detail: str) -> None:
@@ -446,14 +434,12 @@ class Catalog:
 
     def _open_sync(self) -> None:
         try:
-            # Timestamps arrive as UTC and are read back as UTC. DuckDB's zone defaulted to
-            # the machine's, shifting every stored time by the local offset; set here, not
-            # with SET, so the read cursors get it too.
+            # DuckDB's zone otherwise defaults to the machine's, shifting every stored
+            # time by the local offset. Set here, not with SET, so read cursors get it too.
             self._conn = duckdb.connect(str(self.path), config={"TimeZone": "UTC"})
         except duckdb.IOException as exc:
-            # DuckDB is single-writer, so a second backend is the overwhelmingly likely
-            # cause. The raw exception is a wall of text ending in a URL; say the useful
-            # thing instead, since this is a documented mode rather than a fault.
+            # DuckDB is single-writer, so a second backend is the likely cause. The raw
+            # exception is a wall of text ending in a URL; say the useful thing instead.
             if "lock" not in str(exc).lower():
                 raise
             raise CatalogLockedError(self.path, str(exc)) from exc
@@ -475,9 +461,8 @@ class Catalog:
     async def _locked[T](self, fn: Callable[..., T], *args: Any) -> T:
         """Run ``fn`` on the one connection, holding the lock until the thread is done.
 
-        A thread cannot be cancelled. If the awaiting task is, the lock must still not be
-        released while the thread is using the connection — otherwise the next caller
-        runs on the same non-thread-safe connection at the same time.
+        A thread cannot be cancelled, so if the awaiting task is, the lock must still not
+        be released while the thread holds the non-thread-safe connection.
         """
         async with self._lock:
             work = asyncio.ensure_future(asyncio.to_thread(fn, *args))
@@ -560,8 +545,8 @@ class Catalog:
 
         Upsert first, then drop what the download no longer lists: a field BRAIN has
         removed would otherwise stay selectable and spend a simulation on an error.
-        Deleting first and re-inserting the same keys is avoided on purpose, because
-        DuckDB checks the primary key eagerly inside a transaction.
+        Delete-then-insert is not an option, because DuckDB checks the primary key
+        eagerly inside a transaction.
         """
         if not rows:
             return 0

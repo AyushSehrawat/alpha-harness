@@ -4,9 +4,8 @@ Values come from (in precedence order): process environment, the repo-root ``.en
 then the defaults below.
 
 **No BRAIN credentials here.** They are typed into the sign-in screen and sealed in the
-local vault, and nothing reads them from the environment. Seeding them from a file meant
-a checked-out repository could sign in as its owner, which is a backdoor rather than a
-convenience — and it made the sign-in screen a formality that could silently be skipped.
+local vault, and nothing reads them from the environment: seeding them from a file would
+let a checked-out repository sign in as its owner.
 """
 
 from __future__ import annotations
@@ -37,7 +36,7 @@ class Settings(BaseSettings):
 
     # --- BRAIN platform -------------------------------------------------
     # A consultant's daily simulation allowance, shown until the day's first simulation
-    # POST returns its x-ratelimit-* headers (verified live 2026-09-14, probe P15).
+    # POST returns its x-ratelimit-* headers.
     daily_simulation_allowance: int = 5000
 
     # --- Local storage --------------------------------------------------

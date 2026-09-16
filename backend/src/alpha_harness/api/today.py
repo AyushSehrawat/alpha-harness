@@ -1,24 +1,13 @@
 """Today: what you have, and what you are about to waste.
 
-One endpoint behind the first screen a consultant sees. It answers three questions in
-the order they matter:
+One endpoint behind the first screen a consultant sees: simulations left today, what the
+account can do, and what is left in the assistant's budget. It also drives the onboarding
+flow, which is linear on purpose — sign in, add a key, start.
 
-1. **How many simulations do you have left today?** They do not carry over. An unused
-   allowance is compute that WorldQuant paid for and nobody used, and that is the whole
-   reason this application exists — so it is the largest number on the page.
-2. **What can you do?** The account's permissions, in words rather than codes.
-3. **What is left in the assistant's budget?** Also daily, also wasted if unused.
-
-It also drives the onboarding flow. Everything here is linear on purpose: sign in, add a
-key, start. A branch is a decision, and every decision is somewhere to give up.
-
-**On the quota being an estimate.** The platform reveals the true daily limit *only* in
-the response headers of a simulation POST — verified against ``OPTIONS /simulations``,
-``/users/self``, ``/configuration`` and the alpha summary, none of which carry it. So
-the figure starts as the configured allowance minus what this application has run today,
-and is replaced by the platform's own number the moment the first batch comes back.
-``exact`` says which one you are looking at, because a number presented as measured when
-it was assumed is worse than no number.
+The true daily simulation limit reaches us only in the response headers of a simulation
+POST, so the figure starts as the configured allowance minus today's runs and is replaced
+by the platform's own number once the first batch comes back. ``exact`` says which one you
+are looking at.
 """
 
 from __future__ import annotations
@@ -217,9 +206,8 @@ async def _catalog(
 ) -> dict[str, Any]:
     """Whether this market has been downloaded, and how far along if it is downloading.
 
-    Every lab that spends the allowance needs a synced scope, so a consultant who has
-    not downloaded one has nothing to press. This is what lets the first screen say so
-    and offer the download, rather than showing a disabled button with no explanation.
+    Every lab that spends the allowance needs a synced scope, so the first screen can say
+    so and offer the download rather than show a disabled button with no explanation.
     """
     from ..catalog.sync import serialise_run
 
@@ -251,17 +239,14 @@ async def _catalog(
         "synced": match is not None,
         "fields": int(match["fields"]) if match else 0,
         "running": serialise_run(running) if running else None,
-        #: Some other market is downloaded, so the labs are not blocked outright — the
-        #: consultant just picked a scope they have not fetched yet.
         "anySynced": bool(synced),
     }
 
 
 async def _you(state: State, session: Any, stored_email: str | None) -> dict[str, Any]:
     granted = list(session.permissions or [])
-    # The auth service resolves and caches the name at sign-in; falling back to the
-    # local part of the email means the greeting still works when the profile is
-    # unavailable, which is better than showing an account id to someone new.
+    # Falling back to the local part of the email keeps the greeting working when the
+    # profile is unavailable, rather than showing an account id to someone new.
     full_name = session.full_name
     if not full_name and session.authenticated:
         await state.auth.get_user_profile()
@@ -306,10 +291,8 @@ async def simulations_today(state: State) -> dict[str, Any]:
 
     resets_in = seconds_until_reset(tz=PLATFORM_TZ)
     engine = await state.engine.status()
-    # Work that is queued has not been sent yet, so it does not show up in ``used`` —
-    # but it *is* spoken for, and counting it as waste would tell someone who has just
-    # queued their whole day that they have done nothing. That is the opposite of what
-    # this page is for.
+    # Queued work has not been sent, so it is not in ``used`` — but it is spoken for, and
+    # counting it as waste would tell someone who just queued their day they did nothing.
     queued = int(engine.get("queuedTotal") or 0)
     unspoken = max(0, remaining - queued)
 
@@ -318,9 +301,7 @@ async def simulations_today(state: State) -> dict[str, Any]:
         "used": used if not exact else max(0, limit - remaining),
         "remaining": remaining,
         "queued": queued,
-        #: What is genuinely still going to waste: not yet run and not yet claimed.
         "unspoken": unspoken,
-        # False means "assumed from your allowance", true means "the platform told us".
         "exact": exact,
         "resetsInSeconds": round(resets_in),
         "resetsAt": "midnight US Eastern",
@@ -332,8 +313,7 @@ async def simulations_today(state: State) -> dict[str, Any]:
 def _headline(remaining: int, limit: int, queued: int = 0) -> str:
     """The sentence at the top of the Dashboard.
 
-    Deterministic: it depends only on the allowance, what is left, and what is queued. It
-    names what is still unused while there is some, and stops nagging once the day is
+    Names what is still unused while there is some, and stops nagging once the day is
     claimed. No clock in it — the reset countdown is shown on its own.
     """
     if limit <= 0:
@@ -376,8 +356,8 @@ async def _assistant(state: State, keys: list[Any], enabled: list[Any]) -> dict[
     if enabled:
         status = await state.llm.keys.status(state.llm.registry)
         budget = status["budget"]
-        # The models with room to work in are the ones worth totalling; a
-        # twenty-a-day model is not a budget anyone plans around.
+        # Only models with room to work in are worth totalling; a twenty-a-day model is
+        # not a budget anyone plans around.
         remaining_total = sum(b["remainingToday"] for b in budget if b["bulk"])
 
     return {

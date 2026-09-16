@@ -1,10 +1,7 @@
 /**
- * The one way the frontend talks to the local backend.
- *
- * The backend answers errors in four shapes — `{error:{code,message}}` from typed
- * exceptions, `{detail:{code,message}}` or `{detail:"text"}` from router refusals,
- * `{detail:[…]}` from request validation, and a plain-text 500 — and every one of them
- * is folded into an `ApiError` carrying a stable `code` and a message fit to show.
+ * The one way the frontend talks to the local backend. The backend answers errors in four
+ * different shapes, and every one is folded into an `ApiError` carrying a stable `code` and a
+ * message fit to show.
  */
 
 export interface ApiErrorBody {
@@ -97,8 +94,8 @@ export function normalise(status: number, raw: unknown): ApiErrorBody {
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  // Serialised before the request: a body that cannot be turned into JSON throws a
-  // TypeError too, and inside the fetch below it would read as an unreachable backend.
+  // Serialised before the request: a body that cannot be turned into JSON throws a TypeError
+  // too, which inside the fetch below would read as an unreachable backend.
   const payload = body === undefined ? null : JSON.stringify(body)
   let response: Response
   try {
@@ -112,8 +109,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       body: payload,
     })
   } catch (failure) {
-    // Only a failed fetch is a TypeError. An aborted request, or a body that could not be
-    // serialised, would otherwise be reported as "the backend is not running".
+    // Only a failed fetch is a TypeError; anything else must not be reported as "the backend
+    // is not running".
     if (!(failure instanceof TypeError)) throw failure
     throw new ApiError(0, {
       code: 'backend_unreachable',

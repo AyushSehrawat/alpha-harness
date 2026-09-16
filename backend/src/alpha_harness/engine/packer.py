@@ -1,21 +1,14 @@
 """Packing simulations into multi-simulation batches.
 
-``POST /simulations`` accepts an array of 2-10 simulation objects, but the platform
-requires every child of one batch to agree on five fields: ``type``, ``instrumentType``,
-``region``, ``delay`` and ``language``. Children *may* differ in universe,
-neutralization, decay, truncation and expression.
+``POST /simulations`` accepts an array of 2-10 simulation objects, but every child of one
+batch must agree on ``type``, ``instrumentType``, ``region``, ``delay`` and ``language``;
+universe, neutralization, decay, truncation and expression may differ (see
+``docs/wqb-documentation/consultant-information/multi-alpha-simulation.md``).
 
-(See ``docs/wqb-documentation/brain-api/brain-api.md`` and
-``docs/wqb-documentation/consultant-information/multi-alpha-simulation.md``.)
-
-That constraint is the whole reason this module exists. Throughput is not "80 at a
-time" — it is "8 batches at a time, each of up to 10 simulations that happen to share a
-5-tuple". A sweep that varies region or delay fragments into many small batches and gets
-nowhere near 80; a sweep that varies universe, decay and expression packs perfectly.
-
-This module is deliberately pure: no database, no HTTP. It answers two questions — given
-these pending items and this many free slots, what should be sent? And once a batch
-finishes, which child belongs to which request?
+That constraint is the whole reason this module exists: throughput is not "80 at a time"
+but "8 batches of up to 10 that happen to share a 5-tuple", so a sweep varying region or
+delay fragments into small batches while one varying universe and expression packs
+perfectly. Pure by design — no database, no HTTP.
 """
 
 from __future__ import annotations
@@ -99,11 +92,7 @@ def pack(
     """Choose what to submit next.
 
     Groups items by batch key and fills up to ``free_slots`` batches of at most
-    ``max_batch`` each.
-
-    Fullest groups go first. With 8 slots and a queue holding one group of 30 and six
-    groups of 1, sending the big group's three full batches moves 30 simulations while
-    sending the singletons moves 6 — so the greedy choice is also the right one.
+    ``max_batch`` each, fullest groups first so a round moves the most simulations it can.
 
     ``task_capacity`` caps how many batches each named task may be given in this round;
     a task absent from the mapping is unconstrained. Items are never mixed across tasks,
@@ -158,9 +147,8 @@ def allocate_slots(
     configured ceiling on *concurrent* slots per task, and ``in_flight`` how many each
     already holds. A task with no quota is unconstrained.
 
-    Allocation is round-robin rather than proportional: with two tasks wanting work and
-    three slots free, one gets two and the other one, instead of a large sweep taking
-    everything and a single manual experiment waiting behind it.
+    Allocation is round-robin rather than proportional, so a large sweep cannot take every
+    slot while a single manual experiment waits behind it.
     """
     if free_slots <= 0:
         return {}
@@ -221,13 +209,12 @@ def match_children(
     """Attribute each child simulation BRAIN returned to the queued row that asked for it.
 
     ``payloads`` maps record id to the request it sent, in submission order; ``children``
-    is ``(platform id, simulation body)`` per child read back. Rather than trusting
-    positional order, rows are matched by the fields that may vary within a batch — the
-    fields that could differ are exactly what identifies which request produced which
-    alpha. Returns record id -> ``{"platform_id", "body"}``, plus ``"positional": True``
-    where the signature could not place a child and submission order was used instead,
-    which is right in practice but recorded so a wrong attribution is visible.
-    ``positional=False`` attributes signature matches only, for a partial set of children.
+    is ``(platform id, simulation body)`` per child read back. Rows are matched by the
+    fields that may vary within a batch rather than by position, because those fields are
+    exactly what identifies which request produced which alpha. Returns record id ->
+    ``{"platform_id", "body"}``, plus ``"positional": True`` where the signature could not
+    place a child and submission order was used instead, so a wrong attribution stays
+    visible; ``positional=False`` disables that fallback, for a partial set of children.
     """
     resolved: dict[int, dict[str, Any]] = {}
     unmatched: list[tuple[str, dict[str, Any]]] = []
@@ -256,13 +243,10 @@ def match_children(
 def _asked_for(payload: dict[str, Any], body: dict[str, Any]) -> bool:
     """Whether a child simulation the platform returned is what ``payload`` requested.
 
-    Every setting both carry must agree: children of one batch can differ in any of them
-    (pasteurization, unit handling...), not just universe, neutralization, decay and
-    truncation, and two that differ only elsewhere would trade alphas. A setting the
-    readback leaves out (``testPeriod``, say) cannot tell them apart and is not compared.
-
-    Expressions go through :func:`.reconcile.squash`: stored code can come back wrapped
-    in ``{"code": ...}`` and with whitespace changed.
+    Every setting both carry must agree: children of one batch can differ in any of them,
+    and two that differ only in an unchecked one would trade alphas. A setting the readback
+    leaves out (``testPeriod``, say) cannot tell them apart and is not compared; expressions
+    go through :func:`.reconcile.squash` because stored code comes back rewrapped.
     """
 
     def code(d: dict[str, Any]) -> str | None:

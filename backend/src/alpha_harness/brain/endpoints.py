@@ -3,11 +3,9 @@
 One place that knows which endpoint needs which ``Accept`` version, which ones are
 asynchronous jobs, and how pagination works.
 
-Structured platform entities (auth state, operators, alphas, recordsets, data sets and
-categories) come back as Pydantic models. Two kinds of response deliberately stay raw
-dicts: bulk reads where validating every row costs too much (``list_data_fields_all``,
-76k+ rows in one response), and open-ended or undocumented blobs the callers read
-selectively (checks, correlations, summaries, pyramids, ``alpha_body``).
+Structured platform entities come back as Pydantic models. Two kinds of response stay raw
+dicts: bulk reads where validating every row costs too much (``list_data_fields_all``), and
+open-ended or undocumented blobs the callers read selectively.
 """
 
 from __future__ import annotations
@@ -38,12 +36,12 @@ log = structlog.get_logger(__name__)
 
 # Endpoints pinned to a non-default Accept version (docs/wqb-api/03-conventions.md).
 V_SETTINGS_SCHEMA = "4.0"  # OPTIONS /simulations
-#: GET /data-fields with all four scope params. Unpaginated in practice: 76,519 rows for
-#: USA/1/TOP3000 in one response, verified live 2026-09-14 (probe P6).
+#: GET /data-fields with all four scope params. Unpaginated in practice: tens of thousands
+#: of rows arrive in one response.
 V_FIELDS_ALL = "3.0"
 V_ALPHA_LIST = "4.0"  # GET /users/{id}/alphas
-#: GET /users/self/alphas/summary. Not in the docs; 4.0 returns {unsubmitted, active,
-#: decommissioned} where 2.0 returns {is, os, prod}, verified live 2026-09-14 (probe P14).
+#: GET /users/self/alphas/summary. Undocumented; 4.0 returns {unsubmitted, active,
+#: decommissioned} where 2.0 returns {is, os, prod}.
 V_ALPHA_SUMMARY = "4.0"
 
 #: The simulation type this application sends; its per-type settings tree is merged in.
@@ -146,12 +144,11 @@ class BrainEndpoints:
     ) -> BrainResponse:
         """Start a simulation. Returns the raw response — the caller needs ``Location``.
 
-        A ``201`` carries the simulation id **only** in the ``Location`` header; the body
-        is empty. For a multi-simulation this is the *parent* id, and it is the only
-        handle that can cancel the batch. Persist it before doing anything else.
-
-        Deliberately does not parse the response: :mod:`alpha_harness.engine.tracker`
-        owns the ordering that makes cancellation safe.
+        A ``201`` carries the simulation id **only** in the ``Location`` header, and for a
+        multi-simulation that is the *parent* id, the only handle that can cancel the
+        batch — so persist it before doing anything else. Parsing is left to
+        :mod:`alpha_harness.engine.tracker`, which owns the ordering that keeps cancellation
+        safe.
         """
         if isinstance(payload, list):
             body: Any = [p.to_wire() for p in payload]
@@ -196,14 +193,14 @@ class BrainEndpoints:
     async def correlations(self, alpha_id: str, kind: str = "self") -> dict[str, Any]:
         """``self`` or ``prod`` correlation. Asynchronous.
 
-        ``power-pool`` is not in the docs but exists, verified live 2026-09-14 (probe P12).
+        ``power-pool`` is undocumented but works.
         """
         r = await self.client.poll(f"/alphas/{alpha_id}/correlations/{kind}")
         return r.body if isinstance(r.body, dict) else {}
 
     async def alpha_body(self, alpha_id: str) -> dict[str, Any]:
         """``GET /alphas/{id}`` exactly as sent: the page reads blocks the model leaves out
-        (``is.investabilityConstrained``, ``classifications``; verified live 2026-09-14, P9)."""
+        (``is.investabilityConstrained``, ``classifications``)."""
         r = await self.client.request("GET", f"/alphas/{alpha_id}")
         return r.body if isinstance(r.body, dict) else {}
 
@@ -214,7 +211,7 @@ class BrainEndpoints:
     async def before_and_after(self, alpha_id: str) -> dict[str, Any]:
         """The pool's stats before and after adding this Alpha.
 
-        Asynchronous: answers with ``Retry-After`` first, verified live 2026-09-14 (P16).
+        Asynchronous: answers with ``Retry-After`` first.
         """
         r = await self.client.poll(f"/users/self/alphas/{alpha_id}/before-and-after-performance")
         return r.body if isinstance(r.body, dict) else {}
@@ -226,14 +223,13 @@ class BrainEndpoints:
 
     # -- the alpha pool --------------------------------------------------
     #
-    # Listing needs ``version=4.0`` and the filter DSL, where the comparison operator is
-    # part of the parameter name. The query is therefore built by
-    # :mod:`alpha_harness.brain.filters` and appended to the path, never passed as a
-    # params dict — a dict helper encodes the operator into the value and the server
-    # then matches nothing.
+    # Listing needs ``version=4.0`` and the filter DSL of
+    # :mod:`alpha_harness.brain.filters`, appended to the path rather than passed as a
+    # params dict — a dict helper encodes the operator into the value and the server then
+    # matches nothing.
     #
-    # There is deliberately no ``submit`` here. Submission is irreversible, and the
-    # absence of the method is the guarantee: no code path can reach it by mistake.
+    # There is deliberately no ``submit`` here: submission is irreversible, and the absence
+    # of the method is the guarantee that no code path reaches it by mistake.
 
     async def list_alphas(self, query: AlphaQuery, user_id: str = "self") -> dict[str, Any]:
         """One page of your alphas, with the total match count."""
@@ -278,7 +274,7 @@ class BrainEndpoints:
     async def pyramid_multipliers(self) -> list[dict[str, Any]]:
         """``{category, region, delay, multiplier}`` for every pyramid on this account.
 
-        The response shape is undocumented; ``{pyramids: [...]}`` verified live 2026-09-14 (P13).
+        The response shape is undocumented: ``{pyramids: [...]}``.
         """
         r = await self.client.request_retrying("GET", "/users/self/activities/pyramid-multipliers")
         items = r.body.get("pyramids") if isinstance(r.body, dict) else None

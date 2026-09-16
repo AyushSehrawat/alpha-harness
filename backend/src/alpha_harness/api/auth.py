@@ -73,10 +73,9 @@ async def login(payload: LoginRequest, state: State) -> Session:
         # Batch size follows MULTI_SIMULATION. Startup applies it when it restores a
         # session; a fresh sign-in has to as well.
         state.engine.configure_from_permissions(info.permissions)
-        # Refresh the authoritative settings schema now that permissions are known —
-        # available regions and universes depend on the account. Never block sign-in
-        # on it; the cached schema is good enough if this fails. Logged, not silent:
-        # a settings form built from a stale schema offers universes BRAIN has withdrawn.
+        # Available regions and universes depend on the account, so refresh the schema now
+        # that permissions are known. Never block sign-in on it, but never fail silently
+        # either: a stale schema offers universes BRAIN has withdrawn.
         try:
             await state.metadata.refresh_metadata()
         except Exception:

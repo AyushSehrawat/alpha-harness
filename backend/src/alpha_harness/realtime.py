@@ -27,8 +27,7 @@ class Hub:
     """Tracks connected clients and broadcasts messages to them.
 
     No lock: the set is only ever mutated by a single statement with no ``await`` in it,
-    which the event loop cannot interleave. The sends happen against a copy, outside any
-    critical section, because those genuinely do yield.
+    which the event loop cannot interleave. Sends do yield, so they run against a copy.
     """
 
     def __init__(self) -> None:
@@ -52,11 +51,9 @@ class Hub:
     async def broadcast(self, topic: str, payload: Any, *, replay: bool = True) -> None:
         """Send to every client at once, dropping any that fail or stall.
 
-        Callers include the engine and tracker loops, so a browser tab that stops reading
-        must not hold up scheduling: each send gets :data:`SEND_TIMEOUT` seconds, and the
-        sends run side by side so one slow client costs that once, not once per client.
-        ``replay=False`` keeps a side-channel message from replacing the snapshot a new
-        client is sent on connect.
+        A browser tab that stops reading must not hold up the engine and tracker loops, so
+        each send gets :data:`SEND_TIMEOUT` seconds and they run side by side. ``replay=False``
+        keeps a side-channel message from replacing the snapshot new clients get on connect.
         """
         message = {"topic": topic, "payload": payload}
         if replay:

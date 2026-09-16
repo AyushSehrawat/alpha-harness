@@ -1,6 +1,6 @@
 /**
- * A virtualised, server-sorted table. Only visible rows mount, so a 500-row page scrolls
- * without layout cost. Sorting and paging are the backend's job (DuckDB); this only asks.
+ * A virtualised table: only visible rows mount, so a 500-row page scrolls without layout cost.
+ * Sorting and paging are the backend's job (DuckDB); this only asks.
  */
 
 import { useVirtualizer } from '@tanstack/react-virtual'

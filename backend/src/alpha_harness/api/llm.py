@@ -1,9 +1,7 @@
 """The assistant: keys, models, prompts, and the context it is shown.
 
-``GET /api/llm/prompts`` returns every system prompt in full. That is deliberate — the
-prompt decides what an answer looks like and is otherwise invisible, so it is served
-rather than hidden. Nothing here is a secret; the keys are, and those only ever leave as
-a masked hint.
+Prompts are served in full on purpose: one decides what an answer looks like and is
+otherwise invisible. Keys are the only secret here, and leave only as a masked hint.
 """
 
 from __future__ import annotations
@@ -161,8 +159,8 @@ class LLMContextTree(Out):
 async def models(state: State) -> LLMModels:
     """The model roster with each one's daily budget.
 
-    Requests-per-day varies twenty-five-fold across these models and is the limit that
-    ends a session, so it is returned with every entry rather than hidden in a help page.
+    Requests-per-day is the limit that ends a session, so it travels with every entry
+    rather than sitting in a help page.
     """
     return LLMModels.model_validate(state.llm.registry.to_dict())
 
@@ -172,11 +170,7 @@ async def models(state: State) -> LLMModels:
 
 @router.get("/prompts")
 async def list_prompts() -> PromptList:
-    """Every prompt, in full.
-
-    Served rather than hidden: a prompt decides what an answer looks like and is
-    otherwise invisible in the output.
-    """
+    """Every prompt, in full."""
     return PromptList.model_validate(
         {
             "prompts": [
@@ -189,7 +183,7 @@ async def list_prompts() -> PromptList:
                     "temperature": p.temperature,
                     "body": p.body,
                     "characters": len(p.body),
-                    # Roughly four characters to a token. Worth showing: prompt tokens come
+                    # Roughly four characters to a token. Shown because prompt tokens come
                     # out of the same per-minute budget as the answer.
                     "estimatedTokens": max(1, len(p.body) // 4),
                 }
@@ -209,9 +203,8 @@ async def list_keys(state: State) -> LLMKeyStatus:
 async def providers() -> LLMProviders:
     """Every assistant that can answer, and how to get a free key for it.
 
-    All of them are free and need no card. That is the selection rule: the assistant is
-    optional here, and a provider asking for payment details turns an optional
-    convenience into a purchase decision.
+    All of them are free and need no card — the assistant is optional here, so asking for
+    payment details would turn a convenience into a purchase decision.
     """
     return LLMProviders.model_validate(catalogue())
 
@@ -276,8 +269,7 @@ async def context(
     """Exactly what the model is shown about your data.
 
     The hierarchy with metadata, and no individual fields — tens of thousands of field
-    names would fill the context window and leave no room to think. Set ``rendered`` to
-    read the literal text, so nothing about the assistant is a black box.
+    names would fill the context window. Set ``rendered`` to read the literal text.
     """
     scope = Scope(
         instrument_type=instrument_type, region=region, delay=delay, universe=universe

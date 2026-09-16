@@ -5,23 +5,15 @@ the parameter *name*, so a filter is one opaque token::
 
     ?is.sharpe>=1.58&status!=UNSUBMITTED&name~momentum&settings.region=USA
 
-Anything built with a normal dict-to-querystring helper produces
-``is.sharpe=%3E%3D1.58`` instead, which the server reads as an equality test against the
-literal string ``>=1.58`` and quietly returns nothing. Hence a module of its own.
+A normal dict-to-querystring helper produces ``is.sharpe=%3E%3D1.58`` instead, which the
+server reads as an equality test against the literal string ``>=1.58`` and quietly returns
+nothing. Hence a module of its own.
 
-Two behaviours of the platform's own client are mirrored deliberately, because not
-mirroring them changes which alphas come back:
-
-**``hidden`` defaults to false.** Omit it and hidden alphas are silently excluded. That
-is fine as a default and wrong as a surprise, so :class:`AlphaQuery` states it.
-
-**A comma in a value is the multi-value separator ``%1F``.** A literal comma matches
-nothing (verified live 2026-09-14, probe P5).
-
-**Date bounds are full timestamps, and whole days are inclusive.** The v4 list refuses a
-bare date ("Expected ISO 8601 datetime with timezone", probe P5), so a date becomes the
-start of its day in ``America/New_York``: ``dateCreated>=`` that day, and ``dateCreated<``
-the next day (``docs/wqb-api/03-conventions.md``, "Date filters").
+Three platform behaviours are mirrored deliberately, because not mirroring them changes
+which alphas come back: ``hidden`` defaults to false, so omitting it silently excludes
+hidden alphas; a comma in a value is the multi-value separator ``%1F``, so a literal comma
+matches nothing; and the v4 list refuses a bare date, so a date becomes the start of its
+day in ``America/New_York`` (``docs/wqb-api/03-conventions.md``, "Date filters").
 """
 
 from __future__ import annotations

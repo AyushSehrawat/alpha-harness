@@ -1,11 +1,9 @@
 """Fast Expression, parsed into a tree and written back.
 
-Evolution Lab breeds from Alphas the consultant already has, so it must read whatever BRAIN
-accepts, not only the shapes this application writes: statements separated by ``;``,
-assignments, keyword arguments, the ternary, ``&&``/``||``/``!``, comparisons and
-arithmetic. :func:`render` writes the fewest parentheses that keep the meaning, and
-``parse(render(tree)) == tree`` for every tree :func:`parse` returns, which is what makes
-changing a tree and writing it back safe.
+Evolution Lab breeds from Alphas the consultant already has, so the grammar covers whatever
+BRAIN accepts, not only the shapes this application writes. ``parse(render(tree)) == tree``
+for every tree :func:`parse` returns, which is what makes changing a tree and writing it
+back safe.
 
 Precedence, loosest first: ternary, ``||``, ``&&``, comparisons, ``+ -``, ``* /``, ``^``
 (right-associative), unary ``-``/``!``, calls.
@@ -71,13 +69,10 @@ def operator_table(
 ) -> dict[str, OperatorInfo]:
     """Arity read from each operator's published definition, e.g. ``ts_rank(x, d, constant = 0)``.
 
-    Only operators whose published ``scope`` includes ``scope`` are kept: ``combo_a`` and
-    the ``reduce_*`` family are COMBO-only, and a GA mutation once swapped ``combo_a`` into
-    a regular alpha because it shares ``group_neutralize``'s category and arity. ``scope``
-    is ``["COMBO"]`` for them, verified live 2026-09-14 (probe P7b). Only the first
-    signature counts (``bucket`` lists two, ``add`` appends
-    ``x + y``), and commas inside quotes are not separators. An operator whose definition
-    cannot be read is left out, so it is never swapped in and never passes validation.
+    Only operators whose published ``scope`` includes ``scope`` are kept, so a COMBO-only
+    operator is never swapped into a regular Alpha. Only the first signature counts and
+    commas inside quotes are not separators; an operator whose definition cannot be read is
+    left out, so it never passes validation.
     """
     table: dict[str, OperatorInfo] = {}
     for operator in operators:

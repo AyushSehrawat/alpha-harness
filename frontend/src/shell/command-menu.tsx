@@ -44,7 +44,7 @@ export function CommandMenu() {
       [
         'Quick Actions',
         [
-          // A typed apostrophe is U+0027; the typographic one never matched "today's".
+          // A typed apostrophe is U+0027, so the typographic one would never match.
           { label: "Dispatch Today's Simulations", href: '/dashboard' },
           { label: 'View Live Simulation Matrix', href: '/matrix' },
           { label: 'Browse Submittable Alphas', href: '/pool/submittable' },

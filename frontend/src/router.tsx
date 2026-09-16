@@ -110,9 +110,9 @@ const alpha = createRoute({
   component: lazyRouteComponent(() => import('@/screens/alpha'), 'AlphaScreen'),
 })
 
-// The screen belongs to ``/ai`` itself, and the two routes below only carry the params it
-// reads. Mounted on each of them instead, the first reply — which moves the URL to its new
-// thread — remounted the screen and lost what that reply had just said.
+// The screen belongs to ``/ai`` itself; the two routes below only carry the params it reads.
+// Mounting it on each of them instead remounts the screen when a reply moves the URL to its
+// new thread, losing what that reply just said.
 const ai = createRoute({
   getParentRoute: () => root,
   path: '/ai',

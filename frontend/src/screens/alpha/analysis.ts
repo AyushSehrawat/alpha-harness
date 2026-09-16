@@ -1,10 +1,7 @@
 /**
  * What the Alpha page works out for itself, from what BRAIN already sent: the verdict on
  * submission, Power Pool eligibility, and the PnL analysis BRAIN's page does not show.
- * Pure functions; nothing here calls the network.
- *
- * Rules are BRAIN's own, from docs/wqb-documentation: consultant submission tests, Power Pool
- * eligibility (interpret-results/alpha-submission.md, getting-started-power-pool-alphas.md).
+ * Pure functions; the rules are BRAIN's own, from docs/wqb-documentation.
  */
 
 import type { AlphaCheck, CheckResult } from '@/api/types'
@@ -48,10 +45,8 @@ export const checkName = (name: string) =>
     .map((w, i) => (i === 0 ? w[0]?.toUpperCase() + w.slice(1) : w))
     .join(' ')
 
-/** A check that caps its value from above, rather than setting a floor.
- *
- * ``CONCENTRATED_WEIGHT`` is one and is named like neither: read as a floor, an Alpha holding
- * too much in one name was drawn as passing, with its limit written as a minimum. */
+/** A check that caps its value from above, rather than setting a floor. `CONCENTRATED_WEIGHT`
+ * is one despite its name, so it is listed by hand. */
 export const isCeiling = (name: string) =>
   name === 'CONCENTRATED_WEIGHT' || name.startsWith('HIGH_') || name.includes('CORRELATION')
 
@@ -100,9 +95,8 @@ export function verdictOf(alpha: AlphaInfo): Verdict {
   const groups = groupChecks(alpha.checks)
   if (alpha.status && alpha.status !== 'UNSUBMITTED') return { kind: 'submitted', groups }
   if (groups.failing.length > 0) return { kind: 'blocked', groups }
-  // Nothing gating has run yet — an Alpha the platform has not judged, or has only labelled.
-  // Called ready, it invited a permanent submission on the strength of no checks at all; the
-  // backend reads an empty check array the same way (``vault/yields.is_submittable``).
+  // No gating check has run, so the Alpha is pending rather than ready: calling it ready would
+  // invite a permanent submission on the strength of nothing (as `vault/yields.is_submittable`).
   const judged = groups.failing.length + groups.pending.length + groups.passing.length
   if (judged === 0 || groups.pending.length > 0) return { kind: 'pending', groups }
   return { kind: 'ready', groups }

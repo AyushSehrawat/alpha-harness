@@ -1,19 +1,13 @@
 """Download the BRAIN data catalog into DuckDB.
 
-Quantitative research starts from data, so the catalog is the foundation everything else
-reads: templates pick fields from it, the LLM is given its category tree, and the Data
-tab is a direct view of it.
-
 Scope is one ``(instrumentType, region, delay, universe)`` tuple per run, because that is
 exactly how the platform scopes ``/data-fields`` — a field that exists in USA/delay-1
 may simply not exist in EUR/delay-0. Storing one row per field *per tuple* is what makes
 "which fields are in both delays" a single query later.
 
-**Fields arrive in one request.** ``GET /data-fields`` at ``version=3.0`` with all four
-scope parameters (``docs/wqb-api/endpoints/data.md``) returns the whole scope in one
-response: 76,519 fields for USA/delay-1/TOP3000, verified live 2026-09-14 (probe P6).
-
-Datasets are paged; categories are one request and do not depend on the scope (P7).
+``GET /data-fields`` at ``version=3.0`` with all four scope parameters returns a whole
+scope in one response (``docs/wqb-api/endpoints/data.md``). Datasets are paged;
+categories are one request and do not depend on the scope.
 """
 
 from __future__ import annotations
@@ -231,10 +225,9 @@ class CatalogSync:
         synced: list[SyncTarget] = []
         # Bounds how many markets hold a full field payload in memory at once.
         gate = asyncio.Semaphore(ALL_CONCURRENCY)
-        # The taxonomy is the same for every scope, so it is read once. Locked because up to
-        # ``ALL_CONCURRENCY`` markets reach this together and each would fetch its own copy.
-        # Held only across the fetch, so a failure leaves it unset for the next market's
-        # retry rather than failing the run.
+        # The taxonomy is the same for every scope, so it is read once. Locked because up
+        # to ``ALL_CONCURRENCY`` markets reach this together; held only across the fetch,
+        # so a failure leaves it unset for the next market's retry.
         taxonomy: list[DataCategory] | None = None
         taxonomy_lock = asyncio.Lock()
 

@@ -31,8 +31,8 @@ export function Shell() {
     )
   }
 
-  // Only a load that never succeeded: a failed background refetch keeps its data, and
-  // swapping the whole workspace for this screen lost open dialogs and unsaved forms.
+  // Only a load that never succeeded: a failed background refetch keeps its data, and swapping
+  // the whole workspace for this screen would lose open dialogs and unsaved forms.
   if (query.data === undefined) {
     return (
       <div className="flex h-svh items-center justify-center p-6">
@@ -58,11 +58,8 @@ export function Shell() {
 }
 
 /** Sidebar | workspace, draggable from `lg` up. Dragged below its minimum it collapses to the
- * icon rail; below `lg` the rail is all there is.
- *
- * One group at every width, and the panels are keyed: swapping the whole tree for a plain
- * grid on the narrow side remounted the screen, so crossing 1024px — a tablet turned on its
- * side — threw away whatever was half-typed in it. */
+ * icon rail; below `lg` the rail is all there is. One keyed group at every width, so crossing
+ * 1024px does not remount the screen and throw away whatever was half-typed in it. */
 function Workspace({ you }: { you: Today['you'] }) {
   const wide = useMediaQuery(WIDE)
   const [dragCollapsed, setDragCollapsed] = useState(false)

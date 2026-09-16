@@ -9,9 +9,8 @@ import { Button, Input } from '@/ui/kit'
 import { buildTree, summarize } from './dataset-tree'
 
 /**
- * The dataset filter as a Category → Subcategory → Dataset tree: tick a whole category, whole
- * subcategories or single datasets. The choice is always the dataset ids under what is ticked,
- * which is what the fields query and the labs take. Counts are fields under the other filters.
+ * The dataset filter as a Category → Subcategory → Dataset tree. The choice is always the
+ * dataset ids under what is ticked, which is what the fields query and the labs take.
  */
 export function DatasetTree({
   source,

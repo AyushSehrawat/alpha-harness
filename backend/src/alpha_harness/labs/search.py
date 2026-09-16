@@ -260,9 +260,9 @@ def identity(request: SimulationRequest) -> tuple[str, str]:
 def identity_of(expression: str | None, settings: dict[str, Any] | None) -> tuple[str, str]:
     """What makes two trials the same simulation: the expression and the settings.
 
-    Settings go through the request model first. Seeds keep the short dict stored with the
-    Alpha and children the full request, so compared raw a child identical to a seed
-    looked new (seen live 2026-09-10: seed A10vjlRw was listed as a bred child).
+    Settings go through the request model first: seeds keep the short dict stored with the
+    Alpha and children the full request, so compared raw a child identical to a seed looks
+    new.
     """
     try:
         normal = SimulationSettings.model_validate(settings or {}).model_dump(

@@ -256,8 +256,8 @@ export function AggregatesPanel({ alpha }: { alpha: AlphaInfo }) {
           {ROWS.map(({ key, label, format }) => {
             const a = base[key]
             const b = kept?.[key]
-            // Only from a positive baseline: -2.0 kept of -1.5 is 133%, which read as a
-            // healthy share of a number that was never good.
+            // Only from a positive baseline: -2.0 kept of -1.5 is 133%, which reads as a healthy
+            // share of a number that was never good.
             const share =
               isNum(a) && isNum(b) && a > 0 && ['sharpe', 'fitness', 'returns', 'pnl'].includes(key)
                 ? b / a

@@ -19,8 +19,8 @@ const DEFAULT_RUN = 500
 
 export function RunToday({ today }: { today: Today | undefined }) {
   const queryClient = useQueryClient()
-  // The typed text, not the number sent. Bound to the clamped value, the field fought back:
-  // clearing it snapped to 500, and typing 1000 became 500 at the third keystroke.
+  // The typed text, not the number sent: binding the field to the clamped value would rewrite
+  // it mid-keystroke.
   const [typed, setTyped] = useState<string | null>(null)
   const run = useMutation({
     mutationFn: (simulations: number) => {

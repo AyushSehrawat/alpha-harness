@@ -33,10 +33,8 @@ export const color = (name: string, alpha = 1) => {
 }
 
 /**
- * Cumulative PnL in neutral ink: the path matters, not whether it ended up or down. The full chart
- * adds an underwater pane in loss, each day's distance below the running peak. With `dates` (one
- * `YYYY-MM-DD` per value) the axis shows real trading days; without them, as in compact
- * sparklines, it just counts points.
+ * Cumulative PnL in neutral ink: the path matters, not whether it ended up or down. With `dates`
+ * (one `YYYY-MM-DD` per value) the axis shows real trading days; without them it counts points.
  */
 export function PnlChart({
   values,
@@ -56,12 +54,8 @@ export function PnlChart({
 }
 
 /**
- * The card sparkline, drawn as one SVG path.
- *
- * A chart here is a canvas, and the Submittable screen holds up to two hundred cards inside a
- * ``<details>`` — mounted, and their effects run, while it is still closed. Browsers keep only
- * a few dozen live 2D contexts and silently drop the rest, so the cards went blank. A path
- * costs nothing and shows the same shape; the full chart below keeps the real thing.
+ * The card sparkline, drawn as one SVG path rather than a canvas: a screen can hold hundreds of
+ * cards, and browsers silently drop all but a few dozen live 2D contexts.
  */
 function Sparkline({
   values,

@@ -58,8 +58,7 @@ export interface paths {
          * Check Alpha
          * @description Re-run the submission checks without submitting.
          *
-         *     The whole point of this endpoint: it tells you whether an alpha *would* pass, and
-         *     changes nothing on the platform. It does update the local copy, so an alpha that has
+         *     Changes nothing on the platform. It does update the local copy, so an alpha that has
          *     just resolved appears on the submit screen without waiting for the next backfill.
          */
         get: operations["check_alpha_api_alphas__alpha_id__check_get"];
@@ -793,8 +792,7 @@ export interface paths {
          * @description Exactly what the model is shown about your data.
          *
          *     The hierarchy with metadata, and no individual fields — tens of thousands of field
-         *     names would fill the context window and leave no room to think. Set ``rendered`` to
-         *     read the literal text, so nothing about the assistant is a black box.
+         *     names would fill the context window. Set ``rendered`` to read the literal text.
          */
         get: operations["context_api_llm_context_get"];
         put?: never;
@@ -898,8 +896,8 @@ export interface paths {
          * Models
          * @description The model roster with each one's daily budget.
          *
-         *     Requests-per-day varies twenty-five-fold across these models and is the limit that
-         *     ends a session, so it is returned with every entry rather than hidden in a help page.
+         *     Requests-per-day is the limit that ends a session, so it travels with every entry
+         *     rather than sitting in a help page.
          */
         get: operations["models_api_llm_models_get"];
         put?: never;
@@ -920,9 +918,6 @@ export interface paths {
         /**
          * List Prompts
          * @description Every prompt, in full.
-         *
-         *     Served rather than hidden: a prompt decides what an answer looks like and is
-         *     otherwise invisible in the output.
          */
         get: operations["list_prompts_api_llm_prompts_get"];
         put?: never;
@@ -944,9 +939,8 @@ export interface paths {
          * Providers
          * @description Every assistant that can answer, and how to get a free key for it.
          *
-         *     All of them are free and need no card. That is the selection rule: the assistant is
-         *     optional here, and a provider asking for payment details turns an optional
-         *     convenience into a purchase decision.
+         *     All of them are free and need no card — the assistant is optional here, so asking for
+         *     payment details would turn a convenience into a purchase decision.
          */
         get: operations["providers_api_llm_providers_get"];
         put?: never;
@@ -1061,9 +1055,8 @@ export interface paths {
          * Quick
          * @description Run some of today's unclaimed simulations now, split across the cores a task can hold.
          *
-         *     :data:`DEFAULT_RUN` unless the body asks for more, never beyond what is left.
-         *
-         *     The datasets are the ones last chosen, else every synced dataset in a pyramid not yet
+         *     :data:`DEFAULT_RUN` unless the body asks for more, never beyond what is left. The
+         *     datasets are the ones last chosen, else every synced dataset in a pyramid not yet
          *     formulated this quarter, highest multiplier first. Nothing is added unless all of it can run.
          */
         post: operations["quick_api_search_lab_quick_post"];
@@ -1189,10 +1182,9 @@ export interface paths {
          * Running
          * @description Everything in flight, plus the one-glance summary.
          *
-         *     ``progress`` averages only the tasks that can report it — a sync that knows it is
-         *     40% done should not be dragged toward zero by one that genuinely cannot say.
-         *     Finished tasks linger briefly so a job that completes between two polls is still
-         *     seen rather than vanishing as though it never ran.
+         *     ``progress`` averages only the tasks that can report it, so one that cannot say does
+         *     not drag the rest toward zero. Finished tasks linger briefly so a job that completes
+         *     between two polls is still seen.
          */
         get: operations["running_api_tasks_get"];
         put?: never;
@@ -1439,9 +1431,8 @@ export interface paths {
          * Submittable
          * @description Alphas that passed every submission check, ready to submit on BRAIN.
          *
-         *     The end of the whole pipeline. Each entry carries the platform's own check results,
-         *     the numbers behind them, and a link to the alpha on BRAIN — which is where it gets
-         *     submitted. This application never submits.
+         *     Each entry carries the platform's own check results, the numbers behind them, and a
+         *     link to the alpha on BRAIN — which is where it gets submitted. This application never does.
          */
         get: operations["submittable_api_vault_submittable_get"];
         put?: never;
@@ -1465,11 +1456,10 @@ export interface paths {
          * Sync Alphas
          * @description Bring the stored alphas up to date with BRAIN.
          *
-         *     Incremental — only alphas newer than the newest stored, with a day of overlap because
-         *     the platform's date filter works in whole days — once the store holds at least as
-         *     many alphas as BRAIN reports. Otherwise everything is listed, which is also what
-         *     finishes an earlier sync that was interrupted. Only the listing itself — a hundred alphas a
-         *     request, with their metrics — and nothing per alpha: no daily PnL, no submission checks.
+         *     Incremental once the store holds as many alphas as BRAIN reports — only alphas newer
+         *     than the newest stored, with a day of overlap because the platform's date filter works
+         *     in whole days. Otherwise everything is listed, which also finishes an interrupted sync.
+         *     The listing only: metrics, but no daily PnL and no submission checks.
          */
         post: operations["sync_alphas_api_vault_sync_post"];
         delete?: never;
@@ -3298,20 +3288,14 @@ export interface components {
          * SimStatus
          * @description Local lifecycle. Distinct from the platform's own status.
          *
-         *     Two of these carry weight:
+         *     ``PENDING`` is the crash window: the request is in flight and the platform id is not
+         *     known yet, so a row left there after a restart may be a real running simulation and
+         *     must be reconciled rather than discarded.
          *
-         *     ``QUEUED`` — accepted locally, waiting for a free slot. Nothing has been sent to
-         *     BRAIN, so a queued row can be dropped or re-queued freely.
-         *
-         *     ``PENDING`` — the request is in flight and we do not yet know the platform id. This
-         *     is the crash window: a row stuck here after a restart may correspond to a real
-         *     running simulation, and must be reconciled rather than discarded.
-         *
-         *     ``ORPHANED`` — sent, but the platform's answer never gave us an id: the process
-         *     stopped mid-send, the POST timed out after leaving, or a 201 came without a
-         *     ``Location``. Not final: :mod:`alpha_harness.engine.reconcile` looks for the alpha it
-         *     produced and either adopts it or queues the request again. Treating it as final
-         *     either loses the alpha or, if resent at once, spends the quota twice.
+         *     ``ORPHANED`` means it was sent but no id came back. Not final:
+         *     :mod:`alpha_harness.engine.reconcile` adopts the alpha it produced or queues the
+         *     request again, because treating it as final either loses the alpha or spends the
+         *     quota twice.
          * @enum {string}
          */
         SimStatus: "QUEUED" | "PENDING" | "RUNNING" | "COMPLETE" | "WARNING" | "ERROR" | "FAILED" | "CANCELLED" | "TIMEOUT" | "ORPHANED" | "REJECTED" | "SKIPPED";

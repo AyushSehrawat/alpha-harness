@@ -1,13 +1,11 @@
 """API keys, sealed at rest and rotated by remaining budget.
 
-The point of holding several keys is that free-tier quota is per account. Two keys is
-two hundred requests a day on a Lite model instead of one hundred. Rotation therefore
-picks by *headroom*, not round-robin: round-robin spreads load evenly, which is exactly
-wrong when one key is nearly spent and another is untouched.
+Free-tier quota is per account, so several keys add their budgets together. Rotation picks
+by *headroom* rather than round-robin, which spreads load evenly and so is exactly wrong
+when one key is nearly spent and another is untouched.
 
-Keys are sealed with the same sealer as the BRAIN password and never leave the backend.
-What the UI receives is a masked hint — enough to tell two keys apart, useless to
-anyone who intercepts it.
+Keys are sealed with the same sealer as the BRAIN password and never leave the backend; the
+UI only receives a masked hint.
 """
 
 from __future__ import annotations
@@ -197,9 +195,7 @@ class KeyStore:
     async def choose(self, model: ModelInfo, *, estimated_tokens: int = 4_000) -> int:
         """The key with the most daily budget left for this model.
 
-        Most-remaining-first rather than round-robin: quota is per account, so the goal
-        is to exhaust one key before touching the next only when they are equal, and
-        otherwise always to use whichever has the most left. Ties break on key id so the
+        Most-remaining-first rather than round-robin, with ties broken on key id so the
         choice is reproducible.
         """
         # Provider first, budget second. A Groq key cannot answer for a Gemini model, so
@@ -232,7 +228,6 @@ class KeyStore:
         text_models = registry.all("text")
         budget: list[dict[str, Any]] = []
         for model in text_models:
-            # Only models for providers the user has configured keys for are reported
             if model.provider not in configured_providers:
                 continue
             usable = [r for r in rows if r.enabled and r.provider == model.provider]

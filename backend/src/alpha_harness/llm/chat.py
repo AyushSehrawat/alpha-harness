@@ -1,25 +1,17 @@
 """A conversation with the assistant, and the field picks that come out of it.
 
-The point of this lab is not conversation for its own sake. It is that **anything a
-consultant types steers the search**, and five hundred people describing their own
-hunches in their own words spread across the data in a way that four dropdowns never
-will. Someone typing "companies people are angry about online" and someone typing
-"factories that are quietly buying more machines" end up nowhere near each other.
+Anything a consultant types steers the search, so the assistant's job here is narrow: read
+the hunch, and come back with **actual data fields** to run on. The conversation is the
+input; a field list is the output; the labs take it from there.
 
-So the assistant's job here is narrow: read the hunch, and come back with **actual data
-fields** to run on. The conversation is the input; a field list is the output; the labs
-take it from there.
-
-Two controls, both deliberate:
+Two controls:
 
 * **Model.** The daily budget varies twenty-five-fold across the roster, and running out
   is the thing that ends a session. See :mod:`.registry`.
 * **Reasoning.** Thinking tokens are billed against the same per-minute budget as the
-  answer, so "think harder" is a real cost, not a free upgrade. Four levels, labelled in
-  plain words rather than as token counts.
+  answer, so "think harder" is a real cost rather than a free upgrade.
 
-History lives in the database so a conversation survives a restart — a consultant who
-closes the laptop mid-thought should not lose it.
+History lives in the database so a conversation survives a restart.
 """
 
 from __future__ import annotations
@@ -238,8 +230,8 @@ class ChatService:
         )
 
         parsed = _parse(answer.text)
-        # Anything the model named that is not really in the catalog is dropped rather
-        # than passed on. A hallucinated field costs a simulation to discover.
+        # Drop anything not really in the catalog: a hallucinated field costs a simulation
+        # to discover.
         kept = [p for p in parsed["picks"] if p.get("field") in available]
         dropped = [p["field"] for p in parsed["picks"] if p.get("field") not in available]
         if dropped:
@@ -250,8 +242,8 @@ class ChatService:
             "assistant",
             parsed["reply"],
             picks=kept,
-            # Stored, not just returned: reopening the conversation showed the picks but not
-            # which fields the model invented, which is the part worth remembering.
+            # Stored, not just returned, so reopening the conversation still shows which
+            # fields the model invented.
             datasets=parsed["datasets"],
             dropped=dropped,
             catalogNote=catalog_note,
@@ -280,16 +272,10 @@ class ChatService:
     ) -> tuple[str, set[str], str | None]:
         """The fields the assistant may choose from: the text, their ids, and a note.
 
-        Capped, and ordered by coverage: a field present on 4% of the market cannot
-        carry a signal about it however good the idea, and listing thousands would spend
-        the whole context window on names.
-
-        The floor is lifted once a dataset is named. Event-driven data is thin by nature
-        — in USA D1 TOP3000, sixteen datasets (``options_composite``, ``web_traffic_engage``
-        among them) have no field above the floor at all — so applying it to a market-wide
-        menu is a filter, and applying it to a dataset the user chose is a denial.
-
-        Both are read from one query: asking twice put the same 400-row scan on every turn.
+        Capped, and ordered by coverage: a field present on 4% of the market cannot carry a
+        signal about it however good the idea, and listing thousands would spend the whole
+        context window on names. The coverage floor is lifted once a dataset is named,
+        because event-driven data is thin by nature and whole datasets sit below it.
         """
         from ..catalog.queries import FieldFilter
 
@@ -348,8 +334,8 @@ def _transcript(history: list[ChatMessage]) -> str:
         if m.role == "user":
             lines.append(f"  They: {m.text.strip()[:600]}")
             continue
-        # Its own picks, so "why the second one?" can be answered: the reply names them
-        # in prose the model no longer sees, and the picks were only stored as metadata.
+        # Replay its own picks, so "why the second one?" can be answered: the reply names
+        # them in prose the model no longer sees.
         picks = ", ".join(str(p.get("field")) for p in (m.meta or {}).get("picks") or [])
         said = f"  You: {m.text.strip()[:600]}"
         lines.append(f"{said} [picked: {picks}]" if picks else said)

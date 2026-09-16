@@ -1,24 +1,17 @@
 """What the model is told about the data.
 
 The payload is the organisational hierarchy — every category, its subcategories, and
-every dataset with its metadata — and deliberately **not the individual data fields**.
+every dataset with its metadata — and deliberately **not the individual data fields**: a
+synced scope holds tens of thousands of them, and serialising those would fill the context
+window and leave no room for the model to think. Fields are fetched on demand once the
+model has narrowed to a dataset.
 
-That is the whole trick. A synced scope holds tens of thousands of fields; serialising
-them would fill the context window with names like ``fnd6_newqv1300_ivltq`` and leave no
-room for the model to think. The hierarchy is a few hundred rows, fits comfortably, and
-is enough to answer the question actually being asked — *which dataset would implement
-this idea* — because a dataset's name, description and coverage say what it contains.
-Fields are fetched on demand once the model has narrowed to a dataset.
+A dataset's **value score** (how underutilized BRAIN considers it) beside its **alpha
+count** is where an edge is most likely to survive, so the payload says that outright
+rather than hoping the model infers it.
 
-Two numbers on each dataset are worth more than they look:
-
-* **value score** is BRAIN's measure of how underutilized a dataset is.
-* **alpha count** is how many alphas already use it. A dataset with a high value score
-  and a low alpha count is where an edge is most likely to survive, and saying so in the
-  payload is more useful than hoping the model infers it.
-
-Everything is rendered compactly, because tokens spent on JSON punctuation are tokens
-not spent on the answer.
+Everything is rendered compactly, because tokens spent on JSON punctuation are tokens not
+spent on the answer.
 """
 
 from __future__ import annotations
@@ -64,9 +57,8 @@ def _number(value: Any, digits: int = 2) -> str:
 def loads_or(text: str, **default: Any) -> dict[str, Any]:
     """A model's JSON reply, or ``default`` when it is not usable.
 
-    Every prompt that asks for JSON gets it *mostly*, and mostly is not a contract. A
-    reply the consultant can read is worth more than a parse error, so the callers here
-    degrade rather than raise — and they all degraded the same way, in four places.
+    A reply the consultant can read is worth more than a parse error, so callers degrade
+    rather than raise.
     """
     try:
         payload = json.loads(text)
@@ -143,8 +135,7 @@ class ContextBuilder:
     async def render(self, scope: Tuple4) -> tuple[str, dict[str, Any]]:
         """The tree as compact text, plus what it cost.
 
-        Text rather than JSON: the same information in half the tokens, and models read
-        an indented outline at least as well as they read braces.
+        Text rather than JSON: the same information in half the tokens.
         """
         tree = await self.tree(scope)
         counts = tree["counts"]

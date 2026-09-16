@@ -2,13 +2,10 @@
 
 Seven of the eight providers in :mod:`.providers` accept the same request shape, so this
 is all it takes to support them: a POST to ``/chat/completions`` and a GET of ``/models``
-for the health check. ``httpx`` is already a dependency — the whole BRAIN client is built
-on it — so this adds nothing to install.
+for the health check.
 
-**The response is shaped like Google's on purpose.** :meth:`LLMService.generate` reads
-``response.text`` and ``response.usage_metadata``, and giving this the same surface means
-the rotation, budget accounting and error handling around it stay one code path rather
-than two that drift.
+**The response is shaped like Google's on purpose**, so the rotation, budget accounting and
+error handling around it stay one code path rather than two that drift.
 """
 
 from __future__ import annotations
@@ -83,9 +80,8 @@ class OpenAICompatible:
             )
 
         if response.status_code >= 400:
-            # The status code is carried in the message because that is what the rate
-            # limit detection reads. A 429 that does not say "429" would be retried as
-            # though it were a permanent failure.
+            # The status code goes in the message because that is what the rate-limit
+            # detection reads; a 429 that does not say "429" looks like a permanent failure.
             raise RuntimeError(f"{response.status_code} {_detail(response)}")
 
         body = response.json()

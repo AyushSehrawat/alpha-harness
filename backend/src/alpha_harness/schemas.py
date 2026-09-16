@@ -1,9 +1,7 @@
 """The base every response model shares, and the two shapes every caller repeats.
 
 The frontend reads camelCase; Python writes snake_case. Declaring that mapping once
-means a field added to a model reaches the wire on its own. The hand-written
-``to_dict()`` methods this replaces had to be edited twice for every new field, and the
-second edit is the one that gets forgotten.
+means a field added to a model reaches the wire on its own.
 
 Lives at the top of the package rather than under ``api/`` so domain modules can build
 their own response models without importing the layer that serves them.
@@ -37,23 +35,16 @@ class Out(BaseModel):
 def camel_dict(obj: Any, exclude: Container[str] = ()) -> dict[str, Any]:
     """A dataclass on the wire, in the same camelCase :class:`Out` produces.
 
-    For the dataclasses that stay dataclasses. These are *working objects* that happen
-    to be serialised at the end — a ``Task`` the registry mutates, an ``Answer`` that
-    accumulates its own context, a ``Report`` holding validation machinery — not wire
-    models with a method attached. Making them :class:`Out` would put validation on
-    every assignment in a hot path to save one line each. Same reason as above, though:
-    listing the fields a second time is a list that goes stale.
+    For working objects that stay dataclasses because :class:`Out` would put validation
+    on every assignment in a hot path.
 
-    ``exclude`` drops fields that are internal to the calculation rather than part of
-    the answer. Anything computed rather than stored is not a field, so merge it in:
-    ``camel_dict(self) | {"canMultiSimulate": self.can_multi_simulate}``.
+    ``exclude`` drops fields internal to the calculation. Merge in anything computed
+    rather than stored: ``camel_dict(self) | {"canMultiSimulate": self.can_multi_simulate}``.
     """
     return {to_camel(k): v for k, v in asdict(obj).items() if k not in exclude}
 
 
 # --- simulations: the typed pilot for generated frontend types ---------------------
-#
-# Each model mirrors what the route returned before it was typed, key for key.
 
 
 class SimulationRow(Out):

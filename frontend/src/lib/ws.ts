@@ -1,17 +1,7 @@
 /**
- * Live telemetry over one WebSocket.
- *
- * The backend pushes on a single multiplexed channel and replays each topic's last
- * message on connect. Reconnects with backoff, because a local backend restarts often.
- *
- * Topics (see backend `realtime.py`):
- * - `simulations` — the in-flight (PENDING/RUNNING) list (`SimulationRow[]`) on every change; ALSO
- *   `{alphaId, submittable}` when a backfill resolves checks, and `{alphaId, stored}` once a
- *   finished simulation's Alpha is saved locally. Guard with `Array.isArray`.
- * - `tasks` — `TasksSummary` on any background task change.
- * - `sync` — `SyncRun` while a catalog download progresses.
- * - `studies` — `{kind:"studies"}`, a signal to refetch studies, Template Lab and GA runs.
- * - `session` — `Session` on sign-in, sign-out and renewal.
+ * Live telemetry over one WebSocket: the backend pushes on a single multiplexed channel (see
+ * its `realtime.py`) and replays each topic's last message on connect. Reconnects with
+ * backoff, because a local backend restarts often.
  */
 
 import { useQueryClient } from '@tanstack/react-query'
@@ -110,11 +100,9 @@ function useTopic(topic: Topic, handler: (payload: unknown) => void): void {
 }
 
 /**
- * Refetch queries under `queryKey` whenever `topic` reports a change.
- *
- * The socket is used as a signal, not as state: a drifting payload shape can never
- * desync the UI. Bursts collapse to at most one refetch per `minGapMs`, with a trailing
- * call so the final state still lands.
+ * Refetch queries under `queryKey` whenever `topic` reports a change. The socket is a signal,
+ * not state, so a drifting payload shape can never desync the UI; bursts collapse to one
+ * refetch per `minGapMs`, with a trailing call so the final state still lands.
  */
 export function useRefetchOn(topic: Topic, queryKey: readonly unknown[], minGapMs = 1000): void {
   const queryClient = useQueryClient()

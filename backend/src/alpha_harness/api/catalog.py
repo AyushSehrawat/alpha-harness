@@ -204,13 +204,13 @@ async def _markets(state: State) -> list[SyncTarget]:
     schema = (
         await state.metadata.cached_settings_schema() or await state.metadata.refresh_metadata()
     )
-    # ponytail: EQUITY only, the one instrument type the Data Explorer offers.
+    # EQUITY only, the one instrument type the Data Explorer offers.
     base: dict[str, Any] = {"instrumentType": "EQUITY"}
     return [
         SyncTarget(instrument_type="EQUITY", region=region, delay=int(delay), universe=universe)
         for region in valid_values(schema, "region", base)
-        # ponytail: ALL left out for now. BRAIN pages it 50 fields at a time, ~1,700 requests
-        # at 30 a minute; drop this line (and the frontend's HIDDEN_REGIONS) to bring it back.
+        # ALL is left out: BRAIN pages it 50 fields at a time, which is hours of requests
+        # for one region. Drop this line and the frontend's HIDDEN_REGIONS to bring it back.
         if region != "ALL"
         for delay in valid_values(schema, "delay", {**base, "region": region})
         for universe in valid_values(schema, "universe", {**base, "region": region, "delay": delay})

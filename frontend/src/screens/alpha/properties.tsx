@@ -64,8 +64,8 @@ export function PropertiesPanel({ alpha }: { alpha: AlphaInfo }) {
 
   const save = useMutation({
     mutationFn: async () => {
-      // BRAIN's own client leaves an empty description out of the request, so a cleared one
-      // silently stayed on BRAIN while this said "Saved" (docs/wqb-api/endpoints/alphas.md).
+      // BRAIN drops an empty description from the request rather than clearing it, so refuse
+      // the save instead of reporting one that never happened.
       if (saved.description.trim() && !draft.description.trim()) {
         throw new Error(
           'BRAIN keeps a description once it is set and cannot clear it. Write a new one ' +
