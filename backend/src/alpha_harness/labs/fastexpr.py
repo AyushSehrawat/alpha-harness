@@ -366,6 +366,27 @@ def replace_at(node: Node, path: Path, new: Node) -> Node:
     return replace(node, kwargs=tuple(kwargs))
 
 
+def data_fields(tree: Node) -> list[str]:
+    """The data fields an expression reads, the way BRAIN counts them.
+
+    Names that are not data: anything assigned earlier in the expression, a keyword value
+    (``driver=gaussian`` names an option), a grouping field, and the literals.
+    """
+    nodes = walk(tree)
+    assigned = {n.value for _, n in nodes if n.kind == "assign"}
+    return sorted(
+        {
+            n.value
+            for path, n in nodes
+            if n.kind == "name"
+            and not (path and path[-1] >= len(node_at(tree, path[:-1]).args))
+            and n.value not in assigned
+            and n.value not in GROUPING
+            and n.value.lower() not in ("true", "false", "nan")
+        }
+    )
+
+
 def operator_count(node: Node) -> int:
     """BRAIN's count: every call and every arithmetic or logical operator, backfills excepted."""
     own = int(

@@ -156,7 +156,7 @@ export function TemplateLabScreen() {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['lab-tasks'] })
-      toast.success('Task added', {
+      toast.success('Task Added', {
         action: {
           label: 'Open Tasks',
           onClick: () => void navigate({ to: '/tasks' }),

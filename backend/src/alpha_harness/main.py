@@ -39,6 +39,7 @@ from .api import (
     tasks,
     template_lab,
     today,
+    tools,
     vault,
     ws,
 )
@@ -158,6 +159,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(vault.router)
     app.include_router(tasks.router)
     app.include_router(today.router)
+    app.include_router(tools.router)
     app.include_router(search_lab.router)
     app.include_router(lab_tasks.router)
     app.include_router(power_pool_lab.router)

@@ -1,7 +1,8 @@
 /** Pieces the Alpha detail and Submittable tabs share: the expression, check figures, the BRAIN link, re-check. */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckIcon, CopyIcon, ExternalLinkIcon, RefreshCwIcon } from 'lucide-react'
+import { useNavigate } from '@tanstack/react-router'
+import { CheckIcon, CopyIcon, EllipsisIcon, ExternalLinkIcon, RefreshCwIcon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { errorMessage } from '@/api/http'
@@ -9,6 +10,7 @@ import { cn } from '@/lib/cn'
 import { fmt } from '@/lib/format'
 import { pool } from '@/screens/pool/api'
 import { Button } from '@/ui/kit'
+import { Menu } from '@/ui/overlay'
 import { type AstKind, tokenizeBrainAst } from './brain-ast'
 
 /** A check's value or limit: turnover as a percentage, the rest as a ratio. */
@@ -50,6 +52,34 @@ export function RecheckButton({ alphaId }: { alphaId: string }) {
       {!mutation.isPending && <RefreshCwIcon />}
       Re-check on BRAIN
     </Button>
+  )
+}
+
+/** Per-Alpha actions that are not one-click enough to earn a button of their own. */
+export function AlphaActionsMenu({ alphaId }: { alphaId: string }) {
+  const navigate = useNavigate()
+  return (
+    <Menu
+      trigger={
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          aria-label={`More actions for ${alphaId}`}
+          // In the Stored table this button sits inside the row's click target, which would
+          // otherwise open the detail sheet behind the menu.
+          onClick={(e) => e.stopPropagation()}
+        >
+          <EllipsisIcon />
+        </Button>
+      }
+      items={[
+        {
+          label: 'Settings Sampler',
+          onClick: () =>
+            void navigate({ to: '/tools/settings-sampler', search: { alpha: alphaId } }),
+        },
+      ]}
+    />
   )
 }
 

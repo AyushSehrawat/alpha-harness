@@ -50,8 +50,9 @@ class SettingsField(Out):
     choices: list[dict[str, Any]] | None
     depends_on: list[str]
     blocked: bool
-    min: int | float | None
-    max: int | float | None
+    #: Durations such as ``testPeriod`` come as ISO-8601 strings (``P6Y0M0D``).
+    min: int | float | str | None
+    max: int | float | str | None
 
 
 class SettingsOptions(Out):

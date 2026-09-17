@@ -9,7 +9,7 @@ import { ArrowLeftIcon, RefreshCwIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { cn } from '@/lib/cn'
 import { DASH, fmt, isNum } from '@/lib/format'
-import { AstInspector, OpenInBrain, RecheckButton } from '@/screens/pool/shared'
+import { AlphaActionsMenu, AstInspector, OpenInBrain, RecheckButton } from '@/screens/pool/shared'
 import {
   Badge,
   Button,
@@ -113,6 +113,7 @@ function Body({ view, refresh }: { view: AlphaView; refresh: React.ReactNode }) 
           <>
             <RecheckButton alphaId={a.alphaId} />
             <OpenInBrain url={a.brainUrl} />
+            <AlphaActionsMenu alphaId={a.alphaId} />
           </>
         }
       />

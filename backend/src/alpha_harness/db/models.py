@@ -434,6 +434,9 @@ class Study(Base):
     message: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow, onupdate=utcnow)
+    #: First time it began running. A task can wait as IDLE for days, so this is what "how
+    #: long did it take" means; ``created_at`` would count the waiting too.
+    started_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
     finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
     trials: Mapped[list[Trial]] = relationship(back_populates="study", cascade="all, delete-orphan")
@@ -572,3 +575,17 @@ class KeyUsage(Base):
     last_request_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
     __table_args__ = (UniqueConstraint("api_key_id", "model", "day", name="uq_key_model_day"),)
+
+
+class Submission(Base):
+    """An Alpha the consultant has told us they submitted on BRAIN.
+
+    Submission happens by hand on the platform, so nothing here can observe it. The row is
+    the user's own record, and the Submission Planner treats it as a permanent pool member
+    every later candidate has to clear.
+    """
+
+    __tablename__ = "submission"
+
+    alpha_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    submitted_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)

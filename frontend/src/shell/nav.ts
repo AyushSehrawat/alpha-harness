@@ -7,6 +7,7 @@ import {
   ListChecksIcon,
   RefreshCwIcon,
   SparklesIcon,
+  WrenchIcon,
 } from 'lucide-react'
 
 /** Sub-tabs, in display order. Screens import these so the sidebar, ⌘K and tab bars agree. */
@@ -29,6 +30,12 @@ export const LAB_TABS = [
   { tab: 'template', label: 'Template Lab', to: '/labs/template' },
   { tab: 'evolution', label: 'Evolution Lab', to: '/labs/evolution' },
   { tab: 'power-pool', label: 'LLM Power Pool Lab', to: '/labs/power-pool' },
+] as const
+
+/** Shown nested under Tools in the sidebar, each with its own route. */
+export const TOOL_TABS = [
+  { tab: 'settings-sampler', label: 'Settings Sampler', to: '/tools/settings-sampler' },
+  { tab: 'submission-planner', label: 'Submission Planner', to: '/tools/submission-planner' },
 ] as const
 
 export const NAV = [
@@ -59,6 +66,14 @@ export const NAV = [
     label: 'Research Labs',
     icon: FlaskConicalIcon,
     tabs: LAB_TABS,
+    nested: true,
+  },
+  {
+    to: '/tools',
+    area: 'tools',
+    label: 'Tools',
+    icon: WrenchIcon,
+    tabs: TOOL_TABS,
     nested: true,
   },
   {

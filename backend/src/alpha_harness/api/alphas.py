@@ -18,7 +18,7 @@ from sqlalchemy import delete, func, select
 
 from ..brain.errors import BrainError
 from ..db.models import BrainCache, SimulationRecord, Study, Trial, TrialState, utcnow
-from ..labs.fastexpr import GROUPING, ParseError, node_at, operator_count, parse, walk
+from ..labs.fastexpr import ParseError, data_fields, operator_count, parse
 from ..labs.params import TASK_SAMPLERS
 from ..schemas import Out
 from ..vault.yields import PLATFORM_ALPHA_URL
@@ -191,19 +191,7 @@ def _power_pool_counts(code: Any) -> tuple[int | None, list[str] | None]:
         tree = None
     if tree is None:
         return None, None
-    nodes = walk(tree)
-    assigned = {n.value for _, n in nodes if n.kind == "assign"}
-    fields = {
-        n.value
-        for path, n in nodes
-        if n.kind == "name"
-        # A keyword value (``driver=gaussian``) is an option, not data.
-        and not (path and path[-1] >= len(node_at(tree, path[:-1]).args))
-        and n.value not in assigned
-        and n.value not in GROUPING
-        and n.value.lower() not in ("true", "false", "nan")
-    }
-    return operator_count(tree), sorted(fields)
+    return operator_count(tree), data_fields(tree)
 
 
 def _info(alpha_id: str, body: dict[str, Any]) -> AlphaInfo:

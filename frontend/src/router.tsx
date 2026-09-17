@@ -84,6 +84,40 @@ const powerPoolLab = createRoute({
     'PowerPoolLabScreen',
   ),
 })
+const tools = createRoute({ getParentRoute: () => root, path: '/tools' })
+const toolsIndex = createRoute({
+  getParentRoute: () => tools,
+  path: '/',
+  beforeLoad: () => {
+    throw redirect({ to: '/tools/settings-sampler', search: { alpha: undefined } })
+  },
+})
+const settingsSampler = createRoute({
+  getParentRoute: () => tools,
+  path: 'settings-sampler',
+  // Tools take typed search params: an id belongs in the URL so a link from the Alpha screen
+  // is shareable, unlike the multi-item picks that use a handoff store.
+  validateSearch: (search: Record<string, unknown>) => ({
+    alpha: typeof search['alpha'] === 'string' ? search['alpha'] : undefined,
+  }),
+  component: lazyRouteComponent(
+    () => import('@/screens/tools/settings-sampler'),
+    'SettingsSamplerScreen',
+  ),
+})
+
+const submissionPlanner = createRoute({
+  getParentRoute: () => tools,
+  path: 'submission-planner',
+  validateSearch: (search: Record<string, unknown>) => ({
+    task: typeof search['task'] === 'number' ? search['task'] : undefined,
+  }),
+  component: lazyRouteComponent(
+    () => import('@/screens/tools/submission-planner'),
+    'SubmissionPlannerScreen',
+  ),
+})
+
 const tasks = createRoute({
   getParentRoute: () => root,
   path: '/tasks',
@@ -140,6 +174,7 @@ const routeTree = root.addChildren([
   matrix,
   data.addChildren([dataIndex, dataTab]),
   labs.addChildren([labsIndex, searchLab, templateLab, evolutionLab, powerPoolLab]),
+  tools.addChildren([toolsIndex, settingsSampler, submissionPlanner]),
   tasks,
   pool.addChildren([poolIndex, poolTab]),
   alpha,

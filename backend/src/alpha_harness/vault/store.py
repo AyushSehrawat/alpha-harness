@@ -405,6 +405,24 @@ class AlphaVault:
         )
         return int(value or 0)
 
+    async def daily_pnl(self, alpha_ids: list[str]) -> dict[str, dict[date, float]]:
+        """Each Alpha's stored daily PnL by date, oldest first. Alphas without one are absent."""
+        if not alpha_ids:
+            return {}
+        placeholders = ", ".join("?" for _ in alpha_ids)
+        rows = await self.catalog.query(
+            f"""
+            SELECT alpha_id, date, pnl FROM alpha_pnl
+            WHERE alpha_id IN ({placeholders})
+            ORDER BY alpha_id, date
+            """,  # noqa: S608
+            list(alpha_ids),
+        )
+        grouped: dict[str, dict[date, float]] = {}
+        for row in rows:
+            grouped.setdefault(str(row["alpha_id"]), {})[row["date"]] = float(row["pnl"] or 0.0)
+        return grouped
+
     async def train_pnl(self, alpha_ids: list[str]) -> dict[str, dict[date, float]]:
         """Each Alpha's daily PnL before its last two years, which a train/test split holds out.
 

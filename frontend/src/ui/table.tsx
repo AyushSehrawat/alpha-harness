@@ -30,6 +30,7 @@ export function DataTable<T>({
   columns,
   rowKey,
   onRowClick,
+  rowClass,
   sort,
   onSort,
   selected,
@@ -45,6 +46,8 @@ export function DataTable<T>({
   columns: Column<T>[]
   rowKey: (row: T) => string
   onRowClick?: (row: T) => void
+  /** Extra classes for one row, so a table can mark rows that mean something. */
+  rowClass?: (row: T) => string | undefined
   sort?: Sort
   onSort?: (sort: Sort) => void
   /** With `onSelect`, adds a checkbox column. */
@@ -180,6 +183,7 @@ export function DataTable<T>({
                     onRowClick &&
                       'cursor-pointer hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:-outline-offset-2',
                     isSelected && 'bg-surface-2',
+                    rowClass?.(row),
                   )}
                   style={{
                     gridTemplateColumns: template,

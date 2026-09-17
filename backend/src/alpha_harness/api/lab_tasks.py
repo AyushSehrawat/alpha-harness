@@ -48,6 +48,11 @@ class LabTask(Out):
     message: str | None
     region: str | None
     delay: int | None
+    #: Settings Sampler only: what the sweep holds fixed, and where it came from.
+    alpha_id: str | None = None
+    markets: int | None = None
+    truncation: float | None = None
+    nan_handling: str | None = None
     #: Evolution Lab only: its market's universe, seeds, population and mutation rate.
     universe: str | None
     seeds: int
@@ -60,6 +65,8 @@ class LabTask(Out):
     fields: int
     target: int
     simulated: int
+    #: Of ``simulated``, how many came back from the dedup cache without spending quota.
+    cached: int
     queued: int
     running: int
     failed: int
@@ -67,6 +74,8 @@ class LabTask(Out):
     best: float | None
     objective_label: str
     created_at: str | None
+    #: When it first began running, which is where elapsed time is measured from.
+    started_at: str | None
     finished_at: str | None
 
 
@@ -81,6 +90,8 @@ class TaskRemoved(Out):
 
 class RankedAlpha(Out):
     trial_id: int
+    #: Its place in the sweep, as queued.
+    number: int
     alpha_id: str | None
     expression: str | None
     settings: dict[str, Any] | None
@@ -94,6 +105,13 @@ class RankedAlpha(Out):
     k_ratio: float | None
     feasible: bool | None
     failed_checks: list[str]
+    #: Nothing BRAIN has reported refuses it: no FAIL and no ERROR.
+    submittable: bool
+    #: Submittable only because a check has not answered yet. The Submission Planner waits for
+    #: these rather than planning a permanent submission on them.
+    pending: bool = False
+    #: The Alpha the sweep started from, kept first as its reference point.
+    source: bool = False
 
 
 async def _rows(state: Any) -> list[Study]:
@@ -185,17 +203,23 @@ def _task(row: Study, progress: dict[str, Any]) -> LabTask:
             "population": params.get("population"),
             "mutationRate": params.get("mutationRate"),
             "decay": params.get("decay"),
+            "alphaId": params.get("alphaId"),
+            "markets": params.get("markets"),
+            "truncation": params.get("truncation"),
+            "nanHandling": params.get("nanHandling"),
             "cores": scheduler.cores_of(row),
             "datasetIds": params.get("datasetIds") or [],
             "fields": len((params.get("space") or {}).get("fields") or {}),
             "target": row.max_trials,
-            "simulated": told - progress["free"],
+            "simulated": told,
+            "cached": progress["free"],
             "queued": states.get(TrialState.QUEUED, 0),
             "running": states.get(TrialState.RUNNING, 0),
             "failed": states.get(TrialState.FAIL, 0),
             "best": progress["best"],
             "objectiveLabel": objective.label,
             "createdAt": row.created_at.isoformat() if row.created_at else None,
+            "startedAt": row.started_at.isoformat() if row.started_at else None,
             "finishedAt": row.finished_at.isoformat() if row.finished_at else None,
         }
     )
@@ -328,7 +352,11 @@ async def remove(task_id: int, state: State) -> TaskRemoved:
 
 @router.get("/{task_id}/top")
 async def top(
-    task_id: int, state: State, limit: Annotated[int, Query(ge=1, le=200)] = 20
+    task_id: int,
+    state: State,
+    # A sweep's whole result set is worth scrolling, so the ceiling is a day's
+    # simulations rather than a page; the caller asks for what it means to show.
+    limit: Annotated[int, Query(ge=1, le=5000)] = 20,
 ) -> list[RankedAlpha]:
     """The task's best Alphas on what it searches for. Seeds are not among them."""
     row = await _one(state, task_id)

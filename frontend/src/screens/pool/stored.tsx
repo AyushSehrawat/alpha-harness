@@ -35,6 +35,7 @@ import {
   TEXT_TONE,
 } from '@/ui/kit'
 import { type Column, DataTable, Pager, type Sort } from '@/ui/table'
+import { AlphaActionsMenu } from './shared'
 
 /** Bounds as the user types them; `div` converts the display unit to the wire fraction. */
 const BOUNDS: { key: AlphaMetricKey; label: string; div: number }[] = [
@@ -164,6 +165,13 @@ const COLUMNS: Column<AlphaRow>[] = [
     width: '88px',
     cell: (r) =>
       r.hasPnl ? <Badge tone="muted">stored</Badge> : <span className="text-ink-subtle">—</span>,
+  },
+  {
+    key: 'actions',
+    header: '',
+    width: '44px',
+    align: 'right',
+    cell: (r) => <AlphaActionsMenu alphaId={r.alphaId} />,
   },
 ]
 

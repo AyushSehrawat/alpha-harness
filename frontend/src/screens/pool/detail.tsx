@@ -20,7 +20,7 @@ import {
   Skeleton,
 } from '@/ui/kit'
 import { Sheet } from '@/ui/overlay'
-import { AstInspector, checkFigure, OpenInBrain, RecheckButton } from './shared'
+import { AlphaActionsMenu, AstInspector, checkFigure, OpenInBrain, RecheckButton } from './shared'
 
 type Kind = 'self' | 'prod'
 const KIND_LABEL: Record<Kind, string> = {
@@ -91,6 +91,7 @@ function Body({ alphaId }: { alphaId: string }) {
         </Button>
         <OpenInBrain url={d.brainUrl} />
         <RecheckButton alphaId={d.alphaId} />
+        <AlphaActionsMenu alphaId={d.alphaId} />
       </div>
 
       <Section title="Cumulative PnL" description={`${fmt.int(d.days)} trading days stored`}>

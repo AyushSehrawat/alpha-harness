@@ -184,35 +184,6 @@ function SimulationMatrix() {
           renewed, or as soon as you sign in again.
         </Notice>
       )}
-      {status && (status.queuedTotal > 0 || status.slotsUsed > 0) && (
-        <Notice
-          tone={status.awake === 'held' ? 'info' : 'warn'}
-          title="Keep this computer on until the queue is empty"
-        >
-          {status.awake === 'held'
-            ? 'Sleep is blocked while simulations are pending, but closing the lid can still pause sending.'
-            : 'This computer may go to sleep, which pauses sending. Nothing is lost: sending resumes when it wakes.'}
-          {status.minutesLeft !== null && status.queuedTotal > 0 && (
-            <>
-              {' '}
-              About <span className="num">{fmt.duration(status.minutesLeft * 60)}</span> left at the
-              current pace.
-            </>
-          )}
-          {status.lastPause && (
-            <>
-              {' '}
-              Paused while this computer slept for{' '}
-              <span className="num">
-                {fmt.duration(
-                  (Date.parse(status.lastPause.end) - Date.parse(status.lastPause.start)) / 1000,
-                )}
-              </span>
-              ; resumed at <span className="num">{fmt.dateTime(status.lastPause.end)}</span>.
-            </>
-          )}
-        </Notice>
-      )}
       {engine.isError && (
         <ErrorNotice error={engine.error} title="The engine status could not load" />
       )}

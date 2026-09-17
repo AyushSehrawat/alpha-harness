@@ -185,6 +185,9 @@ class Optimizer:
             if row is None:
                 raise StudyNotFoundError(study_id)
             row.status = status
+            # Only the first start: resuming a paused task continues the same run.
+            if status == StudyStatus.RUNNING and row.started_at is None:
+                row.started_at = utcnow()
             if status in (StudyStatus.COMPLETE, StudyStatus.FAILED):
                 row.finished_at = utcnow()
             await session.commit()
@@ -581,6 +584,48 @@ def _optuna_params(params: dict[str, Any], distributions: dict[str, Any]) -> dic
     return found
 
 
+#: Only these refuse an Alpha. A warning is not a refusal, and a check still PENDING is not
+#: an answer — neither is read as one, so nothing is polled or waited on to decide.
+REFUSING_RESULTS = frozenset({"FAIL", "ERROR"})
+
+#: Checks whose failure is not held against an Alpha here. An Alpha bred from one already on
+#: the platform correlates with production by construction, so PROD_CORRELATION says nothing
+#: about this variant that is worth acting on.
+IGNORED_CHECKS = frozenset({"PROD_CORRELATION", "REGULAR_SUBMISSION"})
+
+
+def submittable(result: dict[str, Any]) -> bool:
+    """Whether anything BRAIN has reported so far refuses this Alpha.
+
+    An Alpha with no checks at all is not submittable. It has not been shown to be good --
+    the usual reason to have none is erroring out before BRAIN judged anything -- and reading
+    that silence as approval sends it to the Submission Planner as a candidate. Same stance as
+    ``vault.yields.is_submittable``.
+    """
+    checks = result.get("checks") or []
+    return bool(checks) and not any(
+        str(check.get("result")).upper() in REFUSING_RESULTS
+        and str(check.get("name")).upper() not in IGNORED_CHECKS
+        for check in checks
+    )
+
+
+def still_judging(result: dict[str, Any]) -> bool:
+    """Whether BRAIN has yet to finish checking an Alpha that nothing has refused.
+
+    :func:`submittable` reads a ``PENDING`` check as "no refusal", which is what a list that
+    fills in while BRAIN works should say. The Submission Planner asks the stricter question --
+    a submission is permanent -- so the two disagree on exactly these Alphas. Saying which ones
+    they are keeps a green row on the Tasks screen from promising a candidate the Planner will
+    then refuse.
+    """
+    return submittable(result) and any(
+        str(check.get("result")).upper() == "PENDING"
+        and str(check.get("name")).upper() not in IGNORED_CHECKS
+        for check in result.get("checks") or []
+    )
+
+
 def ranked(trials: list[Trial], directions: list[str] | None) -> list[dict[str, Any]]:
     """Finished trials, best first on the first objective."""
     maximize = (list(directions or []) or ["maximize"])[0] == "maximize"
@@ -593,6 +638,8 @@ def ranked(trials: list[Trial], directions: list[str] | None) -> list[dict[str, 
         rows.append(
             {
                 "trialId": t.id,
+                # Its place in the sweep, 0-based, as the task queued it.
+                "number": t.number,
                 "alphaId": t.alpha_id,
                 "expression": t.expression,
                 "settings": t.settings,
@@ -606,6 +653,9 @@ def ranked(trials: list[Trial], directions: list[str] | None) -> list[dict[str, 
                 "kRatio": result.get("kRatio"),
                 "feasible": t.feasible,
                 "failedChecks": result.get("failedChecks") or [],
+                "submittable": submittable(result),
+                "pending": still_judging(result),
+                "source": bool((t.params or {}).get("source")),
             }
         )
     return rows

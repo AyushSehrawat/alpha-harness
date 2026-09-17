@@ -22,12 +22,15 @@ GA_SAMPLER = "ga"
 SEARCH_SAMPLER = "search"
 TEMPLATE_SAMPLER = "template"
 POWER_POOL_SAMPLER = "power-pool"
+#: Studies that re-run one proven expression across markets and settings (tools.settings_sampler).
+SETTINGS_SAMPLER = "settings-sampler"
 #: Studies that are research-lab tasks, run only from the Tasks tab, by their lab's name.
 TASK_SAMPLERS = {
     SEARCH_SAMPLER: "Search Lab",
     TEMPLATE_SAMPLER: "Template Lab",
     GA_SAMPLER: "Evolution Lab",
     POWER_POOL_SAMPLER: "LLM Power Pool Lab",
+    SETTINGS_SAMPLER: "Settings Sampler",
 }
 
 
@@ -104,11 +107,36 @@ class PowerPoolParams(TaskParams):
     calls: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class SettingsParams(TaskParams):
+    """Settings Sampler: every simulation is written up front, so nothing is sampled.
+
+    ``region`` and ``delay`` are the source Alpha's, shown on the task card; the task itself
+    spans whichever markets were chosen.
+    """
+
+    alpha_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("alphaId", "alpha_id"),
+        serialization_alias="alphaId",
+    )
+    #: How many region/delay/universe markets the sweep covers, for the task's detail line.
+    markets: int = 0
+    #: Held at the source Alpha's values for every simulation in the sweep.
+    decay: int = 0
+    truncation: float = 0.08
+    nan_handling: str = Field(
+        default="ON",
+        validation_alias=AliasChoices("nanHandling", "nan_handling"),
+        serialization_alias="nanHandling",
+    )
+
+
 BY_SAMPLER: dict[str, type[TaskParams]] = {
     SEARCH_SAMPLER: SearchParams,
     TEMPLATE_SAMPLER: TemplateParams,
     GA_SAMPLER: EvolutionParams,
     POWER_POOL_SAMPLER: PowerPoolParams,
+    SETTINGS_SAMPLER: SettingsParams,
 }
 
 

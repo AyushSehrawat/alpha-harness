@@ -1357,6 +1357,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tools/settings-sampler/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview
+         * @description Where one Alpha's expression could also run, and what that would cost.
+         *
+         *     Reads the Alpha from BRAIN rather than the vault, because the vault stores no
+         *     maxTrade/maxPosition and may not hold the Alpha at all.
+         */
+        post: operations["preview_api_tools_settings_sampler_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tools/settings-sampler/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Task
+         * @description Add the chosen settings as a background task.
+         */
+        post: operations["add_task_api_tools_settings_sampler_tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tools/submission-planner/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan Submissions
+         * @description Which Alphas to submit and in what order.
+         *
+         *     The search is a few seconds of numpy over every pair, so it runs off the event loop.
+         */
+        post: operations["plan_submissions_api_tools_submission_planner_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tools/submission-planner/submitted": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Submitted
+         * @description Record that an Alpha was submitted on BRAIN, so later plans treat it as permanent.
+         */
+        post: operations["mark_submitted_api_tools_submission_planner_submitted_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/vault": {
         parameters: {
             query?: never;
@@ -2687,8 +2772,12 @@ export interface components {
         };
         /** LabTask */
         LabTask: {
+            /** Alphaid */
+            alphaId?: string | null;
             /** Best */
             best: number | null;
+            /** Cached */
+            cached: number;
             /** Cores */
             cores: number;
             /** Createdat */
@@ -2711,10 +2800,14 @@ export interface components {
             lab: string;
             /** Labname */
             labName: string;
+            /** Markets */
+            markets?: number | null;
             /** Message */
             message: string | null;
             /** Mutationrate */
             mutationRate: number | null;
+            /** Nanhandling */
+            nanHandling?: string | null;
             /** Objectivelabel */
             objectiveLabel: string;
             /** Population */
@@ -2729,6 +2822,8 @@ export interface components {
             seeds: number;
             /** Simulated */
             simulated: number;
+            /** Startedat */
+            startedAt: string | null;
             status: components["schemas"]["StudyStatus"];
             /** Stopping */
             stopping: boolean;
@@ -2738,6 +2833,8 @@ export interface components {
             template: string | null;
             /** Templatename */
             templateName: string | null;
+            /** Truncation */
+            truncation?: number | null;
             /** Universe */
             universe: string | null;
         };
@@ -2800,6 +2897,28 @@ export interface components {
             /** Universe */
             universe: string;
         };
+        /** MarketPick */
+        MarketPick: {
+            /** Delay */
+            delay: number;
+            /** Region */
+            region: string;
+            /** Universe */
+            universe: string;
+        };
+        /** MarketRow */
+        MarketRow: {
+            /** Coverage */
+            coverage: number;
+            /** Delay */
+            delay: number;
+            /** Region */
+            region: string;
+            /** Total */
+            total: number;
+            /** Universe */
+            universe: string;
+        };
         /** ModelBudget */
         ModelBudget: {
             /** Bulk */
@@ -2853,6 +2972,26 @@ export interface components {
             /** Vector */
             vector: string[];
         };
+        /** Pair */
+        Pair: {
+            /** Maxposition */
+            maxPosition: string;
+            /** Maxtrade */
+            maxTrade: string;
+        };
+        /** PairPick */
+        PairPick: {
+            /**
+             * Maxposition
+             * @enum {string}
+             */
+            maxPosition: "ON" | "OFF";
+            /**
+             * Maxtrade
+             * @enum {string}
+             */
+            maxTrade: "ON" | "OFF";
+        };
         /** Pause */
         Pause: {
             /**
@@ -2865,6 +3004,62 @@ export interface components {
              * Format: date-time
              */
             start: string;
+        };
+        /** Pick */
+        Pick: {
+            /** Alphaid */
+            alphaId: string;
+            /** Sharpe */
+            sharpe: number;
+            /** Submitted */
+            submitted: boolean;
+        };
+        /** PlanRequest */
+        PlanRequest: {
+            /** Taskids */
+            taskIds: number[];
+        };
+        /** PlanTotals */
+        PlanTotals: {
+            /** Batches */
+            batches: number;
+            /** Total */
+            total: number;
+        };
+        /** PlannedPortfolio */
+        PlannedPortfolio: {
+            /** Bestsingle */
+            bestSingle: number;
+            /** Candidates */
+            candidates: number;
+            /** Curve */
+            curve: number[];
+            /** Dates */
+            dates: string[];
+            /** Days */
+            days: number;
+            /** Escapeused */
+            escapeUsed: boolean;
+            /** Heldoutsharpe */
+            heldOutSharpe: number;
+            /** Locked */
+            locked: number;
+            /** Maxcorrelation */
+            maxCorrelation: number | null;
+            /** Missing */
+            missing: string[];
+            /** Order */
+            order: components["schemas"]["Pick"][];
+            /** Sharpe */
+            sharpe: number;
+            /** Size */
+            size: number;
+            /** Sizes */
+            sizes: number[];
+            /** Trainsharpe */
+            trainSharpe: number;
+            /** Worstpair */
+            worstPair: string[];
         };
         /** PowerPoolModel */
         PowerPoolModel: {
@@ -2956,6 +3151,11 @@ export interface components {
             universes: string[];
             /** Warnings */
             warnings: string[];
+        };
+        /** PreviewRequest */
+        PreviewRequest: {
+            /** Alphaid */
+            alphaId: string;
         };
         /** PromptInfo */
         PromptInfo: {
@@ -3100,6 +3300,13 @@ export interface components {
             kRatio: number | null;
             /** Margin */
             margin: number | null;
+            /** Number */
+            number: number;
+            /**
+             * Pending
+             * @default false
+             */
+            pending: boolean;
             /** Returns */
             returns: number | null;
             /** Settings */
@@ -3108,6 +3315,13 @@ export interface components {
             } | null;
             /** Sharpe */
             sharpe: number | null;
+            /**
+             * Source
+             * @default false
+             */
+            source: boolean;
+            /** Submittable */
+            submittable: boolean;
             /** Trialid */
             trialId: number;
             /** Turnover */
@@ -3132,6 +3346,25 @@ export interface components {
              */
             value: "quick" | "normal" | "careful" | "deep";
         };
+        /** RegionPlan */
+        RegionPlan: {
+            /** Delays */
+            delays: number[];
+            /** Markets */
+            markets: components["schemas"]["MarketRow"][];
+            /** Neutralizations */
+            neutralizations: string[];
+            /** Pairs */
+            pairs: components["schemas"]["Pair"][];
+            /** Positionavailable */
+            positionAvailable: boolean;
+            /** Region */
+            region: string;
+            /** Total */
+            total: number;
+            /** Universes */
+            universes: string[];
+        };
         /**
          * ResolveOptionsRequest
          * @description Settings chosen so far. Partial is fine — that is the point.
@@ -3150,6 +3383,25 @@ export interface components {
             settings: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * SampleRequest
+         * @description What to queue. An empty list means "everything the plan offers".
+         */
+        SampleRequest: {
+            /** Alphaid */
+            alphaId: string;
+            /**
+             * Cores
+             * @default 8
+             */
+            cores: number;
+            /** Markets */
+            markets?: components["schemas"]["MarketPick"][];
+            /** Neutralizations */
+            neutralizations?: string[];
+            /** Pairs */
+            pairs?: components["schemas"]["PairPick"][];
         };
         /**
          * Say
@@ -3289,9 +3541,9 @@ export interface components {
             /** Label */
             label: string;
             /** Max */
-            max: number | null;
+            max: number | string | null;
             /** Min */
-            min: number | null;
+            min: number | string | null;
             /** Name */
             name: string;
             /** Readonly */
@@ -3311,6 +3563,25 @@ export interface components {
             missing: string[];
             /** Problems */
             problems: string[];
+        };
+        /** SettingsPlan */
+        SettingsPlan: {
+            /** Alphaid */
+            alphaId: string;
+            /** Datafields */
+            dataFields: string[];
+            /** Expression */
+            expression: string;
+            /** Maxcores */
+            maxCores: number;
+            /** Problems */
+            problems: string[];
+            /** Regions */
+            regions: components["schemas"]["RegionPlan"][];
+            settings: components["schemas"]["SourceSettings"];
+            totals: components["schemas"]["PlanTotals"];
+            /** Warnings */
+            warnings: string[];
         };
         /**
          * SimStatus
@@ -3377,6 +3648,25 @@ export interface components {
             submittedAt: string | null;
             /** Task */
             task: string;
+            /** Universe */
+            universe: string | null;
+        };
+        /** SourceSettings */
+        SourceSettings: {
+            /** Decay */
+            decay: number | null;
+            /** Delay */
+            delay: number | null;
+            /** Maxposition */
+            maxPosition: string;
+            /** Maxtrade */
+            maxTrade: string;
+            /** Neutralization */
+            neutralization: string | null;
+            /** Region */
+            region: string | null;
+            /** Truncation */
+            truncation: number | null;
             /** Universe */
             universe: string | null;
         };
@@ -3452,6 +3742,13 @@ export interface components {
             total: number;
             /** Unvalidated */
             unvalidated: number;
+        };
+        /** SubmittedRequest */
+        SubmittedRequest: {
+            /** Alphaid */
+            alphaId: string;
+            /** Submitted */
+            submitted: boolean;
         };
         /**
          * SyncAllRun
@@ -5972,6 +6269,136 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Bar"];
+                };
+            };
+        };
+    };
+    preview_api_tools_settings_sampler_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsPlan"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_task_api_tools_settings_sampler_tasks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SampleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddedTask"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_submissions_api_tools_submission_planner_plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlannedPortfolio"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_submitted_api_tools_submission_planner_submitted_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmittedRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

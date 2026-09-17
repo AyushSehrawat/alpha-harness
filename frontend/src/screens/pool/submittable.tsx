@@ -28,7 +28,7 @@ import {
 } from '@/ui/kit'
 import { Tooltip } from '@/ui/overlay'
 import { ScopePicker } from '@/ui/scope-picker'
-import { AstInspector, checkFigure, OpenInBrain, RecheckButton } from './shared'
+import { AlphaActionsMenu, AstInspector, checkFigure, OpenInBrain, RecheckButton } from './shared'
 
 /** Why Submittable Alphas are missing from Top picks, one clause per reason. */
 const hiddenReasons = (data: SubmittableResponse) =>
@@ -227,6 +227,7 @@ function Card({
       <div className="flex flex-wrap gap-2 border-t border-hairline-subtle pt-2">
         <OpenInBrain url={a.brainUrl} />
         <RecheckButton alphaId={a.alphaId} />
+        <AlphaActionsMenu alphaId={a.alphaId} />
         <Button size="sm" variant="ghost" disabled={!a.expression} onClick={copy}>
           <CopyIcon />
           Copy expression

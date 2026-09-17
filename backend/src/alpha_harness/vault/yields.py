@@ -251,21 +251,9 @@ class YieldBook:
 
     async def _days_for(self, alpha_ids: list[str]) -> dict[str, dict[date, float]]:
         """Each Alpha's stored daily PnL by date, oldest first. Alphas without one are absent."""
-        if not alpha_ids:
-            return {}
-        placeholders = ", ".join("?" for _ in alpha_ids)
-        rows = await self.catalog.query(
-            f"""
-            SELECT alpha_id, date, pnl FROM alpha_pnl
-            WHERE alpha_id IN ({placeholders})
-            ORDER BY alpha_id, date
-            """,  # noqa: S608
-            list(alpha_ids),
-        )
-        grouped: dict[str, dict[date, float]] = {}
-        for row in rows:
-            grouped.setdefault(str(row["alpha_id"]), {})[row["date"]] = float(row["pnl"] or 0.0)
-        return grouped
+        from .store import AlphaVault
+
+        return await AlphaVault(self.catalog).daily_pnl(alpha_ids)
 
     async def _labs_for(self, alpha_ids: list[str]) -> dict[str, str]:
         """Which lab produced each alpha, read back off the task name."""
