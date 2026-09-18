@@ -19,7 +19,14 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 from ..schemas import camel_dict
-from .errors import BrainError, BrainVerificationRequired, sign_in_message
+from .errors import (
+    INQUIRY_INCOMPLETE_DETAIL,
+    PERSONA_PATH,
+    BrainError,
+    BrainVerificationRequired,
+    persona_url,
+    sign_in_message,
+)
 from .schemas import AuthState
 
 if TYPE_CHECKING:
@@ -156,22 +163,41 @@ class Authenticator:
     async def verify(self, inquiry: str) -> SessionInfo | None:
         """Close a completed identity verification: ``POST /authentication/persona``.
 
-        Body ``{inquiry, captcha}``; success returns the same session as sign-in
-        (``docs/wqb-api/02-authentication.md``). Returns ``None`` when the platform does not
-        accept it, so the caller can fall back to a full sign-in.
+        A POST back to the 401's ``Location``: the inquiry as a query parameter, no body and
+        no captcha (``docs/wqb-api/02-authentication.md``). ``None`` means the platform did
+        not accept it and the caller should fall back to a full sign-in.
         """
-        solution = await self.endpoints.solve_captcha()
         try:
             r = await self.endpoints.client.request(
                 "POST",
-                "/authentication/persona",
-                json_body={"inquiry": inquiry, "captcha": solution.encode()},
+                PERSONA_PATH,
+                params={"inquiry": inquiry},
             )
         except BrainVerificationRequired as exc:
             log.info("brain.auth.verification_pending", inquiry=exc.inquiry)
             return _needs_verification(exc)
         except BrainError as exc:
-            log.warning("brain.auth.verification_lost", status=exc.status)
+            if exc.detail == INQUIRY_INCOMPLETE_DETAIL:
+                # A full sign-in would mint a replacement inquiry and strand the one the
+                # person is part-way through in their browser.
+                log.info("brain.auth.verification_unfinished", inquiry=inquiry)
+                return _verification_pending(
+                    inquiry,
+                    persona_url(self.endpoints.client.base_url, inquiry),
+                    detail=(
+                        "BRAIN has not recorded this identity check as finished. Complete it "
+                        "at the verification link, then sign in here again."
+                    ),
+                )
+            # Without the detail, the fall-through to a full sign-in reads as an
+            # unexplained sign-in loop.
+            log.warning(
+                "brain.auth.verification_lost",
+                status=exc.status,
+                inquiry=inquiry,
+                detail=exc.detail,
+                body=exc.body,
+            )
             return None
         state = AuthState.model_validate(r.body or {})
         if state.user_id is None:
@@ -194,13 +220,19 @@ class Authenticator:
         log.info("brain.session.ended")
 
 
-def _needs_verification(exc: BrainVerificationRequired) -> SessionInfo:
+def _verification_pending(inquiry: str, url: str, detail: str | None = None) -> SessionInfo:
+    """An unauthenticated session that is waiting on one specific Persona inquiry."""
     return SessionInfo(
         authenticated=False,
-        verification_url=exc.url,
-        inquiry=exc.inquiry,
-        detail=(
+        verification_url=url,
+        inquiry=inquiry,
+        detail=detail
+        or (
             "BRAIN requires identity verification. Complete it on the BRAIN website, "
             "then sign in here again."
         ),
     )
+
+
+def _needs_verification(exc: BrainVerificationRequired) -> SessionInfo:
+    return _verification_pending(exc.inquiry, exc.url)

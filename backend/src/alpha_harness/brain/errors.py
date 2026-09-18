@@ -7,12 +7,26 @@ them to HTTP responses in exactly one place.
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote, urljoin
 
 DAILY_LIMIT_DETAIL = "DAILY_SIMULATION_LIMIT_EXCEEDED"
 
-#: Where a person completes identity verification: the platform's own sign-in page, whose
-#: client runs the Persona inquiry (``docs/wqb-api/02-authentication.md``, ``endpoints/misc.md``).
+#: BRAIN's 403 ``detail`` for an inquiry that is unfinished rather than dead: complete it,
+#: never replace it.
+INQUIRY_INCOMPLETE_DETAIL = "INQUIRY_INCOMPLETE"
+
+#: Where an inquiry is completed and closed (``docs/wqb-api/02-authentication.md``).
+PERSONA_PATH = "/authentication/persona"
+
+#: Fallback only, for a 401 that carried no inquiry location: it cannot resume a specific
+#: inquiry (``docs/wqb-api/02-authentication.md``, ``endpoints/misc.md``).
 PLATFORM_SIGN_IN = "https://platform.worldquantbrain.com/sign-in"
+
+
+def persona_url(base_url: str, inquiry: str) -> str:
+    """The browser address that completes ``inquiry`` — the 401's ``Location``, rebuilt."""
+    return urljoin(base_url, f"{PERSONA_PATH}?inquiry={quote(inquiry)}")
+
 
 #: Sign-in ``detail`` codes and the platform's own wording (``appendix/error-codes.md``).
 #: Anything unrecognised is shown as ``DISABLED``, as the platform's client does.
@@ -102,14 +116,16 @@ class BrainAuthError(BrainError):
 class BrainVerificationRequired(BrainAuthError):
     """401 carrying an ``inquiry`` — biometric / ID verification is needed.
 
-    Not a credential failure. The person completes it on the platform (``url``); the
-    inquiry is then closed with ``POST /authentication/persona``.
+    Not a credential failure. The person opens ``url`` in a browser, and the inquiry is then
+    closed with ``POST /authentication/persona``.
     """
 
-    def __init__(self, message: str, *, inquiry: str, body: Any = None) -> None:
+    def __init__(
+        self, message: str, *, inquiry: str, url: str | None = None, body: Any = None
+    ) -> None:
         super().__init__(message, status=401, body=body)
         self.inquiry = inquiry
-        self.url = PLATFORM_SIGN_IN
+        self.url = url or PLATFORM_SIGN_IN
 
 
 class BrainForbidden(BrainError):

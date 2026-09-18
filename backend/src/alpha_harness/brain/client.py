@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any, Literal
+from urllib.parse import parse_qs, urljoin, urlsplit
 
 import httpx
 import structlog
@@ -338,6 +339,24 @@ class BrainClient:
             raise self.to_error(method, path, result)
         return result
 
+    def _persona_challenge(self, r: BrainResponse) -> tuple[str | None, str | None]:
+        """The Persona inquiry in a 401, and the URL to open to complete it.
+
+        A biometric step-up arrives as ``WWW-Authenticate: persona`` with the inquiry in a
+        relative ``Location``; some responses put it in the body instead
+        (``02-authentication.md``).
+        """
+        location = r.location
+        if location:
+            inquiry = parse_qs(urlsplit(location).query).get("inquiry", [""])[0]
+            if inquiry:
+                return inquiry, urljoin(self.base_url, location)
+
+        inquiry = r.body.get("inquiry") if isinstance(r.body, dict) else None
+        if isinstance(inquiry, str) and inquiry:
+            return inquiry, None
+        return None, None
+
     def to_error(self, method: str, path: str, r: BrainResponse) -> BrainError:
         """Map a failed response to a typed error (``docs/wqb-api/04-error-handling.md``)."""
         where = f"{method} {path}"
@@ -345,12 +364,13 @@ class BrainClient:
         detail = body.get("detail") if isinstance(body, dict) else None
 
         if r.status == 401:
-            inquiry = body.get("inquiry") if isinstance(body, dict) else None
-            if isinstance(inquiry, str) and inquiry:
+            inquiry, inquiry_url = self._persona_challenge(r)
+            if inquiry:
                 # Biometric step-up, not a credential failure (02-authentication.md).
                 return BrainVerificationRequired(
                     "BRAIN requires identity verification before this session can be used.",
                     inquiry=inquiry,
+                    url=inquiry_url,
                     body=body,
                 )
             return BrainAuthError(

@@ -181,6 +181,13 @@ class AuthService:
             # name again on the new object.
             if fresh.authenticated and not fresh.full_name:
                 fresh.full_name = self._session.full_name
+            if not fresh.authenticated and self._session.inquiry:
+                # A refresh that only says "not signed in" must not drop the inquiry the
+                # person is part-way through: the next sign-in would mint a replacement and
+                # strand the link already open in their browser.
+                fresh.inquiry = self._session.inquiry
+                fresh.verification_url = self._session.verification_url
+                fresh.detail = fresh.detail or self._session.detail
             self._session = fresh
             if self._session.authenticated:
                 await self.get_user_profile()
