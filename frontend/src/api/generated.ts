@@ -971,6 +971,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/portfolio/compute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Compute
+         * @description These Alphas combined at equal weight: stats, yearly rows, partitions, correlations.
+         */
+        post: operations["compute_api_portfolio_compute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portfolio/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Members
+         * @description Every submitted Alpha stored locally.
+         */
+        get: operations["members_api_portfolio_members_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portfolio/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync
+         * @description Refresh the submitted Alphas from BRAIN and download the PnL and turnover of any not
+         *     stored yet. Nothing else is listed.
+         */
+        post: operations["sync_api_portfolio_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/power-pool-lab/options": {
         parameters: {
             query?: never;
@@ -2205,6 +2266,15 @@ export interface components {
             /** Subcategories */
             subcategories: number;
         };
+        /** CorrelatedPair */
+        CorrelatedPair: {
+            /** A */
+            a: string;
+            /** B */
+            b: string;
+            /** Correlation */
+            correlation: number;
+        };
         /** DataFieldDetail */
         DataFieldDetail: {
             /** Alpha Count */
@@ -3005,6 +3075,19 @@ export interface components {
              */
             start: string;
         };
+        /** Period */
+        Period: {
+            /** End */
+            end: string;
+            /** Start */
+            start: string;
+        };
+        /** Periods */
+        Periods: {
+            inSample: components["schemas"]["Period"];
+            test: components["schemas"]["Period"] | null;
+            train: components["schemas"]["Period"] | null;
+        };
         /** Pick */
         Pick: {
             /** Alphaid */
@@ -3060,6 +3143,116 @@ export interface components {
             trainSharpe: number;
             /** Worstpair */
             worstPair: string[];
+        };
+        /** PortfolioMember */
+        PortfolioMember: {
+            /** Alphaid */
+            alphaId: string;
+            /** Categories */
+            categories: string[];
+            /** Classifications */
+            classifications: string[];
+            /** Delay */
+            delay: number | null;
+            /** Drawdown */
+            drawdown: number | null;
+            /** Fitness */
+            fitness: number | null;
+            /** Hasseries */
+            hasSeries: boolean;
+            /**
+             * Investability
+             * @enum {string}
+             */
+            investability: "max_trade" | "max_position" | "none";
+            /** Labelled */
+            labelled: boolean;
+            /** Margin */
+            margin: number | null;
+            /** Name */
+            name: string | null;
+            /** Pyramids */
+            pyramids: string[];
+            /** Region */
+            region: string | null;
+            /** Returns */
+            returns: number | null;
+            /** Sharpe */
+            sharpe: number | null;
+            /** Tags */
+            tags: string[];
+            /** Turnover */
+            turnover: number | null;
+            /** Universe */
+            universe: string | null;
+        };
+        /** PortfolioMembers */
+        PortfolioMembers: {
+            /** Members */
+            members: components["schemas"]["PortfolioMember"][];
+        };
+        /** PortfolioRequest */
+        PortfolioRequest: {
+            /** Alpha Ids */
+            alpha_ids: string[];
+            /**
+             * Cost Bps
+             * @default 5
+             */
+            cost_bps: number;
+        };
+        /** PortfolioResult */
+        PortfolioResult: {
+            afterCost: components["schemas"]["Windows"] | null;
+            /** Aftercostcurve */
+            afterCostCurve: number[];
+            /** Alphas */
+            alphas: number;
+            /** Correlation */
+            correlation: (number | null)[][];
+            /** Curve */
+            curve: number[];
+            /** Dates */
+            dates: string[];
+            highest: components["schemas"]["CorrelatedPair"] | null;
+            /** Ids */
+            ids: string[];
+            /** Measuredpairs */
+            measuredPairs: number;
+            /** Missing */
+            missing: string[];
+            periods: components["schemas"]["Periods"] | null;
+            stats: components["schemas"]["Windows"] | null;
+            /** Teststart */
+            testStart: string | null;
+            /** Toppairs */
+            topPairs: components["schemas"]["CorrelatedPair"][];
+            /** Yearly */
+            yearly: components["schemas"]["YearRow"][];
+        };
+        /** PortfolioStats */
+        PortfolioStats: {
+            /** Days */
+            days: number;
+            /** Drawdown */
+            drawdown: number;
+            /** Fitness */
+            fitness: number | null;
+            /** Margin */
+            margin: number;
+            /** Pnl */
+            pnl: number;
+            /** Returns */
+            returns: number;
+            /** Sharpe */
+            sharpe: number | null;
+            /** Turnover */
+            turnover: number;
+        };
+        /** PortfolioSyncStarted */
+        PortfolioSyncStarted: {
+            /** Taskid */
+            taskId: string;
         };
         /** PowerPoolModel */
         PowerPoolModel: {
@@ -4147,6 +4340,33 @@ export interface components {
             scored: number;
             /** Universe */
             universe: string | null;
+        };
+        /** Windows */
+        Windows: {
+            inSample: components["schemas"]["PortfolioStats"] | null;
+            test: components["schemas"]["PortfolioStats"] | null;
+            train: components["schemas"]["PortfolioStats"] | null;
+        };
+        /** YearRow */
+        YearRow: {
+            /** Days */
+            days: number;
+            /** Drawdown */
+            drawdown: number;
+            /** Fitness */
+            fitness: number | null;
+            /** Margin */
+            margin: number;
+            /** Pnl */
+            pnl: number;
+            /** Returns */
+            returns: number;
+            /** Sharpe */
+            sharpe: number | null;
+            /** Turnover */
+            turnover: number;
+            /** Year */
+            year: number;
         };
         /** You */
         You: {
@@ -5659,6 +5879,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LLMProviders"];
+                };
+            };
+        };
+    };
+    compute_api_portfolio_compute_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortfolioRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    members_api_portfolio_members_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioMembers"];
+                };
+            };
+        };
+    };
+    sync_api_portfolio_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioSyncStarted"];
                 };
             };
         };

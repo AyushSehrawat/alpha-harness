@@ -208,8 +208,8 @@ export function matches(checks: AlphaCheck[]) {
 
 // ── PnL analysis ───────────────────────────────────────────────────────────────────────────
 
-/** Trading days in a year, as BRAIN annualises Sharpe. */
-export const YEAR = 252
+/** Trading days in a year as BRAIN annualises Sharpe and returns: 250, not the documented 252. */
+export const YEAR = 250
 
 export interface Point {
   date: string

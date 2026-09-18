@@ -4,9 +4,8 @@ An alpha is a permanent result, so a local copy means never spending quota on it
 
 The daily returns matter more: two alphas with mediocre Sharpe that move independently
 combine into something better than either, and which pairs those are is only answerable
-if the series are kept. Sharpe recomputed as ``mean / stdev * sqrt(252)`` from the stored
-series matches the platform's own figure closely, so a mix can be judged before a
-simulation is spent on it.
+if the series are kept. The stored series rebuilds the platform's own figures (see
+:mod:`.metrics`), so a mix can be judged before a simulation is spent on it.
 """
 
 from __future__ import annotations
@@ -17,15 +16,30 @@ from datetime import date, datetime
 from itertools import accumulate
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
 import structlog
 
 from ..db.duck import ALPHA_COLUMNS, TRAIN_COLUMNS, Catalog
+from . import metrics
 from .yields import is_promising
 
 if TYPE_CHECKING:
     from ..brain.schemas import Alpha
 
 log = structlog.get_logger(__name__)
+
+#: 3: turnover calibrated to ``yearly-stats`` where it misses by more than rounding. A series
+#: stored under an older version is fetched again on the next sync.
+SERIES_VERSION = 3
+
+SERIES_STATS = (
+    "series_sharpe",
+    "series_turnover",
+    "series_fitness",
+    "series_returns",
+    "series_drawdown",
+    "series_margin",
+)
 
 
 def checks_json(alpha: Alpha) -> str | None:
@@ -38,6 +52,18 @@ def checks_json(alpha: Alpha) -> str | None:
     if stats is None:
         return None
     return json.dumps([c.model_dump(by_alias=True) for c in stats.checks])
+
+
+def _names(alpha: Alpha, key: str) -> list[str]:
+    """The ``name`` of each entry in one of the Alpha's undeclared lists, e.g. its
+    classifications ("Power Pool Alpha") or pyramids ("ASI/D1/OTHER")."""
+    raw = (alpha.model_extra or {}).get(key) or []
+    return [str(c["name"]) for c in raw if isinstance(c, dict) and c.get("name")]
+
+
+def _end_date(alpha: Alpha) -> date | None:
+    raw = (alpha.settings.model_extra or {}).get("endDate") if alpha.settings else None
+    return _as_date(raw) if raw else None
 
 
 def alpha_row(alpha: Alpha, fetched_at: datetime) -> tuple[Any, ...]:
@@ -73,6 +99,13 @@ def alpha_row(alpha: Alpha, fetched_at: datetime) -> tuple[Any, ...]:
         fetched_at,
         alpha.name,
         alpha.date_submitted,
+        settings.max_trade if settings else None,
+        settings.max_position if settings else None,
+        json.dumps(alpha.tags),
+        json.dumps(_names(alpha, "classifications")),
+        json.dumps(_names(alpha, "pyramids")),
+        stats.pnl if stats else None,
+        _end_date(alpha),
     )
 
 
@@ -126,17 +159,6 @@ def _page_row(r: dict[str, Any]) -> dict[str, Any]:
         "dateSubmitted": _iso(r["date_submitted"]),
         "hasPnl": bool(r["has_pnl"]),
     }
-
-
-def pnl_rows(alpha_id: str, rows: list[dict[str, Any]]) -> list[tuple[Any, ...]]:
-    """The daily series flattened for storage, skipping days with no value."""
-    out: list[tuple[Any, ...]] = []
-    for row in rows:
-        raw_date, raw_pnl = row.get("date"), row.get("pnl")
-        if raw_date is None or raw_pnl is None:
-            continue
-        out.append((alpha_id, _as_date(raw_date), float(raw_pnl)))
-    return out
 
 
 def k_ratio(daily_pnl: list[float]) -> float | None:
@@ -214,18 +236,71 @@ class AlphaVault:
                     a.train.fitness,
                     a.test.sharpe if a.test else None,
                     a.test.fitness if a.test else None,
+                    _as_date(a.test.start_date) if a.test and a.test.start_date else None,
+                    a.test.turnover if a.test else None,
                 )
                 for a in alphas
                 if a.train
             ],
         )
 
-    async def save_pnl(self, alpha_id: str, rows: list[dict[str, Any]]) -> int:
-        flattened = pnl_rows(alpha_id, rows)
-        if not flattened:
-            return 0
-        await self.catalog.upsert_pnl(flattened)
-        return len(flattened)
+    async def save_pnl(
+        self,
+        alpha_id: str,
+        pnl_rows: list[dict[str, Any]],
+        turnover_rows: list[dict[str, Any]],
+        yearly_rows: list[dict[str, Any]],
+    ) -> int:
+        """Store one alpha's daily PnL and turnover from its recordsets, the turnover scaled to
+        BRAIN's yearly figures (see :func:`metrics.calibrate`)."""
+        days = metrics.daily_rows(pnl_rows, turnover_rows)
+        stored = await self.by_ids([alpha_id])
+        split = (stored.get(alpha_id) or {}).get("test_start")
+        if yearly_rows:
+            days = metrics.calibrate(days, yearly_rows, split if isinstance(split, date) else None)
+        written = await self.catalog.replace_pnl(
+            alpha_id, [(alpha_id, day, pnl, turnover) for day, pnl, turnover in days]
+        )
+        if written:
+            await self.catalog.upsert(
+                "alpha", ("alpha_id", "series_version"), [(alpha_id, SERIES_VERSION)]
+            )
+            await self._cache_stats({alpha_id: (days, stored.get(alpha_id) or {})})
+        return written
+
+    async def cache_series_stats(self, alpha_ids: list[str]) -> None:
+        """Rebuild and keep the in-sample figures of these Alphas from their stored series."""
+        stored, series = await self.by_ids(alpha_ids), await self.series(alpha_ids)
+        await self._cache_stats(
+            {
+                a: ([(d, p, t) for d, (p, t) in sorted(series[a].items())], stored.get(a) or {})
+                for a in alpha_ids
+                if series.get(a)
+            }
+        )
+
+    async def _cache_stats(
+        self, alphas: dict[str, tuple[list[tuple[date, float, float]], dict[str, Any]]]
+    ) -> None:
+        rows: list[tuple[Any, ...]] = []
+        for alpha_id, (days, info) in alphas.items():
+            full = metrics.with_closing(days, info)
+            found = metrics.stats(
+                np.array([p for _, p, _ in full]), np.array([t for _, _, t in full])
+            )
+            if found is not None:
+                rows.append(
+                    (
+                        alpha_id,
+                        found.sharpe,
+                        found.turnover,
+                        found.fitness,
+                        found.returns,
+                        found.drawdown,
+                        found.margin,
+                    )
+                )
+        await self.catalog.upsert("alpha", ("alpha_id", *SERIES_STATS), rows)
 
     async def save_checks(self, alpha_id: str, checks: list[dict[str, Any]]) -> None:
         """Replace one alpha's check array and touch nothing else.
@@ -294,16 +369,15 @@ class AlphaVault:
         return int(value or 0)
 
     async def without_returns(self, limit: int = 5000) -> list[str]:
-        """Alphas whose daily series has not been fetched yet."""
+        """Alphas whose daily series has not been fetched yet, or only in the old form."""
         rows = await self.catalog.query(
             """
             SELECT a.alpha_id FROM alpha a
-            LEFT JOIN (SELECT DISTINCT alpha_id FROM alpha_pnl) p USING (alpha_id)
-            WHERE p.alpha_id IS NULL
+            WHERE a.series_version IS DISTINCT FROM ?
             ORDER BY a.sharpe DESC NULLS LAST
             LIMIT ?
             """,
-            [limit],
+            [SERIES_VERSION, limit],
         )
         return [str(r["alpha_id"]) for r in rows]
 
@@ -422,6 +496,61 @@ class AlphaVault:
         for row in rows:
             grouped.setdefault(str(row["alpha_id"]), {})[row["date"]] = float(row["pnl"] or 0.0)
         return grouped
+
+    async def series(self, alpha_ids: list[str]) -> dict[str, dict[date, tuple[float, float]]]:
+        """Each Alpha's daily ``(pnl, turnover)`` by date. Alphas still on the old series,
+        which has no turnover, are absent."""
+        if not alpha_ids:
+            return {}
+        placeholders = ", ".join("?" for _ in alpha_ids)
+        rows = await self.catalog.query(
+            f"""
+            SELECT alpha_id, date, pnl, turnover FROM alpha_pnl
+            WHERE alpha_id IN ({placeholders}) AND turnover IS NOT NULL
+            ORDER BY alpha_id, date
+            """,  # noqa: S608
+            list(alpha_ids),
+        )
+        grouped: dict[str, dict[date, tuple[float, float]]] = {}
+        for row in rows:
+            grouped.setdefault(str(row["alpha_id"]), {})[row["date"]] = (
+                float(row["pnl"] or 0.0),
+                float(row["turnover"]),
+            )
+        return grouped
+
+    async def submitted_members(self) -> list[dict[str, Any]]:
+        """Every submitted Alpha with what the Portfolio page filters on."""
+        return await self.catalog.query(
+            f"""
+            SELECT a.alpha_id, a.name, a.region, a.delay, a.universe, a.max_trade,
+                   a.max_position, a.tags, a.classifications, a.pyramids, a.date_submitted,
+                   a.series_sharpe, a.series_turnover, a.series_fitness, a.series_returns,
+                   a.series_drawdown, a.series_margin,
+                   EXISTS (
+                       SELECT 1 FROM alpha_pnl p
+                       WHERE p.alpha_id = a.alpha_id AND p.turnover IS NOT NULL
+                   ) AS has_series
+            FROM alpha a
+            WHERE {SUBMITTED}
+            ORDER BY a.date_submitted DESC NULLS LAST, a.alpha_id
+            """  # noqa: S608
+        )
+
+    async def lacking_series(self, alpha_ids: list[str]) -> list[str]:
+        """Those of these Alphas with no PnL and turnover stored, in the order given."""
+        if not alpha_ids:
+            return []
+        placeholders = ", ".join("?" for _ in alpha_ids)
+        rows = await self.catalog.query(
+            f"""
+            SELECT alpha_id FROM alpha
+            WHERE alpha_id IN ({placeholders}) AND series_version = ?
+            """,  # noqa: S608
+            [*alpha_ids, SERIES_VERSION],
+        )
+        stored = {str(r["alpha_id"]) for r in rows}
+        return [a for a in alpha_ids if a not in stored]
 
     async def train_pnl(self, alpha_ids: list[str]) -> dict[str, dict[date, float]]:
         """Each Alpha's daily PnL before its last two years, which a train/test split holds out.

@@ -1,4 +1,5 @@
 import {
+  ChartPieIcon,
   DatabaseIcon,
   FlaskConicalIcon,
   Grid3x3Icon,
@@ -89,6 +90,13 @@ export const NAV = [
     label: 'Alphas',
     icon: LayersIcon,
     tabs: POOL_TABS,
+  },
+  {
+    to: '/portfolio',
+    area: 'portfolio',
+    label: 'Portfolio',
+    icon: ChartPieIcon,
+    tabs: [],
   },
   {
     to: '/ai',

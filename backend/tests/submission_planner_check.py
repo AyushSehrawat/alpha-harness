@@ -271,11 +271,11 @@ def check_two_books() -> None:
         assert abs(one - planner.sharpe(planner.scale(grid), have, [column])) < 1e-9, kept[column]
 
 
-def check_leap_day() -> None:
-    """Feb 29 stepped back onto a year without one. Unreachable at ``WINDOW_YEARS = 4`` until
-    2104, but the constant is one edit away from making it reachable."""
-    assert planner.to_earlier_year(date(2104, 2, 29), 4) == date(2100, 2, 28)
-    assert planner.to_earlier_year(date(2024, 5, 17), 4) == date(2020, 5, 17)
+def check_window() -> None:
+    """Four whole calendar years, as BRAIN correlates: data ending 2023-12-29 counts from
+    2020-01-01, not from 2019-12-29. Measured against BRAIN's own Power Pool correlations."""
+    assert planner.window_start(date(2023, 12, 29)) == date(2020, 1, 1)
+    assert planner.window_start(date(2024, 2, 29)) == date(2021, 1, 1)
 
 
 def check_submittable() -> None:
@@ -324,7 +324,7 @@ def main() -> None:
     check_outside_submission(days)
     check_escape_clause()
     check_two_books()
-    check_leap_day()
+    check_window()
     check_submittable()
     check_planner_candidates()
     found = planner.plan(days, sorted(days))

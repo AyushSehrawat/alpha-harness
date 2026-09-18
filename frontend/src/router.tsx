@@ -138,6 +138,12 @@ const poolTab = createRoute({
   component: lazyRouteComponent(() => import('@/screens/pool'), 'PoolScreen'),
 })
 
+const portfolio = createRoute({
+  getParentRoute: () => root,
+  path: '/portfolio',
+  component: lazyRouteComponent(() => import('@/screens/portfolio'), 'PortfolioScreen'),
+})
+
 const alpha = createRoute({
   getParentRoute: () => root,
   path: '/alpha/$alphaId',
@@ -177,6 +183,7 @@ const routeTree = root.addChildren([
   tools.addChildren([toolsIndex, settingsSampler, submissionPlanner]),
   tasks,
   pool.addChildren([poolIndex, poolTab]),
+  portfolio,
   alpha,
   ai.addChildren([aiIndex, aiTab, aiThread]),
   pyramids,

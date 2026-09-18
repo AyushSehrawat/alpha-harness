@@ -30,6 +30,7 @@ import {
   rollingSharpe,
   underwater,
   verdictOf,
+  YEAR,
 } from './analysis'
 import { type AlphaInfo, type AlphaView, alpha as api } from './api'
 import { AlphaChart, type ChartView } from './chart'
@@ -337,7 +338,7 @@ function PerformancePanel({
       )}
       {shown === 'sharpe' && (
         <p className="text-body-compact text-ink-subtle">
-          Sharpe over each trailing 252 trading days, against the{' '}
+          Sharpe over each trailing {YEAR} trading days, against the{' '}
           <span className="num">{fmt.ratio(cutoff)}</span> a submission needs. BRAIN's IS ladder
           test weighs the latest years most.
         </p>

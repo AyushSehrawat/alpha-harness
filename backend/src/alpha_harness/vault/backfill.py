@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from ..brain.filters import AlphaQuery
+from ..brain.filters import AlphaQuery, Filter
 from ..brain.schemas import Alpha
 from .store import AlphaVault, checks_json
 from .yields import is_promising, is_submittable
@@ -116,6 +116,59 @@ class Backfill:
             name="vault-backfill",
         )
         return task.id
+
+    async def start_submitted(self) -> str:
+        """Refresh the submitted Alphas and download each one's PnL and turnover. Returns the
+        task id. Only submitted Alphas: the Portfolio needs nothing else."""
+        if self.busy:
+            raise RuntimeError("A sync is already running.")
+        task = await self.tasks.start("portfolio-sync", "Syncing submitted Alphas")
+        self._running = asyncio.create_task(self._sync_submitted(task), name="portfolio-sync")
+        return task.id
+
+    async def _sync_submitted(self, task: Any) -> None:
+        try:
+            await self.tasks.update(task, detail="Listing SUBMITTED Alphas", progress=None)
+            ids: list[str] = []
+            offset = 0
+            while True:
+                page = await self.endpoints.list_alphas(
+                    AlphaQuery(
+                        limit=PAGE,
+                        offset=offset,
+                        order="-dateSubmitted",
+                        filters=[Filter("status", "!=", "UNSUBMITTED")],
+                    )
+                )
+                results = page.get("results") or []
+                alphas = [Alpha.model_validate(raw) for raw in results]
+                await self.vault.save_alphas(alphas)
+                ids.extend(a.id for a in alphas)
+                await self.tasks.update(task, detail=f"Listed {len(ids)} SUBMITTED Alphas")
+                if len(results) < PAGE:
+                    break
+                offset += PAGE
+
+            # A simulated series never changes, so one already stored is not fetched again.
+            missing = await self.vault.lacking_series(ids)
+            for done, alpha_id in enumerate(missing, start=1):
+                try:
+                    await self.fetch_returns(alpha_id)
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("vault.returns_failed", alpha_id=alpha_id, error=str(exc)[:160])
+                await self.tasks.update(
+                    task,
+                    progress=done / len(missing),
+                    detail=f"Downloading PnL and turnover: {done} of {len(missing)}",
+                )
+            await self.tasks.finish(task)
+            log.info("vault.submitted_synced", alphas=len(ids), fetched=len(missing))
+        except asyncio.CancelledError:
+            await self.tasks.finish(task, state="cancelled")
+            raise
+        except Exception as exc:
+            log.exception("vault.submitted_sync_failed")
+            await self.tasks.finish(task, state="failed", error=str(exc)[:300])
 
     async def stop(self) -> None:
         # Awaited, not just cancelled: a check mid-``save_checks`` would otherwise still be
@@ -240,12 +293,19 @@ class Backfill:
         return done
 
     async def fetch_returns(self, alpha_id: str) -> int:
-        """Fetch and store one alpha's daily series."""
-        recordset = await self.endpoints.get_recordset(alpha_id, "daily-pnl")
-        stored = await self.vault.save_pnl(alpha_id, recordset.rows())
-        if recordset.records and not stored:
+        """Fetch and store one alpha's daily PnL and turnover.
+
+        From the cumulative ``pnl`` recordset rather than ``daily-pnl``, which is rounded
+        separately and drifts from the platform's own figures, with turnover scaled to
+        ``yearly-stats`` (see :mod:`.metrics`).
+        """
+        pnl = await self.endpoints.get_recordset(alpha_id, "pnl")
+        turnover = await self.endpoints.get_recordset(alpha_id, "turnover")
+        yearly = await self.endpoints.get_recordset(alpha_id, "yearly-stats")
+        stored = await self.vault.save_pnl(alpha_id, pnl.rows(), turnover.rows(), yearly.rows())
+        if pnl.records and not stored:
             # Days came back but none had a date and a PnL: the columns were renamed.
-            columns = [p.name for p in recordset.schema_.properties]
+            columns = [p.name for p in pnl.schema_.properties]
             log.warning("vault.pnl_unreadable", alpha_id=alpha_id, columns=columns)
         return stored
 

@@ -28,6 +28,7 @@ choose.
 from __future__ import annotations
 
 from bisect import bisect_left
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -35,7 +36,6 @@ import numpy.typing as npt
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from datetime import date
 
 type Floats = npt.NDArray[np.float64]
 type Bools = npt.NDArray[np.bool_]
@@ -47,7 +47,7 @@ CEILING = 0.5
 #: Past the ceiling, BRAIN still takes an Alpha whose Sharpe beats the one it collides with by
 #: this much. Applied against submitted Alphas only -- see :func:`search`.
 ESCAPE = 1.1
-#: Correlation is measured over a four-year window, per ``docs/wqb-documentation``. Measured:
+#: Correlation is measured over the last four calendar years (see :func:`window_start`). Measured:
 #: against the full history this moves 451 of 38,503 pairs across the ceiling, so it is not a
 #: detail -- 401 pairs the full history calls safe are ones BRAIN would refuse.
 WINDOW_YEARS = 4
@@ -58,7 +58,8 @@ BEAM = 60
 #: Far past any peak seen in practice, so the search always runs through it and back down.
 MAX_PICKS = 14
 
-TRADING_DAYS = 252
+#: BRAIN annualises over 250 days, measured (see :mod:`..vault.metrics`).
+TRADING_DAYS = 250
 
 
 def grid(
@@ -308,9 +309,9 @@ def plan(
     locked = tuple(index[a] for a in locked_ids if a in index)
     candidates = [index[a] for a in alpha_ids if a in index and a not in submitted]
 
-    # The ceiling is the platform's, so it is measured the platform's way: a four-year window,
+    # The ceiling is the platform's, so it is measured the platform's way: four calendar years,
     # whatever the objective below is computed on.
-    gate = bisect_left(dates, to_earlier_year(dates[-1], WINDOW_YEARS))
+    gate = bisect_left(dates, window_start(dates[-1]))
     rho = correlations(full[gate:])
 
     # Two books. Every choice is made on ``scaled``; every number reported comes off ``book``.
@@ -341,7 +342,7 @@ def plan(
     # over ten years of history it covers the held-out fifth -- letting it gate this search
     # would decide the size from pairs that had not happened yet. The step that picks members
     # keeps ``rho``, because there the question is what BRAIN will accept today.
-    train_gate = bisect_left(dates[:cut], to_earlier_year(dates[cut - 1], WINDOW_YEARS))
+    train_gate = bisect_left(dates[:cut], window_start(dates[cut - 1]))
     rho_train = correlations(full[train_gate:cut])
     own_train = np.array([sharpe(book[:cut], have[:cut], [i]) for i in range(len(kept))])
     trained = search(rho_train, scaled[:cut], have[:cut], locked=locked, own=own_train)
@@ -396,8 +397,9 @@ def plan(
     }
 
 
-def to_earlier_year(day: date, years: int) -> date:
-    try:
-        return day.replace(year=day.year - years)
-    except ValueError:  # Feb 29 landing on a year that has no Feb 29.
-        return day.replace(year=day.year - years, day=28)
+def window_start(last: date) -> date:
+    """First day BRAIN correlates over: 1 January, ``WINDOW_YEARS`` calendar years back including
+    ``last``'s own. Whole years, not four years back from ``last``: measured, this reproduces
+    BRAIN's Power Pool correlations to four decimals on all eight pairs checked, and the rolling
+    window was off by up to 0.0005."""
+    return date(last.year - WINDOW_YEARS + 1, 1, 1)
