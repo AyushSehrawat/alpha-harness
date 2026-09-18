@@ -23,6 +23,9 @@ export interface LabDraft {
 
 export const MAX_SIMULATIONS = 100_000
 
+/** Matches `labs.search.MAX_CORES`: a task may hold every slot the engine has. */
+export const CORES = [1, 2, 3, 4, 5, 6, 7, 8]
+
 /** A draft's market and datasets: dataset names, and the round trip to the Data Explorer to choose them. */
 type LabMarket = Pick<LabDraft, 'region' | 'delay' | 'universe' | 'datasetIds'>
 

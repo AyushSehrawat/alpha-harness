@@ -42,7 +42,9 @@ GROUPS = ("market", "sector", "industry", "subindustry")
 DECAYS = (0, 3, 5, 7, 10)
 TRUNCATION = 0.08
 NEUTRALIZATIONS = ("MARKET", "SECTOR", "INDUSTRY", "SUBINDUSTRY")
-MAX_CORES = 4
+#: Most concurrent slots one lab task may hold: all of the engine's, so a single sweep
+#: can use the whole account when nothing else is running.
+MAX_CORES = 8
 #: A task's simulations. A big task carries on through the next days' allowances.
 MAX_SIMULATIONS = 100_000
 FAMILIES = ("cs", "ts", "group", "cs_ts", "ts_ts", "group_ts")

@@ -19,7 +19,7 @@ import {
   type SeedRow,
 } from '@/screens/research-labs/evolution/api'
 import { MAX_SEEDS, useSeedPick } from '@/screens/research-labs/evolution/seed-pick'
-import { MAX_SIMULATIONS } from '@/screens/research-labs/lab-task'
+import { CORES, MAX_SIMULATIONS } from '@/screens/research-labs/lab-task'
 import { Setting } from '@/screens/research-labs/task-settings'
 import {
   Button,
@@ -41,7 +41,6 @@ import { Select } from '@/ui/overlay'
 import { type Column, DataTable } from '@/ui/table'
 import { useEvolutionLab } from './state'
 
-const CORES = [1, 2, 3, 4]
 const POPULATIONS = [50, 100, 200]
 const MUTATION_RATES = [0.03, 0.05, 0.08]
 

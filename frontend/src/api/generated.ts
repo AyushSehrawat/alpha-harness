@@ -1134,7 +1134,7 @@ export interface paths {
         put?: never;
         /**
          * Quick
-         * @description Run some of today's unclaimed simulations now, split across the cores a task can hold.
+         * @description Run some of today's unclaimed simulations now, split across tasks that run side by side.
          *
          *     :data:`DEFAULT_RUN` unless the body asks for more, never beyond what is left. The
          *     datasets are the ones last chosen, else every synced dataset in a pyramid not yet
@@ -2489,7 +2489,7 @@ export interface components {
             alpha_ids?: string[];
             /**
              * Cores
-             * @default 4
+             * @default 8
              */
             cores: number;
             /** Delay */
@@ -3307,7 +3307,7 @@ export interface components {
         PowerPoolRequest: {
             /**
              * Cores
-             * @default 4
+             * @default 8
              */
             cores: number;
             /** Dataset Ids */
@@ -3644,7 +3644,7 @@ export interface components {
         SearchRequest: {
             /**
              * Cores
-             * @default 4
+             * @default 8
              */
             cores: number;
             /** Dataset Ids */
@@ -4199,7 +4199,7 @@ export interface components {
         TemplateTask: {
             /**
              * Cores
-             * @default 4
+             * @default 8
              */
             cores: number;
             /** Dataset Ids */

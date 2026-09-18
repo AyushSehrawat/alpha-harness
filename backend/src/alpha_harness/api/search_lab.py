@@ -78,6 +78,10 @@ class QuickRequest(BaseModel):
 #: A focused run that finishes in about half an hour over eight cores, rather than hours.
 DEFAULT_RUN = 500
 
+#: Cores per quick-run task, so several of them run side by side rather than one
+#: holding the whole engine.
+QUICK_CORES = 4
+
 
 class QuickTask(Out):
     id: int
@@ -179,7 +183,7 @@ async def add_task(body: SearchRequest, state: State, run: bool = False) -> Adde
 
 @router.post("/quick", status_code=201)
 async def quick(body: QuickRequest, state: State) -> QuickRun:
-    """Run some of today's unclaimed simulations now, split across the cores a task can hold.
+    """Run some of today's unclaimed simulations now, split across tasks that run side by side.
 
     :data:`DEFAULT_RUN` unless the body asks for more, never beyond what is left. The
     datasets are the ones last chosen, else every synced dataset in a pyramid not yet
@@ -198,7 +202,7 @@ async def quick(body: QuickRequest, state: State) -> QuickRun:
         )
 
     budget = min(left, body.simulations or DEFAULT_RUN)
-    count = max(1, min(len(ranked), state.engine.slots // search.MAX_CORES, budget))
+    count = max(1, min(len(ranked), state.engine.slots // QUICK_CORES, budget))
     share, extra = divmod(min(budget, search.MAX_SIMULATIONS * count), count)
     planned: list[tuple[SearchRequest, dict[str, Any]]] = []
     for i in range(count):
@@ -206,6 +210,7 @@ async def quick(body: QuickRequest, state: State) -> QuickRun:
             region=body.region,
             delay=body.delay,
             universe=body.universe,
+            cores=QUICK_CORES,
             # Dealt in turn, so every task gets some of the best pyramids.
             dataset_ids=ranked[i::count][:200],
             simulations=share + (1 if i < extra else 0),

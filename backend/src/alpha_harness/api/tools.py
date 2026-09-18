@@ -118,8 +118,7 @@ class SampleRequest(PreviewRequest):
     markets: list[MarketPick] = Field(default_factory=list, max_length=500)
     neutralizations: list[str] = Field(default_factory=list, max_length=50)
     pairs: list[PairPick] = Field(default_factory=list, max_length=4)
-    #: Bounded by the engine rather than by ``search.MAX_CORES``: that caps a lab to half the
-    #: engine so a manual experiment can still get cores, and this sweep *is* the day's work.
+    #: Bounded by the engine rather than by ``search.MAX_CORES``, which is the labs' own cap.
     #: The real ceiling is the engine's slot count, checked in the route where it is known.
     cores: int = Field(default=DEFAULT_SLOTS, ge=1)
 

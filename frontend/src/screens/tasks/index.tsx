@@ -15,7 +15,7 @@ import { type ComponentProps, useEffect, useState } from 'react'
 import { DASH, fmt } from '@/lib/format'
 import { useRefetchOn } from '@/lib/ws'
 import { DetailSheet } from '@/screens/pool/detail'
-import { MAX_SIMULATIONS } from '@/screens/research-labs/lab-task'
+import { CORES, MAX_SIMULATIONS } from '@/screens/research-labs/lab-task'
 import { type LabTask, labTasks, type RankedAlpha, type TaskStatus } from '@/screens/tasks/api'
 import {
   Badge,
@@ -40,8 +40,6 @@ import {
 } from '@/ui/kit'
 import { Confirm, Dialog, Menu } from '@/ui/overlay'
 import { type Column, DataTable } from '@/ui/table'
-
-const CORES = [1, 2, 3, 4]
 
 /** Matches `labs.params.SETTINGS_SAMPLER`. */
 const SETTINGS_SAMPLER = 'settings-sampler'

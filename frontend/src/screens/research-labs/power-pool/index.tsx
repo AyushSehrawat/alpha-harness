@@ -10,7 +10,7 @@ import { errorMessage } from '@/api/http'
 import { fmt } from '@/lib/format'
 import { DEFAULT_SCOPE } from '@/lib/scope'
 import { useDebounced } from '@/lib/use-debounced'
-import { MAX_SIMULATIONS, useLabMarket } from '@/screens/research-labs/lab-task'
+import { CORES, MAX_SIMULATIONS, useLabMarket } from '@/screens/research-labs/lab-task'
 import { type PowerPoolRequest, powerPoolLab } from '@/screens/research-labs/power-pool/api'
 import { DatasetsPanel, Setting } from '@/screens/research-labs/task-settings'
 import {
@@ -156,7 +156,7 @@ export function PowerPoolLabScreen() {
             <Setting label="Cores">
               <Segmented
                 label="Cores"
-                items={[1, 2, 3, 4].map((v) => ({ value: v, label: v }))}
+                items={CORES.map((v) => ({ value: v, label: v }))}
                 value={draft.cores}
                 onChange={(cores) => draft.set({ cores })}
               />

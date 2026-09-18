@@ -16,9 +16,8 @@ import {
   Panel,
   Segmented,
 } from '@/ui/kit'
-import type { LabDraft } from './lab-task'
+import { CORES, type LabDraft } from './lab-task'
 
-const CORES = [1, 2, 3, 4]
 const DECAYS = [0, 3, 5, 7, 10]
 
 /** What either lab's preview says about a task. */
