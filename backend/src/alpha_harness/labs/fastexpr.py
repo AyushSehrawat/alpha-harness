@@ -429,7 +429,7 @@ def validate(
     """Why BRAIN would reject this tree, or nothing."""
     problems: list[str] = []
     assigned = {node.value for _, node in walk(tree) if node.kind == "assign"}
-    for _path, node in walk(tree):
+    for path, node in walk(tree):
         if node.kind == "call":
             info = table.get(node.value)
             if info is None:
@@ -440,6 +440,8 @@ def validate(
                 problems.append(f"{node.value} does not take {count} inputs.")
         elif (
             node.kind == "name"
+            # A keyword value names an option (``driver=gaussian``), not a data field.
+            and not (path and path[-1] >= len(node_at(tree, path[:-1]).args))
             and node.value not in known_names
             and node.value not in assigned
             and node.value.lower() not in ("true", "false", "nan")
