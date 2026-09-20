@@ -37,6 +37,8 @@ log = structlog.get_logger(__name__)
 WINDOW = timedelta(minutes=30)
 #: Tolerance between our clock and BRAIN's ``dateCreated``.
 CLOCK_SLACK = timedelta(minutes=2)
+#: Lost sends queued again before one more is given up on.
+MAX_ORPHAN_REQUEUES = 2
 #: The alpha list serves at most 100 rows a page.
 PAGE = 100
 #: The alpha list refuses offsets past 1,000; beyond it the listing continues by
@@ -204,6 +206,7 @@ async def reconcile_orphans(
 
     adopted: list[tuple[SimulationRecord, str]] = []
     requeue: list[int] = []
+    abandon: list[int] = []
     for cluster in _clusters(rows, now):
         try:
             listed = await _listed(endpoints, cluster)
@@ -227,7 +230,9 @@ async def reconcile_orphans(
             if hit is not None:
                 adopted.append((row, hit["id"]))
             elif anchor + WINDOW < now:
-                requeue.append(row.id)
+                # A send that keeps losing its answer would otherwise loop here forever.
+                lost_before = row.orphan_requeues >= MAX_ORPHAN_REQUEUES
+                (abandon if lost_before else requeue).append(row.id)
 
     landed: list[str] = []
     async with db.session() as session:
@@ -238,6 +243,8 @@ async def reconcile_orphans(
                 from_=[SimStatus.ORPHANED],
                 status=SimStatus.COMPLETE,
                 alpha_id=alpha_id,
+                # It was sent, so it spent quota on the day it went out.
+                submitted_at=row.sent_at or utcnow(),
                 progress=1.0,
                 message=f"Recovered after BRAIN's answer was lost: matched alpha {alpha_id}.",
                 finished_at=utcnow(),
@@ -252,7 +259,17 @@ async def reconcile_orphans(
             parent_record_id=None,
             sent_at=None,
             finished_at=None,
+            orphan_requeues=SimulationRecord.orphan_requeues + 1,
             message="No alpha appeared within 30 minutes of the lost send; queued again.",
+        )
+        await transition(
+            session,
+            abandon,
+            from_=[SimStatus.ORPHANED],
+            status=SimStatus.ERROR,
+            finished_at=utcnow(),
+            message=f"BRAIN's answer to this simulation was lost {MAX_ORPHAN_REQUEUES + 1} "
+            "times and no alpha appeared, so it is not sent again.",
         )
         # A batch parent carries no alpha of its own; its children are resolved one by
         # one above. Close it so it does not sit unfinished in every list.
@@ -270,6 +287,11 @@ async def reconcile_orphans(
     for alpha_id in landed:
         if on_alpha is not None:
             on_alpha(alpha_id)
-    if landed or requeued:
-        log.warning("reconcile.resolved", adopted=len(landed), requeued=len(requeued))
-    return {"adopted": len(landed), "requeued": len(requeued)}
+    if landed or requeued or abandon:
+        log.warning(
+            "reconcile.resolved",
+            adopted=len(landed),
+            requeued=len(requeued),
+            abandoned=len(abandon),
+        )
+    return {"adopted": len(landed), "requeued": len(requeued), "abandoned": len(abandon)}
