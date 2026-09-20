@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
+  CopyIcon,
   EllipsisIcon,
   PauseIcon,
   PencilIcon,
@@ -12,11 +13,15 @@ import {
   Trash2Icon,
 } from 'lucide-react'
 import { type ComponentProps, useEffect, useState } from 'react'
+import { toast } from 'sonner'
+import { errorMessage } from '@/api/http'
 import { DASH, fmt } from '@/lib/format'
 import { useRefetchOn } from '@/lib/ws'
 import { DetailSheet } from '@/screens/pool/detail'
-import { CORES, MAX_SIMULATIONS } from '@/screens/research-labs/lab-task'
+import { MAX_SIMULATIONS } from '@/screens/research-labs/lab-task'
 import { type LabTask, labTasks, type RankedAlpha, type TaskStatus } from '@/screens/tasks/api'
+import { resultsMarkdown } from '@/screens/tasks/copy'
+import { SubmittableAlphas } from '@/screens/tasks/submittable'
 import {
   Badge,
   Button,
@@ -186,6 +191,7 @@ export function TasksScreen() {
   const [editing, setEditing] = useState<LabTask | null>(null)
   const [confirming, setConfirming] = useState<Act | null>(null)
   const [alphaId, setAlphaId] = useState<string | null>(null)
+  const [view, setView] = useState<'tasks' | 'submittable'>('tasks')
 
   // Nothing picked yet: open on what is running, then stay there. Re-deriving this every render
   // would move the pane out from under the reader the moment that task finished.
@@ -372,8 +378,22 @@ export function TasksScreen() {
       )}
       {act.isError && confirming === null && <ErrorNotice error={act.error} />}
 
-      <Panel>
-        {list.data && all.length === 0 ? (
+      <Panel
+        actions={
+          <Segmented
+            label="View"
+            items={[
+              { value: 'tasks', label: 'Tasks' },
+              { value: 'submittable', label: 'Submittable Alphas' },
+            ]}
+            value={view}
+            onChange={setView}
+          />
+        }
+      >
+        {view === 'submittable' ? (
+          <SubmittableAlphas onOpenAlpha={setAlphaId} />
+        ) : list.data && all.length === 0 ? (
           <Empty title="No tasks yet">
             <Link to="/labs" className={LINK}>
               Open Research Labs
@@ -391,9 +411,11 @@ export function TasksScreen() {
           />
         )}
       </Panel>
-      {selected && <TaskDetail task={selected} onOpenAlpha={setAlphaId} />}
+      {view === 'tasks' && selected && <TaskDetail task={selected} onOpenAlpha={setAlphaId} />}
 
-      {editing && <EditTask key={editing.id} task={editing} onClose={() => setEditing(null)} />}
+      {editing && (
+        <EditTask key={editing.id} task={editing} slots={slots} onClose={() => setEditing(null)} />
+      )}
       <DetailSheet alphaId={alphaId} onClose={() => setAlphaId(null)} />
       <Confirm
         open={confirming !== null}
@@ -593,24 +615,39 @@ function TaskDetail({
   const ended = task.finishedAt ? Date.parse(task.finishedAt) : Date.now()
   const elapsed = Number.isNaN(began) ? null : Math.max(0, (ended - began) / 1000)
 
+  const title = [
+    task.labName,
+    task.templateName,
+    task.lab === SETTINGS_SAMPLER ? task.alphaId : `${task.region} D${task.delay}`,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  const description =
+    task.lab === SETTINGS_SAMPLER
+      ? // Held at the source Alpha's values for every simulation in the sweep.
+        `${fmt.int(task.markets)} Markets · Decay ${task.decay ?? DASH} · Truncation ${task.truncation ?? DASH} · NaN Handling ${task.nanHandling ?? DASH}`
+      : task.seeds > 0
+        ? `${task.universe ?? DASH} · ${fmt.int(task.seeds)} seeds · Population ${fmt.int(task.population)} · Mutation ${fmt.pct(task.mutationRate, 0)}`
+        : `Decay ${task.decay ?? DASH} · ${fmt.int(task.fields)} fields · ${task.datasetIds.join(', ')}`
+  const copyResults = () =>
+    navigator.clipboard.writeText(resultsMarkdown(task, rows)).then(
+      () => toast.success(`Copied ${fmt.int(rows.length)} results`),
+      (e: unknown) => toast.error(errorMessage(e)),
+    )
+
   return (
     <Panel
-      title={[
-        task.labName,
-        task.templateName,
-        task.lab === SETTINGS_SAMPLER ? task.alphaId : `${task.region} D${task.delay}`,
-      ]
-        .filter(Boolean)
-        .join(' · ')}
-      description={
-        task.lab === SETTINGS_SAMPLER
-          ? // Held at the source Alpha's values for every simulation in the sweep.
-            `${fmt.int(task.markets)} Markets · Decay ${task.decay ?? DASH} · Truncation ${task.truncation ?? DASH} · NaN Handling ${task.nanHandling ?? DASH}`
-          : task.seeds > 0
-            ? `${task.universe ?? DASH} · ${fmt.int(task.seeds)} seeds · Population ${fmt.int(task.population)} · Mutation ${fmt.pct(task.mutationRate, 0)}`
-            : `Decay ${task.decay ?? DASH} · ${fmt.int(task.fields)} fields · ${task.datasetIds.join(', ')}`
+      title={title}
+      description={description}
+      actions={
+        <>
+          <Button size="sm" variant="ghost" disabled={!rows.length} onClick={copyResults}>
+            <CopyIcon />
+            Copy Results
+          </Button>
+          <TaskBadge task={task} />
+        </>
       }
-      actions={<TaskBadge task={task} />}
     >
       <div className="flex flex-col gap-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -687,7 +724,7 @@ function TaskDetail({
   )
 }
 
-function EditTask({ task, onClose }: { task: LabTask; onClose: () => void }) {
+function EditTask({ task, slots, onClose }: { task: LabTask; slots: number; onClose: () => void }) {
   const queryClient = useQueryClient()
   const [cores, setCores] = useState(task.cores)
   const [simulations, setSimulations] = useState(String(task.target))
@@ -729,7 +766,7 @@ function EditTask({ task, onClose }: { task: LabTask; onClose: () => void }) {
         <Fieldset legend="Cores">
           <Segmented
             label="Cores"
-            items={CORES.map((v) => ({ value: v, label: v }))}
+            items={Array.from({ length: slots }, (_, i) => ({ value: i + 1, label: i + 1 }))}
             value={cores}
             onChange={setCores}
           />

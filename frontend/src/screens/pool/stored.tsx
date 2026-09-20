@@ -2,7 +2,7 @@
 
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { GaugeIcon, SearchIcon } from 'lucide-react'
+import { CopyIcon, GaugeIcon, SearchIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { errorMessage } from '@/api/http'
@@ -35,6 +35,7 @@ import {
   TEXT_TONE,
 } from '@/ui/kit'
 import { type Column, DataTable, Pager, type Sort } from '@/ui/table'
+import { alphasMarkdown } from './copy'
 import { AlphaActionsMenu } from './shared'
 
 /** Bounds as the user types them; `div` converts the display unit to the wire fraction. */
@@ -186,6 +187,7 @@ export function Stored({ onOpen }: { onOpen: (alphaId: string) => void }) {
     queryFn: pool.overview,
   })
   const [submitted, setSubmitted] = useState<'no' | 'yes'>('no')
+  const [copying, setCopying] = useState(false)
   const [search, setSearch] = useState('')
   const [regions, setRegions] = useState<string[]>([])
   const [delays, setDelays] = useState<string[]>([])
@@ -312,6 +314,28 @@ export function Stored({ onOpen }: { onOpen: (alphaId: string) => void }) {
                 { value: 'yes', label: 'Submitted' },
               ]}
             />
+          )}
+          {!market && submitted === 'yes' && (
+            <Button
+              size="sm"
+              variant="ghost"
+              loading={copying}
+              disabled={!page.data?.total}
+              onClick={() => {
+                setCopying(true)
+                alphasMarkdown(body, 'Submitted Alphas')
+                  .then((text) => navigator.clipboard.writeText(text))
+                  .then(
+                    () =>
+                      toast.success(`Copied ${fmt.int(page.data?.total ?? 0)} Submitted Alphas`),
+                    (e: unknown) => toast.error(errorMessage(e)),
+                  )
+                  .finally(() => setCopying(false))
+              }}
+            >
+              {!copying && <CopyIcon />}
+              Copy Alphas
+            </Button>
           )}
         </div>
 

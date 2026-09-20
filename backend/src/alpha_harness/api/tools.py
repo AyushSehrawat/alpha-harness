@@ -296,6 +296,10 @@ async def _candidates(state: State, task_ids: list[int]) -> tuple[list[str], set
         ).all()
         marked = {str(a) for a in (await session.scalars(select(Submission.alpha_id))).all()}
 
+    # The vault holds the checks BRAIN has since finished; a trial's copy is frozen at
+    # simulation time, still PENDING on the correlation checks, and only stands in for an
+    # Alpha the vault does not hold.
+    stored = await state.alphas.by_ids(list({str(a) for a, _ in rows}))
     found: list[str] = []
     seen: set[str] = set()
     pending = 0
@@ -304,7 +308,9 @@ async def _candidates(state: State, task_ids: list[int]) -> tuple[list[str], set
         if found_id in seen:
             continue
         seen.add(found_id)
-        checks = json.dumps((result or {}).get("checks") or [])
+        checks = (stored.get(found_id) or {}).get("checks") or json.dumps(
+            (result or {}).get("checks") or []
+        )
         if is_submittable(checks):
             found.append(found_id)
         elif is_promising(checks):

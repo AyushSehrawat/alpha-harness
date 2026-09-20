@@ -13,6 +13,11 @@ export type RankedAlpha = Omit<Schemas['RankedAlpha'], 'settings'> & {
   settings: { universe?: string; neutralization?: string; [key: string]: unknown } | null
 }
 
+/** A submittable Alpha from any task, with the task that found it. */
+export type TaskAlpha = Omit<Schemas['TaskAlpha'], 'settings'> & {
+  settings: RankedAlpha['settings']
+}
+
 const B = '/api/lab-tasks'
 
 export const labTasks = {
@@ -27,4 +32,6 @@ export const labTasks = {
     http.patch<LabTask>(`${B}/${id}`, body),
   remove: (id: number) => http.del<Schemas['TaskRemoved']>(`${B}/${id}`),
   top: (id: number, limit = 50) => http.get<RankedAlpha[]>(`${B}/${id}/top${qs({ limit })}`),
+  /** Every Alpha from every task that nothing refuses: each check PASS, WARNING or PENDING. */
+  submittable: () => http.get<TaskAlpha[]>(`${B}/submittable`),
 }

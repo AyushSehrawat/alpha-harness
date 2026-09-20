@@ -696,6 +696,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/lab-tasks/submittable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Submittable Alphas
+         * @description Every Alpha from every task that nothing BRAIN reports refuses: each check PASS, WARNING
+         *     or PENDING, apart from the ones that never gate (``vault.yields.IGNORED_CHECKS``).
+         *
+         *     Judged on the vault's checks where it has them, as a task's own list is. Each Alpha once,
+         *     from the task that found it first.
+         */
+        get: operations["submittable_alphas_api_lab_tasks_submittable_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/lab-tasks/{task_id}": {
         parameters: {
             query?: never;
@@ -3531,6 +3555,8 @@ export interface components {
             fitness: number | null;
             /** Kratio */
             kRatio: number | null;
+            /** Longcount */
+            longCount?: number | null;
             /** Margin */
             margin: number | null;
             /** Number */
@@ -3548,6 +3574,8 @@ export interface components {
             } | null;
             /** Sharpe */
             sharpe: number | null;
+            /** Shortcount */
+            shortCount?: number | null;
             /**
              * Source
              * @default false
@@ -4132,6 +4160,64 @@ export interface components {
          * @enum {string}
          */
         SyncStatus: "RUNNING" | "COMPLETE" | "FAILED" | "CANCELLED";
+        /**
+         * TaskAlpha
+         * @description A submittable Alpha, with the task that found it.
+         */
+        TaskAlpha: {
+            /** Alphaid */
+            alphaId: string | null;
+            /** Drawdown */
+            drawdown: number | null;
+            /** Expression */
+            expression: string | null;
+            /** Failedchecks */
+            failedChecks: string[];
+            /** Feasible */
+            feasible: boolean | null;
+            /** Fitness */
+            fitness: number | null;
+            /** Kratio */
+            kRatio: number | null;
+            /** Longcount */
+            longCount?: number | null;
+            /** Margin */
+            margin: number | null;
+            /** Number */
+            number: number;
+            /**
+             * Pending
+             * @default false
+             */
+            pending: boolean;
+            /** Returns */
+            returns: number | null;
+            /** Settings */
+            settings: {
+                [key: string]: unknown;
+            } | null;
+            /** Sharpe */
+            sharpe: number | null;
+            /** Shortcount */
+            shortCount?: number | null;
+            /**
+             * Source
+             * @default false
+             */
+            source: boolean;
+            /** Submittable */
+            submittable: boolean;
+            /** Taskid */
+            taskId: number;
+            /** Taskname */
+            taskName: string;
+            /** Trialid */
+            trialId: number;
+            /** Turnover */
+            turnover: number | null;
+            /** Value */
+            value: number;
+        };
         /** TaskChange */
         TaskChange: {
             /** Cores */
@@ -5480,6 +5566,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LabTasks"];
+                };
+            };
+        };
+    };
+    submittable_alphas_api_lab_tasks_submittable_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskAlpha"][];
                 };
             };
         };

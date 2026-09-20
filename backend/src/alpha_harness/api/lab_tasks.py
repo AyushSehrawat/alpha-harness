@@ -20,6 +20,7 @@ from ..labs.objectives import OBJECTIVES, StudyNotFoundError
 from ..labs.params import TASK_SAMPLERS, TEMPLATE_SAMPLER, task_params
 from ..labs.study import ranked
 from ..schemas import Out
+from ..vault.yields import checks_of, verdict
 from .deps import State, refuse
 
 router = APIRouter(prefix="/api/lab-tasks", tags=["lab-tasks"])
@@ -31,7 +32,9 @@ FINISHED = (StudyStatus.COMPLETE, StudyStatus.FAILED)
 
 
 class TaskChange(BaseModel):
-    cores: int | None = Field(default=None, ge=1, le=search.MAX_CORES)
+    #: Up to the engine's slots, checked in the route: a lab starts at ``search.MAX_CORES``
+    #: at most, but an edit may hand it the whole engine.
+    cores: int | None = Field(default=None, ge=1)
     simulations: int | None = Field(default=None, ge=1, le=search.MAX_SIMULATIONS)
 
 
@@ -103,6 +106,9 @@ class RankedAlpha(Out):
     drawdown: float | None
     margin: float | None
     k_ratio: float | None
+    #: From the vault, which holds every simulated Alpha; a trial's own stats may lack them.
+    long_count: int | None = None
+    short_count: int | None = None
     feasible: bool | None
     failed_checks: list[str]
     #: Nothing BRAIN has reported refuses it: no FAIL and no ERROR.
@@ -211,7 +217,8 @@ def _task(row: Study, progress: dict[str, Any]) -> LabTask:
             "datasetIds": params.get("datasetIds") or [],
             "fields": len((params.get("space") or {}).get("fields") or {}),
             "target": row.max_trials,
-            "simulated": told,
+            # What spent quota, as the scheduler counts toward the target.
+            "simulated": told - progress["free"],
             "cached": progress["free"],
             "queued": states.get(TrialState.QUEUED, 0),
             "running": states.get(TrialState.RUNNING, 0),
@@ -316,6 +323,12 @@ async def change(task_id: int, body: TaskChange, state: State) -> LabTask:
     row = await _one(state, task_id)
     if row.status in FINISHED:
         raise refuse(409, "finished", "A finished task can't change.")
+    if body.cores and body.cores > state.engine.slots:
+        raise refuse(
+            422,
+            "too_many_cores",
+            f"The engine has {state.engine.slots} slots, so a task cannot hold {body.cores}.",
+        )
     cores = body.cores or scheduler.cores_of(row)
     free = await scheduler.resize_task(state.optimizer, row, cores, body.simulations)
     if free is not None:
@@ -375,4 +388,75 @@ async def top(
                 )
             ).all()
         )
-    return [RankedAlpha.model_validate(r) for r in ranked(best, row.directions)]
+    stored = await state.alphas.by_ids([t.alpha_id for t in best if t.alpha_id])
+    current = {a: checks_of(r.get("checks")) for a, r in stored.items() if r.get("checks")}
+    return [
+        RankedAlpha.model_validate(
+            r
+            | {
+                "longCount": (stored.get(r["alphaId"]) or {}).get("long_count"),
+                "shortCount": (stored.get(r["alphaId"]) or {}).get("short_count"),
+            }
+        )
+        for r in ranked(best, row.directions, current)
+    ]
+
+
+class TaskAlpha(RankedAlpha):
+    """A submittable Alpha, with the task that found it."""
+
+    task_id: int
+    task_name: str
+
+
+@router.get("/submittable")
+async def submittable_alphas(state: State) -> list[TaskAlpha]:
+    """Every Alpha from every task that nothing BRAIN reports refuses: each check PASS, WARNING
+    or PENDING, apart from the ones that never gate (``vault.yields.IGNORED_CHECKS``).
+
+    Judged on the vault's checks where it has them, as a task's own list is. Each Alpha once,
+    from the task that found it first.
+    """
+    tasks = {row.id: row for row in await _rows(state)}
+    async with state.db.session() as session:
+        trials = list(
+            (
+                await session.scalars(
+                    select(Trial)
+                    .where(
+                        Trial.study_id.in_(list(tasks)),
+                        Trial.state == TrialState.COMPLETE,
+                        Trial.alpha_id.is_not(None),
+                        or_(Trial.generation.is_(None), Trial.generation != 0),
+                    )
+                    .order_by(Trial.study_id, Trial.number)
+                )
+            ).all()
+        )
+    # A check that FAILed at simulation time stays failed: BRAIN's later checks only settle
+    # what was PENDING. Dropping those first spares looking most Alphas up in the vault.
+    trials = [t for t in trials if verdict((t.result or {}).get("checks") or []) != "refused"]
+    stored = await state.alphas.by_ids(list({str(t.alpha_id) for t in trials}))
+    current = {a: checks_of(r.get("checks")) for a, r in stored.items() if r.get("checks")}
+    by_trial = {t.id: t.study_id for t in trials}
+    out: list[TaskAlpha] = []
+    seen: set[str] = set()
+    for r in ranked(trials, None, current):
+        alpha_id = str(r["alphaId"])
+        if not r["submittable"] or alpha_id in seen:
+            continue
+        seen.add(alpha_id)
+        task = tasks[by_trial[r["trialId"]]]
+        vault = stored.get(alpha_id) or {}
+        out.append(
+            TaskAlpha.model_validate(
+                r
+                | {
+                    "longCount": vault.get("long_count"),
+                    "shortCount": vault.get("short_count"),
+                    "taskId": task.id,
+                    "taskName": task.template_name or TASK_SAMPLERS.get(task.sampler, task.sampler),
+                }
+            )
+        )
+    return out
