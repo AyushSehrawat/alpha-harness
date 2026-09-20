@@ -249,6 +249,8 @@ class AppState:
             try:
                 info = await self.auth.login()
                 if info.authenticated:
+                    # A sign-in that worked spent none of the lockout budget.
+                    self._last_login_attempt = float("-inf")
                     self.engine.configure_from_permissions(info.permissions)
                 await self.hub.broadcast(TOPIC_SESSION, info.to_dict())
                 return info.authenticated
