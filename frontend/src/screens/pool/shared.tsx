@@ -44,6 +44,8 @@ export function RecheckButton({ alphaId }: { alphaId: string }) {
       // The Alpha page holds the verdict and checks under its own key.
       void queryClient.invalidateQueries({ queryKey: ['alpha', alphaId, 'page'] })
       void queryClient.invalidateQueries({ queryKey: ['pool', 'submittable'] })
+      // Not under the prefix above: the sidebar badge and Dashboard count.
+      void queryClient.invalidateQueries({ queryKey: ['pool', 'submittable-count'] })
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
