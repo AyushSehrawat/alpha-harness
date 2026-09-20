@@ -7,6 +7,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from '@tanstack/react-router'
 import { ArrowLeftIcon, RefreshCwIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { toast } from 'sonner'
+import { errorMessage } from '@/api/http'
 import { cn } from '@/lib/cn'
 import { DASH, fmt, isNum } from '@/lib/format'
 import { AlphaActionsMenu, AstInspector, OpenInBrain, RecheckButton } from '@/screens/pool/shared'
@@ -57,7 +59,8 @@ export function AlphaScreen() {
     setRefreshing(true)
     try {
       queryClient.setQueryData(key, await api.page(alphaId, true))
-    } catch {
+    } catch (error) {
+      toast.error(errorMessage(error))
       await page.refetch()
     } finally {
       setRefreshing(false)

@@ -320,6 +320,9 @@ export function EvolutionLabScreen() {
             {job.data.error}
           </Notice>
         )}
+        {job.isError && (
+          <ErrorNotice error={job.error} title="Could not read Auto Select's progress" />
+        )}
         {hasSeeds ? (
           <DataTable
             label="Seeds"

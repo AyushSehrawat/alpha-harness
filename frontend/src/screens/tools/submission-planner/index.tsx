@@ -288,7 +288,7 @@ export function SubmissionPlannerScreen() {
             />
           </Panel>
         </>
-      ) : (
+      ) : plan.isError ? null : (
         <Panel>
           <Empty title="Nothing to plan yet">
             Run a sweep first — its submittable Alphas are what this chooses between.
