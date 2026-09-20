@@ -345,12 +345,15 @@ def plan(
     train_gate = bisect_left(dates[:cut], window_start(dates[cut - 1]))
     rho_train = correlations(full[train_gate:cut])
     own_train = np.array([sharpe(book[:cut], have[:cut], [i]) for i in range(len(kept))])
-    trained = search(rho_train, scaled[:cut], have[:cut], locked=locked, own=own_train)
+    # Scaled on the training rows alone: whole-history volatility lets the held-out fifth
+    # steer the search.
+    train_scaled = scale(full[:cut])
+    trained = search(rho_train, train_scaled, have[:cut], locked=locked, own=own_train)
     if not trained:
         # Everything left collides with something already submitted.
         empty["reason"] = "nothing_legal"
         return empty
-    ranking = [sharpe(scaled[:cut], have[:cut], locked + seq) for seq in trained]
+    ranking = [sharpe(train_scaled, have[:cut], locked + seq) for seq in trained]
     size = int(np.argmax(ranking)) + 1
     sizes = [round(sharpe(book[:cut], have[:cut], locked + seq), 4) for seq in trained]
 
@@ -361,6 +364,10 @@ def plan(
     # Step 3: the members, chosen over everything now known.
     own_all = np.array([sharpe(book, have, [i]) for i in range(len(kept))])
     orders = search(rho, scaled, have, locked=locked, own=own_all, depth=size)
+    if not orders:
+        # Legal over the training years, but colliding with a submission over the last four.
+        empty["reason"] = "nothing_legal"
+        return empty
     chosen = list(locked + orders[-1])
     # A Sharpe ratio does not notice a constant, so one Alpha scores the same on either book.
     alone = [float(own_all[i]) for i in chosen]
