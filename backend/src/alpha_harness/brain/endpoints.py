@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 from .altcha import Challenge, Solution, solve_async
-from .errors import BrainError, BrainVerificationRequired
+from .errors import BrainError, BrainServiceUnavailable, BrainVerificationRequired
 from .schemas import (
     BULK_FIELDS,
     BULK_FIELDS_ENVELOPE,
@@ -153,7 +153,11 @@ class BrainEndpoints:
             body: Any = [p.to_wire() for p in payload]
         else:
             body = payload.to_wire()
-        return await self.client.request("POST", "/simulations", json_body=body)
+        r = await self.client.request("POST", "/simulations", json_body=body)
+        if r.status != 201:
+            # Only a 201 started a simulation; a redirect (say, to sign-in) did not.
+            raise BrainServiceUnavailable(f"POST /simulations answered {r.status}", status=r.status)
+        return r
 
     async def read_simulation(self, simulation_id: str) -> BrainResponse:
         """One raw status read, errors included: the tracker decides what each one means."""
