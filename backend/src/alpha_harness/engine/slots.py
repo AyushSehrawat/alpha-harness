@@ -712,7 +712,8 @@ class BatchEngine:
         good alphas; any other body shape falls back to rejecting the whole batch.
         """
         entries = exc.body if isinstance(exc.body, list) else None
-        if entries is None or len(entries) != len(record_ids):
+        # All entries empty names no culprit: resending it would be refused the same way.
+        if entries is None or len(entries) != len(record_ids) or not any(entries):
             reason = describe_fields(exc.fields, exc.message)
             await self._fail_batch(
                 parent_id, record_ids, f"BRAIN rejected these settings — {reason}", requeue=False
