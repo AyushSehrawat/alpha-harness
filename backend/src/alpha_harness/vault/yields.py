@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 from itertools import accumulate
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import structlog
 from sqlalchemy import select
@@ -36,11 +36,14 @@ log = structlog.get_logger(__name__)
 #: ``WARNING`` on every alpha checked, passing or failing, so judging them would make
 #: nothing submittable.
 #:
-#: ``SELF_CORRELATION`` is deliberately *not* here: an alpha too close to the pool
-#: genuinely cannot be submitted, and excusing it would hide the signal that should
-#: reallocate cores.
+#: ``PROD_CORRELATION`` and ``REGULAR_SUBMISSION`` gate nothing a consultant is kept from
+#: submitting, so they are excused too. ``SELF_CORRELATION`` is deliberately *not* here: an
+#: alpha too close to the pool genuinely cannot be submitted, and excusing it would hide the
+#: signal that should reallocate cores.
 IGNORED_CHECKS = frozenset(
     {
+        "PROD_CORRELATION",
+        "REGULAR_SUBMISSION",
         "MATCHES_COMPETITION",
         "MATCHES_PYRAMID",
         "MATCHES_THEMES",
@@ -51,10 +54,14 @@ IGNORED_CHECKS = frozenset(
     }
 )
 
-#: Results that count against an alpha. On a gating check the platform reports a miss as
-#: ``WARNING`` straight after simulation and as ``FAIL`` once the checks are finished, so
-#: both mean the same thing.
-FAILING = frozenset({"FAIL", "WARNING"})
+#: Results that refuse an alpha. ``WARNING`` is not one: a threshold missed by an alpha that
+#: qualifies another way (Power Pool, ATOM) stays ``WARNING`` once BRAIN has finished, and BRAIN
+#: accepts it. A plain alpha's miss reads ``WARNING`` only while other checks are still
+#: ``PENDING``, and becomes ``FAIL`` when they resolve, so the pending state covers it.
+REFUSING = frozenset({"FAIL", "ERROR"})
+
+#: What BRAIN's checks say so far: submittable, still being judged, or refused.
+Verdict = Literal["submittable", "pending", "refused"]
 
 
 def checks_of(checks_json: str | None) -> list[dict[str, Any]]:
@@ -68,44 +75,40 @@ def checks_of(checks_json: str | None) -> list[dict[str, Any]]:
     return [c for c in checks if isinstance(c, dict)] if isinstance(checks, list) else []
 
 
-def judged_results(checks_json: str | None) -> list[str] | None:
-    """The result of every check that describes the alpha itself, upper-cased.
+def verdict(checks: list[dict[str, Any]]) -> Verdict | None:
+    """The one rule for whether an alpha can be submitted, from BRAIN's checks.
 
-    ``None`` when there is nothing to judge — a missing, unparseable or empty array, or
-    one containing only competition checks. Callers treat that as "not shown to be
-    good", never as "fine".
+    ``None`` when nothing gating was reported (no checks, or only labels): not shown to be good,
+    which callers must never read as fine. Otherwise any refusal decides it, then anything
+    still ``PENDING``; an alpha whose every gating check is ``PASS`` or ``WARNING`` is
+    submittable.
     """
-    judged = [
+    results = {
         str(c.get("result", "")).upper()
-        for c in checks_of(checks_json)
+        for c in checks
         if str(c.get("name", "")).upper() not in IGNORED_CHECKS
-    ]
-    return judged or None
+    }
+    if not results:
+        return None
+    if results & REFUSING:
+        return "refused"
+    if results <= {"PASS", "WARNING"}:
+        return "submittable"
+    return "pending"
 
 
 def is_submittable(checks_json: str | None) -> bool:
-    """Whether every check that describes the alpha itself passed.
-
-    A missing or unparseable check array is *not* submittable: the alpha has not been
-    shown to be good, and assuming otherwise inflates every yield figure in the product.
-    """
-    results = judged_results(checks_json)
-    return results is not None and all(r == "PASS" for r in results)
+    """Whether BRAIN has finished and nothing gating refused this alpha."""
+    return verdict(checks_of(checks_json)) == "submittable"
 
 
 def is_promising(checks_json: str | None) -> bool:
-    """Whether the platform is worth asking to finish judging this alpha.
+    """Whether this alpha can still come out submittable: nothing refused it, some check PENDING.
 
     A finished simulation leaves ``SELF_CORRELATION``, ``PROD_CORRELATION``,
-    ``REGULAR_SUBMISSION`` and ``IS_LADDER_SHARPE`` ``PENDING`` until
-    ``GET /alphas/{id}/check`` is asked to compute them. Asking about every finished alpha
-    would be thousands of requests a day; the ones where nothing has failed *yet* are a
-    few dozen, and are exactly the set that could still become submittable.
+    ``REGULAR_SUBMISSION`` and ``IS_LADDER_SHARPE`` ``PENDING`` until BRAIN is asked to check it.
     """
-    results = judged_results(checks_json)
-    if results is None or "PENDING" not in results:
-        return False
-    return set(results) <= {"PASS", "PENDING"}
+    return verdict(checks_of(checks_json)) == "pending"
 
 
 class YieldBook:
@@ -290,46 +293,30 @@ PLATFORM_ALPHA_URL = "https://platform.worldquantbrain.com/alpha/"
 SPARK_POINTS = 120
 
 
-def failed_checks(checks_json: str | None) -> set[str]:
-    """The names of the checks that failed, in the platform's own spelling.
-
-    Empty when nothing failed *and* when there is nothing to read, which is why callers
-    pair it with :func:`judged_results` rather than treating an empty set as a pass.
-    """
-    return {
-        str(c.get("name", "")).upper()
-        for c in checks_of(checks_json)
-        if str(c.get("result", "")).upper() in FAILING
-        and str(c.get("name", "")).upper() not in IGNORED_CHECKS
-    }
-
-
 def _tally(rows: list[dict[str, Any]]) -> tuple[list[str], int, int]:
     """Submittable ids, promising count and near-miss count, reading each row's JSON once.
 
-    The same judgements as :func:`is_submittable` and :func:`is_promising`, which would
-    parse the array three times per row. A near miss is one or two fixable failures and
-    nothing else wrong.
+    Judged by :func:`verdict`. A near miss is one or two fixable failures and nothing else
+    wrong.
     """
     ready: list[str] = []
     pending = near = 0
     for row in rows:
-        judged = [
-            (name, str(c.get("result", "")).upper())
-            for c in checks_of(row.get("checks"))
-            if (name := str(c.get("name", "")).upper()) not in IGNORED_CHECKS
-        ]
-        if not judged:
-            continue
-        results = {result for _, result in judged}
-        if results == {"PASS"}:
+        checks = checks_of(row.get("checks"))
+        found = verdict(checks)
+        if found == "submittable":
             ready.append(str(row["alpha_id"]))
-        elif "PENDING" in results and results <= {"PASS", "PENDING"}:
+        elif found == "pending":
             pending += 1
-        elif (failed := {n for n, r in judged if r in FAILING}) and (
-            failed <= FIXABLE_CHECKS and len(failed) <= 2
-        ):
-            near += 1
+        elif found == "refused":
+            failed = {
+                name
+                for c in checks
+                if str(c.get("result", "")).upper() in REFUSING
+                and (name := str(c.get("name", "")).upper()) not in IGNORED_CHECKS
+            }
+            if failed <= FIXABLE_CHECKS and len(failed) <= 2:
+                near += 1
     return ready, pending, near
 
 

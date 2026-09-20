@@ -11,7 +11,6 @@ None of this spends simulation quota. It is all reading results that already exi
 from __future__ import annotations
 
 import asyncio
-import json
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -19,14 +18,13 @@ import structlog
 
 from ..brain.filters import AlphaQuery, Filter
 from ..brain.schemas import Alpha
-from .store import AlphaVault, checks_json
-from .yields import is_promising, is_submittable
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from ..brain.endpoints import BrainEndpoints
     from ..tasks import TaskRegistry
+    from .store import AlphaVault
 
 log = structlog.get_logger(__name__)
 
@@ -35,10 +33,6 @@ PAGE = 100
 #: The alpha list refuses offsets past 1,000. Beyond it the listing continues by
 #: ``dateCreated`` instead.
 MAX_OFFSET = 1_000
-
-#: How many submission checks may be in flight at once. Each one is a ``Retry-After``
-#: job on the platform's side.
-CHECK_SLOTS = 2
 
 #: Captures landing within this long of each other share one alpha-list request. A batch's
 #: children land within a second or two of each other, and one list page carries the same
@@ -63,16 +57,14 @@ class Backfill:
         endpoints: BrainEndpoints,
         tasks: TaskRegistry,
         *,
-        on_checked: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+        on_stored: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> None:
         self.vault = vault
         self.endpoints = endpoints
         self.tasks = tasks
-        self.on_checked = on_checked
+        self.on_stored = on_stored
         self._running: asyncio.Task[Any] | None = None
-        self._check_slots = asyncio.Semaphore(CHECK_SLOTS)
-        self._checking: set[str] = set()
-        self._check_tasks: set[asyncio.Task[Any]] = set()
+        self._background: set[asyncio.Task[Any]] = set()
         #: Alphas whose daily PnL was asked for in the background, each once per run.
         self._returns_asked: set[str] = set()
         #: Alphas waiting for the next shared list read, each with what its caller awaits.
@@ -95,12 +87,10 @@ class Backfill:
         include_returns: bool = True,
         limit: int = 5000,
         since: datetime | None = None,
-        resolve_checks: bool = True,
     ) -> str:
         """Begin a backfill in the background. Returns the task id.
 
         ``since`` makes it incremental: only alphas created after that moment are listed.
-        ``resolve_checks=False`` stops after the listing, with no request per alpha.
         """
         if self.busy:
             raise RuntimeError("A backfill is already running.")
@@ -111,7 +101,6 @@ class Backfill:
                 include_returns=include_returns,
                 limit=limit,
                 since=since,
-                resolve_checks=resolve_checks,
             ),
             name="vault-backfill",
         )
@@ -171,9 +160,9 @@ class Backfill:
             await self.tasks.finish(task, state="failed", error=str(exc)[:300])
 
     async def stop(self) -> None:
-        # Awaited, not just cancelled: a check mid-``save_checks`` would otherwise still be
-        # writing when shutdown closes the catalog under it.
-        tasks = [*self._check_tasks, *(t for t in (self._drainer, self._running) if t)]
+        # Awaited, not just cancelled: a download mid-save would otherwise still be writing
+        # when shutdown closes the catalog under it.
+        tasks = [*self._background, *(t for t in (self._drainer, self._running) if t)]
         for task in tasks:
             task.cancel()
         for future in self._landed.values():
@@ -188,17 +177,15 @@ class Backfill:
         include_returns: bool,
         limit: int,
         since: datetime | None = None,
-        resolve_checks: bool = True,
     ) -> None:
         imported = 0
         try:
             imported = await self._import_alphas(task, limit, since=since)
             if include_returns:
                 await self._import_returns(task)
-            resolved = await self.resolve_pending(task=task) if resolve_checks else 0
             await self.tasks.finish(task)
             self.last = {"state": "done", "imported": imported, "finishedAt": _now()}
-            log.info("vault.backfill_done", alphas=imported, checked=resolved)
+            log.info("vault.backfill_done", alphas=imported)
         except asyncio.CancelledError:
             await self.tasks.finish(task, state="cancelled")
             self.last = {"state": "cancelled", "imported": imported, "finishedAt": _now()}
@@ -320,8 +307,8 @@ class Backfill:
             return
         self._returns_asked.update(fresh)
         task = asyncio.create_task(self._fetch_each(fresh), name="vault-returns")
-        self._check_tasks.add(task)
-        task.add_done_callback(self._check_tasks.discard)
+        self._background.add(task)
+        task.add_done_callback(self._background.discard)
 
     async def _fetch_each(self, alpha_ids: list[str]) -> None:
         for alpha_id in alpha_ids:
@@ -416,74 +403,9 @@ class Backfill:
         alpha_id = alpha.id
         # Tell open screens it is stored. The simulation's own "finished" broadcast lands
         # before this save, so a refetch on that alone would miss the new alpha.
-        if self.on_checked is not None:
+        if self.on_stored is not None:
             # One failed notice must not cost the rest of its batch their capture.
             try:
-                await self.on_checked({"alphaId": alpha_id, "stored": True})
+                await self.on_stored({"alphaId": alpha_id, "stored": True})
             except Exception:
                 log.warning("vault.capture_notify_failed", alpha_id=alpha_id, exc_info=True)
-
-        # A finished simulation leaves the submission checks PENDING, so nothing is
-        # submittable until the platform is asked to finish them.
-        if is_promising(checks_json(alpha)):
-            self.schedule_check(alpha_id)
-
-    # -- submission checks -----------------------------------------------
-
-    def schedule_check(self, alpha_id: str) -> None:
-        """Finish this alpha's submission checks in the background.
-
-        Deliberately not awaited. The tracker calls :meth:`capture` from inside its poll
-        loop, and ``GET /alphas/{id}/check`` is a ``Retry-After`` job that can take a
-        minute; blocking there would stall every other simulation's progress behind it.
-        """
-        if alpha_id in self._checking:
-            return
-        self._checking.add(alpha_id)
-        task = asyncio.create_task(self._check(alpha_id), name=f"vault-check-{alpha_id}")
-        self._check_tasks.add(task)
-        task.add_done_callback(self._check_tasks.discard)
-
-    async def _check(self, alpha_id: str) -> bool:
-        """Ask the platform to resolve one alpha's checks, and store the answer."""
-        try:
-            async with self._check_slots:
-                body = await self.endpoints.check_alpha(alpha_id)
-            checks = ((body.get("is") or {}).get("checks")) or []
-            if not checks:
-                return False
-            await self.vault.save_checks(alpha_id, checks)
-            submittable = is_submittable(json.dumps(checks))
-            log.info("vault.check_resolved", alpha_id=alpha_id, submittable=submittable)
-            if self.on_checked is not None:
-                await self.on_checked({"alphaId": alpha_id, "submittable": submittable})
-            return submittable
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            # An unresolved check is a gap in a convenience: the alpha is still stored,
-            # still visible, and the next backfill will try again.
-            log.warning("vault.check_failed", alpha_id=alpha_id, exc_info=True)
-            return False
-        finally:
-            self._checking.discard(alpha_id)
-
-    async def resolve_pending(self, *, limit: int = 200, task: Any = None) -> int:
-        """Finish the checks on stored alphas the platform never resolved.
-
-        Covers the two cases :meth:`capture` cannot: alphas that finished before this
-        application started resolving checks, and alphas simulated on the BRAIN website
-        rather than through here. Both should appear on the submit screen.
-        """
-        pending = await self.vault.awaiting_checks(limit=limit)
-        if not pending:
-            return 0
-
-        done = 0
-        for alpha_id in pending:
-            await self._check(alpha_id)
-            done += 1
-            if task is not None:
-                await self.tasks.update(task, detail=f"Submission checks: {done} of {len(pending)}")
-        log.info("vault.checks_resolved", checked=done)
-        return done

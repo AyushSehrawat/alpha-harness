@@ -233,9 +233,7 @@ async def sync_alphas(state: State) -> SyncStarted:
     complete = latest is not None and stored >= int(remote["count"])
     since = latest - timedelta(days=1) if complete and latest else None
     try:
-        task_id = await state.backfill.start(
-            include_returns=False, limit=100_000, since=since, resolve_checks=False
-        )
+        task_id = await state.backfill.start(include_returns=False, limit=100_000, since=since)
     except RuntimeError as exc:
         raise refuse(409, "already_running", str(exc)) from exc
     return SyncStarted(task_id=task_id, since=since.isoformat() if since else None)

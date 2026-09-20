@@ -108,9 +108,7 @@ class AppState:
             self.alphas,
             self.endpoints,
             self.tasks,
-            # A resolved check can turn an alpha submittable minutes after its
-            # simulation finished, so the screen listing them has to hear about it.
-            on_checked=lambda payload: self.hub.broadcast(TOPIC_SIMULATIONS, payload, replay=False),
+            on_stored=lambda payload: self.hub.broadcast(TOPIC_SIMULATIONS, payload, replay=False),
         )
         self.tracker.on_alpha = self.backfill.capture
 
