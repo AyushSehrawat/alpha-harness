@@ -46,6 +46,9 @@ function HeaderCores() {
     queryKey: ['simulations', 'active'],
     queryFn: () => simulations.active(),
     enabled: live === null,
+    // Always mounted, so it speaks for every screen: a restarted backend may have no
+    // snapshot to replay, and one read taken while it was down would stand forever.
+    refetchInterval: 5000,
   })
   const engine = useQuery({
     queryKey: ['simulations', 'engine'],

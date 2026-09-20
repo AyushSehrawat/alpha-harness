@@ -50,9 +50,12 @@ export const useLive = create<Live>(() => ({
   verificationUrl: null,
 }))
 
-telemetry.onStatus((connected) => useLive.setState({ connected }))
+// A snapshot from before a disconnect may be long stale; dropping it re-arms the REST fallbacks.
+telemetry.onStatus((connected) =>
+  useLive.setState(connected ? { connected } : { connected, simulations: null }),
+)
 telemetry.subscribe('simulations', (payload) => {
-  // The topic also carries `{alphaId, submittable}` from backfill; only arrays are snapshots.
+  // The topic also carries `{alphaId, stored}` from backfill; only arrays are snapshots.
   if (Array.isArray(payload)) useLive.setState({ simulations: payload as SimulationRow[] })
 })
 telemetry.subscribe('tasks', (payload) => useLive.setState({ tasks: payload as TasksSummary }))
