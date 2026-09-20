@@ -15,6 +15,7 @@ Versioning lives in the ``Accept`` header (``application/json;version=N``), not 
 from __future__ import annotations
 
 import asyncio
+import math
 import random
 import time
 from dataclasses import dataclass
@@ -129,6 +130,8 @@ def _parse_retry_after(headers: httpx.Headers) -> float | None:
             seconds = (parsedate_to_datetime(raw) - datetime.now(UTC)).total_seconds()
         except TypeError, ValueError:
             return 0.0
+    if not math.isfinite(seconds):
+        return 0.0
     return max(seconds, 0.0)
 
 
@@ -333,7 +336,10 @@ class BrainClient:
         )
         if result.status == 429 and result.retry_after:
             # The server named its own wait: nobody sends before it is over.
-            self._resume_at = max(self._resume_at, time.monotonic() + result.retry_after)
+            # Capped: every request waits on this, polls included, and a day-long Retry-After
+            # would stop finished alphas being read.
+            pause = min(result.retry_after, MAX_MEASURED_GAP)
+            self._resume_at = max(self._resume_at, time.monotonic() + pause)
 
         if raise_for_status and response.status_code >= 400:
             raise self.to_error(method, path, result)
