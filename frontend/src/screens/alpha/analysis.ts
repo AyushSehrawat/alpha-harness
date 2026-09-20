@@ -50,8 +50,11 @@ export const checkName = (name: string) =>
 export const isCeiling = (name: string) =>
   name === 'CONCENTRATED_WEIGHT' || name.startsWith('HIGH_') || name.includes('CORRELATION')
 
-/** Checks that describe the Alpha rather than gate it: a WARNING here blocks nothing. */
+/** Checks listed as notes rather than blockers. Display only: whether the Alpha can be submitted
+ * is the backend's `verdict` (vault/yields.py), which excuses the same ones. */
 const INFORMATIONAL = new Set([
+  'PROD_CORRELATION',
+  'REGULAR_SUBMISSION',
   'CLUSTER_TEST',
   'MATCHES_COMPETITION',
   'MATCHES_PYRAMID',
@@ -94,17 +97,26 @@ export interface Verdict {
 export function verdictOf(alpha: AlphaInfo): Verdict {
   const groups = groupChecks(alpha.checks)
   if (alpha.status && alpha.status !== 'UNSUBMITTED') return { kind: 'submitted', groups }
-  if (groups.failing.length > 0) return { kind: 'blocked', groups }
-  // No gating check has run, so the Alpha is pending rather than ready: calling it ready would
-  // invite a permanent submission on the strength of nothing (as `vault/yields.is_submittable`).
-  const judged = groups.failing.length + groups.pending.length + groups.passing.length
-  if (judged === 0 || groups.pending.length > 0) return { kind: 'pending', groups }
-  return { kind: 'ready', groups }
+  // The backend's rule, shared with Tasks and the Submission Planner. No gating check at all
+  // (`null`) reads as pending: calling it ready would invite a permanent submission on nothing.
+  if (alpha.verdict === 'refused') return { kind: 'blocked', groups }
+  if (alpha.verdict === 'submittable') return { kind: 'ready', groups }
+  return { kind: 'pending', groups }
 }
 
 // ── Power Pool ─────────────────────────────────────────────────────────────────────────────
 
 export type Rule = 'pass' | 'fail' | 'unknown'
+
+/** The headings BRAIN's Power Pool description template asks for (getting-started-power-pool-alphas.md). */
+export const POWER_POOL_HEADINGS = [
+  'Idea',
+  'Rationale for data used',
+  'Rationale for operators used',
+] as const
+
+/** A heading followed by its colon, allowing the Markdown bold of BRAIN's own example. */
+const hasHeading = (text: string, heading: string) => new RegExp(`${heading}\\W*:`, 'i').test(text)
 
 export interface PowerPoolRule {
   label: string
@@ -125,7 +137,15 @@ export function powerPoolRules(alpha: AlphaInfo): PowerPoolRule[] {
   const fields = alpha.dataFields
   const robust = byName(alpha.checks, 'LOW_ROBUST_UNIVERSE_SHARPE')
   const sharpe = alpha.inSample?.sharpe
-  const described = (alpha.description ?? '').trim().length
+  const description = (alpha.description ?? '').trim()
+  const described = description.length
+  const missing = POWER_POOL_HEADINGS.filter((h) => !hasHeading(description, h))
+  const themed = byName(alpha.checks, 'MATCHES_THEMES')
+  // BRAIN names its Power Pool themes as such ("GLB/D1 Liquid Power Pool Aug`26"); a theme
+  // object carries only an id, a name and a multiplier.
+  const powerPoolThemes = matches(alpha.checks)
+    .themes.map((t) => t.name)
+    .filter((name) => /power pool/i.test(name))
   const correlation = byName(alpha.checks, 'POWER_POOL_CORRELATION')
   const turnover = [byName(alpha.checks, 'LOW_TURNOVER'), byName(alpha.checks, 'HIGH_TURNOVER')]
   const turnoverState: Rule = turnover.some((c) => fromCheck(c) === 'fail')
@@ -181,6 +201,20 @@ export function powerPoolRules(alpha: AlphaInfo): PowerPoolRule[] {
       label: 'Description of 100 characters or more',
       detail: `${described} of 100`,
       state: described >= 100 ? 'pass' : 'fail',
+    },
+    {
+      label: 'Description in the Idea and Rationale template',
+      detail: missing.length ? `Missing ${missing.join(', ')}` : 'All three headings',
+      state: missing.length ? 'fail' : 'pass',
+    },
+    {
+      label: 'Matches a Power Pool theme',
+      detail: powerPoolThemes.length
+        ? powerPoolThemes.join(', ')
+        : themed
+          ? 'None matched: needed unless it also submits as Regular or ATOM'
+          : 'Not reported',
+      state: powerPoolThemes.length ? 'pass' : themed ? 'fail' : 'unknown',
     },
   ]
 }

@@ -295,17 +295,32 @@ function PerformancePanel({
         underwater={series.underwater}
         sharpe={series.sharpe}
         cutoff={cutoff}
+        testStart={view.testStart}
         label={`${VIEWS.find((v) => v.value === shown)?.label} of ${view.alpha.alphaId}`}
       />
-      {shown === 'pnl' && series.constrained.length > 1 && (
-        <p className="flex items-center gap-4 text-body-compact text-ink-subtle">
-          <span className="flex items-center gap-1.5">
-            <span className="h-0.5 w-4 bg-ink" aria-hidden /> PnL
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-4 border-t border-dashed border-ink-tertiary" aria-hidden />{' '}
-            Investability constrained
-          </span>
+      {shown === 'pnl' && (series.constrained.length > 1 || view.testStart !== null) && (
+        <p className="flex flex-wrap items-center gap-4 text-body-compact text-ink-subtle">
+          {view.testStart === null ? (
+            <span className="flex items-center gap-1.5">
+              <span className="h-0.5 w-4 bg-ink" aria-hidden /> PnL
+            </span>
+          ) : (
+            <>
+              <span className="flex items-center gap-1.5">
+                <span className="h-0.5 w-4 bg-ink-subtle" aria-hidden /> Train
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-0.5 w-4 bg-ink" aria-hidden /> Test, from{' '}
+                <span className="num">{fmt.date(view.testStart)}</span>
+              </span>
+            </>
+          )}
+          {series.constrained.length > 1 && (
+            <span className="flex items-center gap-1.5">
+              <span className="w-4 border-t border-dashed border-ink-tertiary" aria-hidden />{' '}
+              Investability constrained
+            </span>
+          )}
         </p>
       )}
       {shown === 'underwater' && series.episodes.length > 0 && (

@@ -1731,6 +1731,8 @@ export interface components {
             name: string | null;
             /** Operatorcount */
             operatorCount: number | null;
+            /** Operators */
+            operators: string[] | null;
             /** Powerpooloperators */
             powerPoolOperators: number | null;
             /** Settings */
@@ -1745,6 +1747,8 @@ export interface components {
             tags: string[];
             /** Type */
             type: string | null;
+            /** Verdict */
+            verdict: ("submittable" | "pending" | "refused") | null;
         };
         /** AlphaLineage */
         AlphaLineage: {
@@ -1936,6 +1940,8 @@ export interface components {
             pnl: (number | null)[];
             /** Problems */
             problems: string[];
+            /** Teststart */
+            testStart: string | null;
             /** Yearly */
             yearly: components["schemas"]["AlphaYear"][];
         };

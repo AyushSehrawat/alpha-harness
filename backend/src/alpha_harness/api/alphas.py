@@ -18,10 +18,10 @@ from sqlalchemy import delete, func, select
 
 from ..brain.errors import BrainError
 from ..db.models import BrainCache, SimulationRecord, Study, Trial, TrialState, utcnow
-from ..labs.fastexpr import ParseError, data_fields, operator_count, parse
+from ..labs.fastexpr import ParseError, data_fields, operator_count, operator_names, parse
 from ..labs.params import TASK_SAMPLERS
 from ..schemas import Out
-from ..vault.yields import PLATFORM_ALPHA_URL
+from ..vault.yields import PLATFORM_ALPHA_URL, Verdict, checks_of, verdict
 from .deps import State
 
 router = APIRouter(prefix="/api/alphas", tags=["alphas"])
@@ -88,6 +88,10 @@ class AlphaInfo(Out):
     power_pool_operators: int | None
     #: Distinct data fields, grouping fields excluded; null when the code is unreadable.
     data_fields: list[str] | None
+    #: Operators called, once each, for the Power Pool description template.
+    operators: list[str] | None
+    #: ``vault.yields.verdict`` on its checks: the same rule the Planner and Tasks use.
+    verdict: Verdict | None
 
 
 class LineageSibling(Out):
@@ -117,6 +121,8 @@ class AlphaView(Out):
     #: Cumulative, one per trading day.
     pnl: list[float | None]
     investability_pnl: list[float | None]
+    #: First day of the held-out test years, as BRAIN reports it; ``None`` without a test period.
+    test_start: str | None
     yearly: list[AlphaYear]
     lineage: AlphaLineage | None
     #: When the Alpha itself was last read from BRAIN; series are kept until refreshed.
@@ -164,6 +170,16 @@ async def _forget(state: State, *keys: str) -> None:
         await session.execute(delete(BrainCache).where(BrainCache.key.in_(keys)))
 
 
+async def _stored(state: State, key: str) -> BrainCache | None:
+    async with state.db.session() as session:
+        return await session.get(BrainCache, key)
+
+
+def _copy(row: BrainCache) -> str:
+    # Stored in UTC; unlabelled it read as local.
+    return f"showing the copy from {row.fetched_at:%b %d, %H:%M} UTC."
+
+
 async def _kept(state: State, key: str) -> BrainPayload:
     async with state.db.session() as session:
         row = await session.get(BrainCache, key)
@@ -183,21 +199,22 @@ def _stats(raw: Any) -> AlphaStats | None:
     return AlphaStats.model_validate(raw) if isinstance(raw, dict) else None
 
 
-def _power_pool_counts(code: Any) -> tuple[int | None, list[str] | None]:
+def _power_pool_counts(code: Any) -> tuple[int | None, list[str] | None, list[str] | None]:
     """Operators and data fields the way Power Pool counts them, from the expression itself."""
     try:
         tree = parse(code) if isinstance(code, str) else None
     except ParseError:
         tree = None
     if tree is None:
-        return None, None
-    return operator_count(tree), data_fields(tree)
+        return None, None, None
+    return operator_count(tree), data_fields(tree), operator_names(tree)
 
 
 def _info(alpha_id: str, body: dict[str, Any]) -> AlphaInfo:
     code = body.get("regular") or body.get("combo") or body.get("selection") or {}
     sample = body.get("is") or {}
-    operators, fields = _power_pool_counts(code.get("code"))
+    counted, fields, operators = _power_pool_counts(code.get("code"))
+    checks = [c for c in sample.get("checks") or [] if isinstance(c, dict)]
     return AlphaInfo(
         alpha_id=alpha_id,
         type=body.get("type"),
@@ -222,10 +239,12 @@ def _info(alpha_id: str, body: dict[str, Any]) -> AlphaInfo:
         ],
         in_sample=_stats(sample),
         investability=_stats(sample.get("investabilityConstrained")),
-        checks=[c for c in sample.get("checks") or [] if isinstance(c, dict)],
+        checks=checks,
         brain_url=f"{PLATFORM_ALPHA_URL}{alpha_id}",
-        power_pool_operators=operators,
+        power_pool_operators=counted,
         data_fields=fields,
+        operators=operators,
+        verdict=verdict(checks),
     )
 
 
@@ -280,16 +299,18 @@ async def _lineage(state: State, alpha_id: str) -> AlphaLineage | None:
 
         siblings: list[LineageSibling] = []
         if study is not None:
-            value = func.json_extract(Trial.values, "$[0]")
+            best = func.max(func.json_extract(Trial.values, "$[0]"))
             rows = await session.execute(
-                select(Trial.alpha_id, Trial.expression, value)
+                select(Trial.alpha_id, func.min(Trial.expression), best)
                 .where(
                     Trial.study_id == study.id,
                     Trial.state == TrialState.COMPLETE,
                     Trial.alpha_id.is_not(None),
                     Trial.alpha_id != alpha_id,
                 )
-                .order_by(value.desc())
+                # Trials answered from cache share an Alpha; it is one sibling.
+                .group_by(Trial.alpha_id)
+                .order_by(best.desc())
                 .limit(5)
             )
             siblings = [
@@ -344,10 +365,13 @@ async def page(alpha_id: str, state: State, refresh: Refresh = False) -> AlphaVi
         if stale is None:
             raise
         body, fetched = stale.body, stale.fetched_at
-        problems.append(
-            f"BRAIN did not answer ({exc.message}); showing the copy from "
-            f"{stale.fetched_at:%b %d, %H:%M} UTC."  # stored in UTC; unlabelled it read as local
-        )
+        problems.append(f"BRAIN did not answer ({exc.message}); {_copy(stale)}")
+
+    # BRAIN's alpha body keeps the checks it was simulated with; ``/check`` answers land in the
+    # vault instead, so its copy is the current one whenever it has one.
+    stored = (await state.alphas.by_ids([alpha_id])).get(alpha_id) or {}
+    if resolved := checks_of(stored.get("checks")):
+        body: dict[str, Any] = {**body, "is": {**(body.get("is") or {}), "checks": resolved}}
 
     dates: list[str] = []
     pnl: list[float | None] = []
@@ -361,7 +385,14 @@ async def page(alpha_id: str, state: State, refresh: Refresh = False) -> AlphaVi
         )
         dates, pnl, constrained = _series(series)
     except BrainError as exc:
-        problems.append(f"The PnL series could not be loaded: {exc.message}")
+        stale = await _stored(state, f"pnl:{alpha_id}")
+        if stale is None:
+            problems.append(f"The PnL series could not be loaded: {exc.message}")
+        else:
+            dates, pnl, constrained = _series(stale.body)
+            problems.append(
+                f"The PnL series could not be refreshed ({exc.message}); {_copy(stale)}"
+            )
 
     yearly: list[AlphaYear] = []
     try:
@@ -373,13 +404,21 @@ async def page(alpha_id: str, state: State, refresh: Refresh = False) -> AlphaVi
         )
         yearly = _yearly(table)
     except BrainError as exc:
-        problems.append(f"The yearly stats could not be loaded: {exc.message}")
+        stale = await _stored(state, f"yearly:{alpha_id}")
+        if stale is None:
+            problems.append(f"The yearly stats could not be loaded: {exc.message}")
+        else:
+            yearly = _yearly(stale.body)
+            problems.append(
+                f"The yearly stats could not be refreshed ({exc.message}); {_copy(stale)}"
+            )
 
     return AlphaView(
         alpha=_info(alpha_id, body),
         dates=dates,
         pnl=pnl,
         investability_pnl=constrained,
+        test_start=(body.get("test") or {}).get("startDate"),
         yearly=yearly,
         lineage=await _lineage(state, alpha_id),
         fetched_at=_iso(fetched),

@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/cn'
 import { Button, ErrorNotice, Field, Input, Panel, Textarea } from '@/ui/kit'
 import { Select } from '@/ui/overlay'
+import { POWER_POOL_HEADINGS } from './analysis'
 import { type AlphaInfo, type AlphaView, alpha as api } from './api'
 
 const CATEGORIES = [
@@ -32,8 +33,17 @@ const COLORS: { value: string; swatch: string }[] = [
   { value: 'PURPLE', swatch: 'bg-(--orchid-400)' },
 ]
 
-/** BRAIN's Power Pool description template (getting-started-power-pool-alphas.md). */
-const TEMPLATE = 'Idea: \n\nRationale for data used: \n\nRationale for operators used: '
+/** BRAIN's Power Pool description template, with a line to explain each field and operator. */
+const template = (alpha: AlphaInfo) => {
+  const [idea, data, operators] = POWER_POOL_HEADINGS
+  const lines = (items: string[] | null, call: boolean) =>
+    (items ?? []).map((item) => `\n- ${item}${call ? '()' : ''}: `).join('')
+  return (
+    `${idea}: \n\n` +
+    `${data}: ${lines(alpha.dataFields, false)}\n\n` +
+    `${operators}: ${lines(alpha.operators, true)}`
+  )
+}
 
 /** The minimum a Power Pool Alpha's description needs. */
 const MINIMUM = 100
@@ -206,7 +216,7 @@ export function PropertiesPanel({ alpha }: { alpha: AlphaInfo }) {
             size="sm"
             variant="ghost"
             className="self-start"
-            onClick={() => set('description', TEMPLATE)}
+            onClick={() => set('description', template(alpha))}
           >
             Use the Power Pool template
           </Button>

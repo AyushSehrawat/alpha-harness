@@ -8,6 +8,7 @@ import {
   BaselineSeries,
   ColorType,
   createChart,
+  createSeriesMarkers,
   LineSeries,
   LineStyle,
   type Time,
@@ -28,6 +29,7 @@ export function AlphaChart({
   underwater,
   sharpe,
   cutoff,
+  testStart,
   label,
 }: {
   view: ChartView
@@ -37,6 +39,8 @@ export function AlphaChart({
   sharpe: Point[]
   /** The Sharpe a submission needs, drawn across the rolling view. */
   cutoff: number | null
+  /** First held-out day, from BRAIN: the train years before it are drawn dimmer. */
+  testStart: string | null
   label: string
 }) {
   const element = useRef<HTMLDivElement>(null)
@@ -103,14 +107,32 @@ export function AlphaChart({
           })
           .setData(at(constrained))
       }
+      const ink = color('color-ink')
+      const trained = color('color-ink-subtle')
       const series = chart.addSeries(LineSeries, {
-        color: color('color-ink'),
+        color: ink,
         lineWidth: 2,
         priceLineVisible: false,
         title: 'PnL',
       })
-      series.setData(at(pnl))
+      // Compared, not matched: the boundary BRAIN reports can fall on a day with no trading.
+      const held = (p: Point) => testStart === null || p.date >= testStart
+      series.setData(
+        pnl.map((p) => ({ time: p.date as Time, value: p.value, color: held(p) ? ink : trained })),
+      )
       series.createPriceLine(zero)
+      const first = testStart === null ? undefined : pnl.find(held)
+      if (first) {
+        createSeriesMarkers(series, [
+          {
+            time: first.date as Time,
+            position: 'aboveBar',
+            shape: 'arrowDown',
+            color: guide,
+            text: 'Test',
+          },
+        ])
+      }
     } else if (view === 'underwater') {
       const loss = 'color-pnl-negative'
       chart
@@ -148,7 +170,7 @@ export function AlphaChart({
     }
     chart.timeScale().fitContent()
     return () => chart.remove()
-  }, [view, pnl, constrained, underwater, sharpe, cutoff])
+  }, [view, pnl, constrained, underwater, sharpe, cutoff, testStart])
 
   return <div ref={element} role="img" aria-label={label} className="h-80 w-full min-w-0" />
 }

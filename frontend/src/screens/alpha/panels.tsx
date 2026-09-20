@@ -298,6 +298,8 @@ export function AggregatesPanel({ alpha }: { alpha: AlphaInfo }) {
 // ── Yearly ─────────────────────────────────────────────────────────────────────────────────
 
 /** One row a year; Sharpe also as a bar, so a weak year is seen before it is read. */
+const STAGE_LABEL: Record<string, string> = { TRAIN: 'Train', TEST: 'Test', OS: 'OS' }
+
 export function YearlyPanel({ years, cutoff }: { years: AlphaYear[]; cutoff: number | null }) {
   if (years.length === 0) return null
   const top = Math.max(...years.map((y) => Math.abs(y.sharpe ?? 0)), cutoff ?? 0, 0.01)
@@ -334,8 +336,17 @@ export function YearlyPanel({ years, cutoff }: { years: AlphaYear[]; cutoff: num
             const s = y.sharpe ?? 0
             const below = cutoff !== null && s < cutoff
             return (
-              <tr key={y.year} className="border-b border-hairline-subtle last:border-b-0">
-                <td className="num px-3 py-1.5 text-ink-muted">{y.year}</td>
+              // BRAIN splits a year at each stage boundary, so the year alone repeats.
+              <tr
+                key={`${y.year}-${y.stage ?? ''}`}
+                className="border-b border-hairline-subtle last:border-b-0"
+              >
+                <td className="num px-3 py-1.5 text-ink-muted">
+                  {y.year}
+                  {y.stage && (
+                    <span className="ml-2 text-ink-subtle">{STAGE_LABEL[y.stage] ?? y.stage}</span>
+                  )}
+                </td>
                 <td
                   className={cn(
                     'num px-3 py-1.5 text-right',

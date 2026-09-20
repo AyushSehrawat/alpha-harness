@@ -366,11 +366,13 @@ def replace_at(node: Node, path: Path, new: Node) -> Node:
     return replace(node, kwargs=tuple(kwargs))
 
 
-def data_fields(tree: Node) -> list[str]:
+def data_fields(tree: Node, *, grouping: bool = False) -> list[str]:
     """The data fields an expression reads, the way BRAIN counts them.
 
     Names that are not data: anything assigned earlier in the expression, a keyword value
-    (``driver=gaussian`` names an option), a grouping field, and the literals.
+    (``driver=gaussian`` names an option), a grouping field, and the literals. ``grouping``
+    keeps the grouping fields: they do not count, but they still have to exist where the
+    expression runs, and some (``currency``, ``split``) are missing from some markets.
     """
     nodes = walk(tree)
     assigned = {n.value for _, n in nodes if n.kind == "assign"}
@@ -381,10 +383,15 @@ def data_fields(tree: Node) -> list[str]:
             if n.kind == "name"
             and not (path and path[-1] >= len(node_at(tree, path[:-1]).args))
             and n.value not in assigned
-            and n.value not in GROUPING
+            and (grouping or n.value not in GROUPING)
             and n.value.lower() not in ("true", "false", "nan")
         }
     )
+
+
+def operator_names(tree: Node) -> list[str]:
+    """Each operator the expression calls, once, in order of first appearance."""
+    return list(dict.fromkeys(n.value for _, n in walk(tree) if n.kind == "call"))
 
 
 def operator_count(node: Node) -> int:
