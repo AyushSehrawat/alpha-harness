@@ -89,5 +89,7 @@ export const pool = {
     ),
   /** A slow, rate-limited BRAIN job. */
   correlations: (alphaId: string, kind: 'self' | 'prod') =>
-    http.get<BrainCorrelation>(`/api/alphas/${encodeURIComponent(alphaId)}/correlations/${kind}`),
+    http.get<BrainCorrelation & { fetchedAt: string }>(
+      `/api/alphas/${encodeURIComponent(alphaId)}/correlations/${kind}`,
+    ),
 }

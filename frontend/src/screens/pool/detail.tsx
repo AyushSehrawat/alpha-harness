@@ -221,6 +221,8 @@ function CorrelationResult({ alphaId, kind }: { alphaId: string; kind: Kind }) {
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-end gap-3">
         <h3 className="text-body font-medium text-balance text-ink">{label}</h3>
+        {/* A kept answer: self-correlation moves as other Alphas are submitted. */}
+        <span className="text-body-compact text-ink-subtle">{fmt.ago(q.data.fetchedAt)}</span>
         {isNum(q.data.min) && <Metric size="sm" label="Min" value={fmt.ratio(q.data.min, 4)} />}
         {isNum(q.data.max) && <Metric size="sm" label="Max" value={fmt.ratio(q.data.max, 4)} />}
       </div>

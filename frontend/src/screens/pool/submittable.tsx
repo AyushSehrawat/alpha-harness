@@ -117,7 +117,13 @@ export function Submittable({ onOpen }: { onOpen: (alphaId: string) => void }) {
                 </div>
               )}
             </section>
-            <Disclosure summary={`All ${fmt.int(data.total)} Submittable Alphas, by Sharpe`}>
+            <Disclosure
+              summary={
+                data.alphas.length < data.total
+                  ? `Top ${fmt.int(data.alphas.length)} of ${fmt.int(data.total)} Submittable Alphas, by Sharpe`
+                  : `All ${fmt.int(data.total)} Submittable Alphas, by Sharpe`
+              }
+            >
               <div className="grid grid-cols-1 gap-3 p-3 xl:grid-cols-2">
                 {data.alphas.map((a) => (
                   <Card key={a.alphaId} alpha={a} onOpen={onOpen} />
