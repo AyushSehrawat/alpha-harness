@@ -403,6 +403,7 @@ def expand(
     expression = str(source.get("expression") or "")
     decay = int(source.get("decay") or 0)
     truncation = float(source.get("truncation") or 0.08)
+    nan_handling = str(source.get("nanHandling") or "ON")
     origin = (
         str(source.get("region") or ""),
         int(source.get("delay") or 0),
@@ -440,6 +441,7 @@ def expand(
                     neutralization=neutralization,
                     decay=decay,
                     truncation=truncation,
+                    nan_handling=nan_handling,
                     max_trade=trade,
                     max_position=position,
                 ),

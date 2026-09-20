@@ -133,7 +133,10 @@ function Body({ view, refresh }: { view: AlphaView; refresh: React.ReactNode }) 
           <ChecksPanel groups={verdict.groups} />
           <EligibilityPanel alpha={a} />
           <CorrelationsPanel alphaId={a.alphaId} />
-          <PropertiesPanel key={a.dateModified ?? a.alphaId} alpha={a} />
+          {/* Both, so the draft resets on a save *and* on a sibling: batch children share a
+              dateModified to the second, and a stale draft would save one Alpha's name onto
+              another. */}
+          <PropertiesPanel key={`${a.alphaId}:${a.dateModified ?? ''}`} alpha={a} />
           <LineagePanel lineage={view.lineage} />
         </div>
       </div>

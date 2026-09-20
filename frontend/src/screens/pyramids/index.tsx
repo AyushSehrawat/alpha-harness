@@ -44,9 +44,9 @@ const TINT = [
 function ramp(multipliers: number[]) {
   const ceiling = Math.max(TOP_MULTIPLIER, ...multipliers)
   return (multiplier: number | null) => {
-    if (multiplier == null) return TINT[0]!
+    if (multiplier == null) return TINT[0]
     const ratio = Math.min(1, Math.max(0, (multiplier - 1) / (ceiling - 1)))
-    return TINT[Math.round(ratio * (TINT.length - 1))]!
+    return TINT[Math.round(ratio * (TINT.length - 1))] ?? TINT[0]
   }
 }
 

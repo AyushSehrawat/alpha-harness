@@ -14,7 +14,7 @@ from enum import StrEnum
 from typing import Any, Self
 
 import msgspec
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -149,21 +149,20 @@ class SimulationRequest(BrainModel):
     selection: str | None = None
 
     @model_validator(mode="after")
-    def _handle_nans(self) -> Self:
-        """Force NaN Handling on, and hold out a test period unless one was named.
+    def _hold_out_test_period(self) -> Self:
+        """Hold out a test period unless one was named.
 
         Enforced here because every request — from a lab, a template or the simulations
         API — becomes this model before it is hashed or sent. The held-out years let the
         Pool hide Alphas that collapse out of sample; BRAIN still runs the submission
         checks on the whole period.
+
+        NaN handling is a plain default on :class:`SimulationSettings` rather than an
+        override here: the Settings Sampler re-runs a source Alpha's own settings, and
+        forcing it made the sweep disagree with the value its own screen showed.
         """
-        update: dict[str, Any] = {}
-        if self.settings.nan_handling != "ON":
-            update["nan_handling"] = "ON"
         if self.settings.test_period is None:
-            update["test_period"] = TEST_PERIOD
-        if update:
-            self.settings = self.settings.model_copy(update=update)
+            self.settings = self.settings.model_copy(update={"test_period": TEST_PERIOD})
         return self
 
     def to_wire(self) -> dict[str, Any]:
@@ -230,8 +229,9 @@ class Alpha(BrainModel):
     date_submitted: datetime | None = None
     date_modified: datetime | None = None
     name: str | None = None
-    favorite: bool = False
-    hidden: bool = False
+    #: Nullable on the wire (``docs/api/schemas/alpha.md``), so a null must not fail the page.
+    favorite: bool | None = None
+    hidden: bool | None = None
     color: str | None = None
     category: str | None = None
     tags: list[str] = Field(default_factory=list)
@@ -245,6 +245,12 @@ class Alpha(BrainModel):
     train: SampleStats | None = None
     test: SampleStats | None = None
     prod: SampleStats | None = None
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _drop_null_tags(cls, value: Any) -> Any:
+        """The codec allows a null tag; dropping it here keeps every reader on ``list[str]``."""
+        return [t for t in value if t is not None] if isinstance(value, list) else value
 
     @property
     def expression(self) -> str | None:

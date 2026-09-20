@@ -50,17 +50,22 @@ export const checkName = (name: string) =>
 export const isCeiling = (name: string) =>
   name === 'CONCENTRATED_WEIGHT' || name.startsWith('HIGH_') || name.includes('CORRELATION')
 
-/** Checks listed as notes rather than blockers. Display only: whether the Alpha can be submitted
- * is the backend's `verdict` (vault/yields.py), which excuses the same ones. */
+/**
+ * Checks listed as notes rather than blockers. Display only, but it has to be the *same* set
+ * as `IGNORED_CHECKS` in `vault/yields.py`, which decides `alpha.verdict`: a check excused
+ * there and shown failing here reads as "ready" beside a red row, and one gating there but
+ * excused here reads as "blocked" with nothing to point at.
+ */
 const INFORMATIONAL = new Set([
   'PROD_CORRELATION',
   'REGULAR_SUBMISSION',
-  'CLUSTER_TEST',
   'MATCHES_COMPETITION',
   'MATCHES_PYRAMID',
   'MATCHES_THEMES',
+  'CLUSTER_TEST',
   'OSMOSIS_ALLOCATION',
-  'DATA_DIVERSITY',
+  'POWER_POOL_DESCRIPTION_LENGTH',
+  'POWER_POOL_DESCRIPTION_FORMAT',
 ])
 
 export const resultOf = (check: AlphaCheck): CheckResult => check.result ?? 'PENDING'
@@ -339,7 +344,11 @@ export function drawdowns(points: Point[], bookSize: number, limit = 3): Drawdow
   return episodes.sort((a, b) => b.depth - a.depth).slice(0, limit)
 }
 
-/** Kestner's K-Ratio (2003), as `vault/store.py` computes it: slope over its standard error, over √n. */
+/**
+ * Kestner's K-Ratio, exactly as `vault/store.py` computes it: slope over its standard error,
+ * over the number of days. The two must agree — the Pool, Tasks and the Submission Planner
+ * read the stored column, and this page recomputes it from the series it already has.
+ */
 export function kRatio(points: Point[]): number | null {
   const n = points.length
   if (n < 3) return null
@@ -354,7 +363,7 @@ export function kRatio(points: Point[]): number | null {
   const slope = sxy / sxx
   const residual = points.reduce((s, p, i) => s + (p.value - meanY - slope * (i - meanX)) ** 2, 0)
   const error = Math.sqrt(residual / (n - 2) / sxx)
-  return error > 0 ? slope / (error * Math.sqrt(n)) : null
+  return error > 0 ? slope / (error * n) : null
 }
 
 /** Share of days that made money. */

@@ -272,10 +272,15 @@ def _series(recordset: dict[str, Any]) -> tuple[list[str], list[float | None], l
 
 def _yearly(recordset: dict[str, Any]) -> list[AlphaYear]:
     names, records = _columns(recordset)
+    if "year" not in names:
+        return []
+    # By name, not by position: the records are positional against ``schema.properties``, and
+    # nothing promises ``year`` stays the first of the twelve columns.
+    at = names.index("year")
     return [
-        AlphaYear.model_validate(dict(zip(names, r, strict=False)) | {"year": str(r[0])})
+        AlphaYear.model_validate(dict(zip(names, r, strict=False)) | {"year": str(r[at])})
         for r in records
-        if "year" in names
+        if at < len(r)
     ]
 
 
