@@ -175,6 +175,7 @@ class KeyStore:
                 raise LLMError(f"No key {key_id}.")
             await session.delete(row)
             await session.commit()
+        self.ledger.forget(key_id)
         log.info("llm.key.removed", key_id=key_id)
 
     async def mark(self, key_id: int, *, error: str | None = None) -> None:

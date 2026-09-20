@@ -147,6 +147,11 @@ class Ledger:
         #: with it afterwards, so the hot path does not hit SQLite per check.
         self._daily: dict[tuple[int, str, str], int] = {}
 
+    def forget(self, key_id: int) -> None:
+        """Drop a removed key's counts: SQLite hands its id to the next key added."""
+        self._windows = {k: v for k, v in self._windows.items() if k[0] != key_id}
+        self._daily = {k: v for k, v in self._daily.items() if k[0] != key_id}
+
     def _window(self, key_id: int, model: str) -> Window:
         return self._windows.setdefault((key_id, model), Window())
 
