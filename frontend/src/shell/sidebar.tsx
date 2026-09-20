@@ -58,7 +58,9 @@ export function Sidebar({ you, collapsed }: { you: Today['you']; collapsed: bool
     onSuccess: async () => {
       // Dropped, not invalidated: invalidating would refetch every mounted screen against a
       // dead session, and leave the last account's data in the cache behind the sign-in screen.
-      queryClient.clear()
+      // Today is kept and refetched: the shell observes it, and clearing it would leave the
+      // shell watching a query nothing refetches, so the workspace stayed on screen.
+      queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'today' })
       await queryClient.refetchQueries({ queryKey: ['today'] })
     },
     onError: (error) => toast.error(errorMessage(error)),
