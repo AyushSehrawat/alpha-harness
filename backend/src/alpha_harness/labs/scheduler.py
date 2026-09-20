@@ -435,7 +435,9 @@ async def resize_task(
             stored = await session.get(Study, row.id)
             if stored is None:
                 raise StudyNotFoundError(row.id)
-            stored.batch_size = cores * 10
+            # The Settings Sampler keeps its spare batch (see api/tools.py).
+            spare = 1 if stored.sampler == SETTINGS_SAMPLER else 0
+            stored.batch_size = (cores + spare) * 10
             if simulations is not None:
                 stored.max_trials = simulations
             params = task_params(stored)

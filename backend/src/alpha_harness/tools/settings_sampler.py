@@ -25,7 +25,7 @@ from ..brain.settings_schema import valid_values
 from ..db.models import MetadataCache, SimStatus, StudyStatus, Trial, TrialState, utcnow
 from ..engine.packer import MAX_BATCH
 from ..labs import scheduler
-from ..labs.fastexpr import ParseError, data_fields, parse
+from ..labs.fastexpr import GROUPING, ParseError, data_fields, parse
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -173,21 +173,39 @@ async def _accepts_position(state: Any, schema: dict[str, Any], region: str) -> 
     return True
 
 
-async def plan(state: Any, alpha_id: str) -> dict[str, Any]:
-    """Everything the screen needs: the Alpha, its fields, and the space they open up."""
+async def plan(
+    state: Any,
+    alpha_id: str,
+    *,
+    expression: str | None = None,
+    decay: int = 0,
+    truncation: float = 0.08,
+) -> dict[str, Any]:
+    """Everything the screen needs: the expression, its fields, and the space they open up.
+
+    From an Alpha, its expression, decay and truncation are its own. From a bare
+    ``expression``, decay and truncation are the caller's, and no simulation is the reference.
+    """
     problems: list[str] = []
     warnings: list[str] = []
 
-    body = await state.endpoints.alpha_body(alpha_id)
-    code = body.get("regular") or body.get("combo") or body.get("selection") or {}
-    expression = code.get("code") if isinstance(code, dict) else None
-    source = dict(body.get("settings") or {})
+    if expression is not None:
+        source: dict[str, Any] = {"decay": decay, "truncation": truncation, "nanHandling": "ON"}
+    else:
+        body = await state.endpoints.alpha_body(alpha_id)
+        code = body.get("regular") or body.get("combo") or body.get("selection") or {}
+        expression = code.get("code") if isinstance(code, dict) else None
+        source = dict(body.get("settings") or {})
     if not expression:
-        problems.append(f"{alpha_id} has no expression to re-run.")
+        problems.append(f"{alpha_id or 'The expression'} has no expression to re-run.")
         return _empty(alpha_id, "", [], source, problems, warnings)
 
     try:
-        fields = data_fields(parse(expression))
+        tree = parse(expression)
+        fields = data_fields(tree)
+        # Grouping fields do not count as data but must exist where it runs, so the markets
+        # are placed on everything it reads.
+        placed = data_fields(tree, grouping=True)
     except ParseError:
         problems.append("Its expression could not be parsed, so its data fields are unknown.")
         return _empty(alpha_id, expression, [], source, problems, warnings)
@@ -197,9 +215,9 @@ async def plan(state: Any, alpha_id: str) -> dict[str, Any]:
 
     # Read in parallel: catalog reads run off the event loop in threads and take no write
     # lock, so a multi-field Alpha waits once rather than once per field.
-    per_field = await asyncio.gather(*(state.queries.field_availability(f) for f in fields))
+    per_field = await asyncio.gather(*(state.queries.field_availability(f) for f in placed))
     held: dict[tuple[str, int, str], float] = {}
-    for index, (field, rows) in enumerate(zip(fields, per_field, strict=True)):
+    for index, (field, rows) in enumerate(zip(placed, per_field, strict=True)):
         here = {
             (str(r["region"]), int(r["delay"]), str(r["universe"])): float(r["coverage"] or 0.0)
             for r in rows
@@ -207,17 +225,19 @@ async def plan(state: Any, alpha_id: str) -> dict[str, Any]:
         }
         if not here:
             problems.append(f"{field} is not downloaded in any market. Sync from BRAIN first.")
-            return _empty(alpha_id, expression, fields, source, problems, warnings)
+            return _empty(
+                alpha_id, expression, fields, source, problems, warnings, _grouping(placed)
+            )
         # The Alpha needs every field present, and is only as covered as its thinnest one.
         held = here if index == 0 else {k: min(v, here[k]) for k, v in held.items() if k in here}
     if not held:
         problems.append(f"No downloaded market holds all of {', '.join(fields)} together.")
-        return _empty(alpha_id, expression, fields, source, problems, warnings)
+        return _empty(alpha_id, expression, fields, source, problems, warnings, _grouping(placed))
 
     schema = await state.metadata.cached_settings_schema()
     if not schema:
         problems.append("BRAIN's settings list is not loaded. Sign in again.")
-        return _empty(alpha_id, expression, fields, source, problems, warnings)
+        return _empty(alpha_id, expression, fields, source, problems, warnings, _grouping(placed))
 
     if missing := await _unsynced(state, schema):
         warnings.append(
@@ -232,6 +252,7 @@ async def plan(state: Any, alpha_id: str) -> dict[str, Any]:
         "alphaId": alpha_id,
         "expression": expression,
         "dataFields": fields,
+        "groupingFields": _grouping(placed),
         "settings": _settings(source),
         "regions": regions,
         "totals": totals,
@@ -307,6 +328,11 @@ def _settings(source: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _grouping(placed: list[str]) -> list[str]:
+    """The grouping fields among those read: shown, though BRAIN counts none as data."""
+    return [f for f in placed if f in GROUPING]
+
+
 def _empty(
     alpha_id: str,
     expression: str,
@@ -314,11 +340,13 @@ def _empty(
     source: dict[str, Any],
     problems: list[str],
     warnings: list[str],
+    grouping: list[str] | None = None,
 ) -> dict[str, Any]:
     return {
         "alphaId": alpha_id,
         "expression": expression,
         "dataFields": fields,
+        "groupingFields": grouping or [],
         "settings": _settings(source),
         "regions": [],
         "totals": {"total": 0, "batches": 0},
@@ -445,8 +473,12 @@ def expand(
     return [*head, *(request for chunk in (*full, *tails) for request in chunk)]
 
 
-def seed_trials(requests: list[SimulationRequest]) -> Any:
-    """Parked trials for every simulation, written with the task in one transaction."""
+def seed_trials(requests: list[SimulationRequest], *, has_source: bool = True) -> Any:
+    """Parked trials for every simulation, written with the task in one transaction.
+
+    ``has_source`` is false for a sweep of a bare expression: it has no Alpha of its own, so no
+    simulation is the reference.
+    """
 
     def build(study_id: int) -> list[Trial]:
         return [
@@ -455,7 +487,7 @@ def seed_trials(requests: list[SimulationRequest]) -> Any:
                 number=number,
                 # The first is the Alpha's own settings (``expand`` puts it there): the
                 # reference every other row is read against.
-                params={"source": True} if number == 0 else {},
+                params={"source": True} if has_source and number == 0 else {},
                 distributions={},
                 expression=request.regular,
                 settings=request.settings.model_dump(by_alias=True, exclude_none=True),

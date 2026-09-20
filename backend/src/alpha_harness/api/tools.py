@@ -77,6 +77,8 @@ class SettingsPlan(Out):
     alpha_id: str
     expression: str
     data_fields: list[str]
+    #: Read by the expression but not counted as data by BRAIN, e.g. ``industry``.
+    grouping_fields: list[str]
     settings: SourceSettings
     regions: list[RegionPlan]
     totals: PlanTotals
@@ -87,9 +89,29 @@ class SettingsPlan(Out):
 
 
 class PreviewRequest(BaseModel):
-    alpha_id: str = Field(min_length=1, max_length=64, alias="alphaId")
+    """An Alpha to read, or a bare expression with the decay and truncation to hold it at."""
+
+    alpha_id: str = Field(default="", max_length=64, alias="alphaId")
+    expression: str | None = Field(default=None, max_length=20_000)
+    decay: int = Field(default=0, ge=0, le=512)
+    truncation: float = Field(default=0.08, ge=0, le=1)
 
     model_config = {"populate_by_name": True}
+
+    @model_validator(mode="after")
+    def _one_source(self) -> Self:
+        if bool(self.alpha_id.strip()) == bool((self.expression or "").strip()):
+            raise ValueError("Give either an Alpha ID or an expression.")
+        return self
+
+    async def plan(self, state: Any) -> dict[str, Any]:
+        return await settings_sampler.plan(
+            state,
+            self.alpha_id.strip(),
+            expression=self.expression.strip() if self.expression else None,
+            decay=self.decay,
+            truncation=self.truncation,
+        )
 
 
 class MarketPick(BaseModel):
@@ -130,7 +152,7 @@ async def preview(body: PreviewRequest, state: State) -> SettingsPlan:
     Reads the Alpha from BRAIN rather than the vault, because the vault stores no
     maxTrade/maxPosition and may not hold the Alpha at all.
     """
-    found = await settings_sampler.plan(state, body.alpha_id)
+    found = await body.plan(state)
     return SettingsPlan.model_validate({**found, "maxCores": state.engine.slots})
 
 
@@ -143,7 +165,7 @@ async def add_task(body: SampleRequest, state: State) -> AddedTask:
             "too_many_cores",
             f"The engine has {state.engine.slots} slots, so a task cannot hold {body.cores}.",
         )
-    found = await settings_sampler.plan(state, body.alpha_id)
+    found = await body.plan(state)
     if found["problems"]:
         raise refuse(422, "settings_sampler_blocked", found["problems"][0])
 
@@ -188,8 +210,8 @@ async def add_task(body: SampleRequest, state: State) -> AddedTask:
         # Measured: without the spare, 29% of this task's slot-time sat idle.
         batch_size=(body.cores + 1) * MAX_BATCH,
         template_source=found["expression"],
-        template_name=f"Settings Sampler · {body.alpha_id}",
-        seeds=settings_sampler.seed_trials(requests),
+        template_name=f"Settings Sampler · {body.alpha_id or 'Expression'}",
+        seeds=settings_sampler.seed_trials(requests, has_source=bool(body.alpha_id)),
     )
     return AddedTask(id=row.id, name=row.name)
 

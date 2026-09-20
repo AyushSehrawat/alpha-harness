@@ -3351,10 +3351,28 @@ export interface components {
             /** Warnings */
             warnings: string[];
         };
-        /** PreviewRequest */
+        /**
+         * PreviewRequest
+         * @description An Alpha to read, or a bare expression with the decay and truncation to hold it at.
+         */
         PreviewRequest: {
-            /** Alphaid */
+            /**
+             * Alphaid
+             * @default
+             */
             alphaId: string;
+            /**
+             * Decay
+             * @default 0
+             */
+            decay: number;
+            /** Expression */
+            expression?: string | null;
+            /**
+             * Truncation
+             * @default 0.08
+             */
+            truncation: number;
         };
         /** PromptInfo */
         PromptInfo: {
@@ -3588,19 +3606,34 @@ export interface components {
          * @description What to queue. An empty list means "everything the plan offers".
          */
         SampleRequest: {
-            /** Alphaid */
+            /**
+             * Alphaid
+             * @default
+             */
             alphaId: string;
             /**
              * Cores
              * @default 8
              */
             cores: number;
+            /**
+             * Decay
+             * @default 0
+             */
+            decay: number;
+            /** Expression */
+            expression?: string | null;
             /** Markets */
             markets?: components["schemas"]["MarketPick"][];
             /** Neutralizations */
             neutralizations?: string[];
             /** Pairs */
             pairs?: components["schemas"]["PairPick"][];
+            /**
+             * Truncation
+             * @default 0.08
+             */
+            truncation: number;
         };
         /**
          * Say
@@ -3771,6 +3804,8 @@ export interface components {
             dataFields: string[];
             /** Expression */
             expression: string;
+            /** Groupingfields */
+            groupingFields: string[];
             /** Maxcores */
             maxCores: number;
             /** Problems */

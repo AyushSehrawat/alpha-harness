@@ -16,8 +16,11 @@ export interface MarketPick {
   universe: string
 }
 
-export interface SampleRequest {
-  alphaId: string
+/** Where the sweep's expression comes from: an Alpha, or an expression typed in with the decay
+ * and truncation to hold it at. */
+export type Source = { alphaId: string } | { expression: string; decay: number; truncation: number }
+
+export type SampleRequest = Source & {
   /** Empty means every market the plan offers; likewise for each filter below. */
   markets: MarketPick[]
   neutralizations: string[]
@@ -29,8 +32,8 @@ export interface SampleRequest {
 const B = '/api/tools/settings-sampler'
 
 export const settingsSampler = {
-  /** Free: reads the Alpha and the catalog, simulates nothing. */
-  preview: (alphaId: string) => http.post<SettingsPlan>(`${B}/preview`, { alphaId }),
+  /** Free: reads the Alpha (if any) and the catalog, simulates nothing. */
+  preview: (source: Source) => http.post<SettingsPlan>(`${B}/preview`, source),
   addTask: (body: SampleRequest) => http.post<Schemas['AddedTask']>(`${B}/tasks`, body),
 }
 
