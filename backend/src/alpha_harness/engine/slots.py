@@ -743,8 +743,12 @@ class BatchEngine:
         Retryable failures put the children back in the queue; a rejection that will
         never succeed marks them so, rather than looping forever on the same payload.
         """
-        child_status = SimStatus.QUEUED if requeue else status
         async with self.db.session() as session:
+            parent = await session.get(SimulationRecord, parent_id)
+            if parent is not None and parent.status == SimStatus.CANCELLED:
+                # Cancelled while the POST was out: this work must never be queued again.
+                requeue, status, message = False, SimStatus.CANCELLED, parent.message or message
+            child_status = SimStatus.QUEUED if requeue else status
             values: dict[str, Any] = {"status": child_status, "parent_record_id": None}
             if not requeue:
                 values["message"] = message
