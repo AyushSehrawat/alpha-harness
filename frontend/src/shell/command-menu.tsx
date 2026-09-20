@@ -102,8 +102,10 @@ export function CommandMenu() {
                       {destinations.map((destination) => (
                         <Command.Item
                           key={destination.href}
-                          value={destination.href}
-                          keywords={[destination.label]}
+                          // Unique across groups: cmdk selects by value, and a screen offered as
+                          // both a quick action and a destination lit up twice.
+                          value={destination.label}
+                          keywords={[destination.href]}
                           onSelect={() => go(destination)}
                           className="flex h-8 cursor-default items-center rounded-sm px-2 text-body text-ink-muted select-none data-[selected=true]:bg-surface-4 data-[selected=true]:text-ink"
                         >
