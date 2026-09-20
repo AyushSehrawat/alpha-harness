@@ -264,7 +264,9 @@ async def auto_seeds(body: AutoSeedsRequest, state: State) -> AutoSeedsStarted:
         # Finished jobs are kept for a while rather than cleared: a screen still reading the
         # last run's seeds was told to start again the moment another market was chosen.
         cutoff = time.monotonic() - JOB_TTL_SECONDS
-        for stale in [i for i, j in _jobs.items() if (j["finished_at"] or 0.0) < cutoff]:
+        # A job whose task just finished may not have stamped ``finished_at`` yet; it stays.
+        ended = [i for i, j in _jobs.items() if j["finished_at"] is not None]
+        for stale in [i for i in ended if _jobs[i]["finished_at"] < cutoff]:
             del _jobs[stale]
         task = await state.tasks.start("evolution-seeds", "Choosing seeds")
         job: dict[str, Any] = {
