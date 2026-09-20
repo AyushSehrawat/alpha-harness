@@ -660,26 +660,27 @@ class BatchEngine:
             else:
                 await self._fail_batch(parent_id, record_ids, exc.message, requeue=exc.retryable)
             return False
+        else:
+            # 3. Record the parent id immediately — it is the only way to cancel the batch —
+            # and before leaving ``sending``, so a stale-send sweep cannot orphan it meanwhile.
+            platform_id = extract_simulation_id(response.location)
+            if platform_id is None:
+                await self._fail_batch(
+                    parent_id,
+                    record_ids,
+                    "BRAIN accepted the batch but returned no id, so it cannot be cancelled "
+                    "from here. Check the platform.",
+                    requeue=False,
+                    status=SimStatus.ORPHANED,
+                )
+                return False
+
+            async with self.db.session() as session:
+                won = await record_launch(
+                    session, parent_id, platform_id, response.rate_limit, children=record_ids
+                )
         finally:
             self.tracker.sending.discard(parent_id)
-
-        # 3. Record the parent id immediately — it is the only way to cancel the batch.
-        platform_id = extract_simulation_id(response.location)
-        if platform_id is None:
-            await self._fail_batch(
-                parent_id,
-                record_ids,
-                "BRAIN accepted the batch but returned no id, so it cannot be cancelled "
-                "from here. Check the platform.",
-                requeue=False,
-                status=SimStatus.ORPHANED,
-            )
-            return False
-
-        async with self.db.session() as session:
-            won = await record_launch(
-                session, parent_id, platform_id, response.rate_limit, children=record_ids
-            )
 
         if not won:
             if not await cancel_after_lost_race(
