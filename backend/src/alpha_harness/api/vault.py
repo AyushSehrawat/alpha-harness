@@ -124,6 +124,15 @@ class AlphaRow(Out):
     date_created: str | None
     date_submitted: str | None
     has_pnl: bool
+    long_count: int | None = None
+    short_count: int | None = None
+    max_trade: str | None = None
+    max_position: str | None = None
+    #: BRAIN's names, e.g. "Power Pool Alpha", and pyramids such as "USA/D1/PV".
+    classifications: list[str] = Field(default_factory=list)
+    pyramids: list[str] = Field(default_factory=list)
+    train_sharpe: float | None = None
+    test_sharpe: float | None = None
 
 
 class AlphaPage(Out):

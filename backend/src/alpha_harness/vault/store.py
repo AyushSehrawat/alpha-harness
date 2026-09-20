@@ -21,7 +21,6 @@ import structlog
 
 from ..db.duck import ALPHA_COLUMNS, TRAIN_COLUMNS, Catalog
 from . import metrics
-from .yields import is_promising
 
 if TYPE_CHECKING:
     from ..brain.schemas import Alpha
@@ -158,14 +157,26 @@ def _page_row(r: dict[str, Any]) -> dict[str, Any]:
         "dateCreated": _iso(r["date_created"]),
         "dateSubmitted": _iso(r["date_submitted"]),
         "hasPnl": bool(r["has_pnl"]),
+        "longCount": r["long_count"],
+        "shortCount": r["short_count"],
+        "maxTrade": r["max_trade"],
+        "maxPosition": r["max_position"],
+        "classifications": _json_list(r["classifications"]),
+        "pyramids": _json_list(r["pyramids"]),
+        "trainSharpe": r["train_sharpe"],
+        "testSharpe": r["test_sharpe"],
     }
+
+
+def _json_list(raw: Any) -> list[str]:
+    return [str(v) for v in json.loads(raw)] if isinstance(raw, str) else []
 
 
 def k_ratio(daily_pnl: list[float]) -> float | None:
     """Kestner's K-Ratio (2003 form) of a daily PnL series.
 
     A straight line is fitted to cumulative PnL against the day number; the slope over
-    its standard error, divided by the square root of the number of days, rewards steady
+    its standard error, divided by the number of days, rewards steady
     growth over the same total earned in a few jumps.
     """
     n = len(daily_pnl)
@@ -181,7 +192,7 @@ def k_ratio(daily_pnl: list[float]) -> float | None:
     if sse <= 0:
         return None
     standard_error = math.sqrt(sse / (n - 2) / sxx)
-    return slope / (standard_error * math.sqrt(n))
+    return slope / (standard_error * n)
 
 
 def _as_date(value: Any) -> date:
@@ -381,24 +392,6 @@ class AlphaVault:
         )
         return [str(r["alpha_id"]) for r in rows]
 
-    async def awaiting_checks(self, limit: int = 200) -> list[str]:
-        """Alphas the platform has not finished judging, best first.
-
-        ``LIKE '%PENDING%'`` is a cheap prefilter over the stored JSON; the caller decides
-        what is actually worth asking about, which needs the array parsed.
-        """
-        rows = await self.catalog.query(
-            """
-            SELECT alpha_id, checks FROM alpha
-            WHERE checks LIKE '%PENDING%'
-              AND (status IS NULL OR status = 'UNSUBMITTED')
-            ORDER BY sharpe DESC NULLS LAST
-            LIMIT ?
-            """,
-            [limit],
-        )
-        return [str(r["alpha_id"]) for r in rows if is_promising(r.get("checks"))]
-
     async def latest_created(self) -> datetime | None:
         """The newest alpha stored, which is where an incremental sync resumes."""
         return await self.catalog.scalar("SELECT max(date_created) FROM alpha")
@@ -448,7 +441,9 @@ class AlphaVault:
                    a.neutralization, a.decay, a.truncation, a.expression, a.sharpe,
                    a.fitness, a.turnover, a.returns, a.drawdown, a.margin,
                    a.operator_count, a.k_ratio, {ALPHA_METRICS["calmar"]} AS calmar,
-                   a.date_created, a.date_submitted,
+                   a.date_created, a.date_submitted, a.long_count, a.short_count,
+                   a.max_trade, a.max_position, a.classifications, a.pyramids,
+                   a.train_sharpe, a.test_sharpe,
                    EXISTS (SELECT 1 FROM alpha_pnl p WHERE p.alpha_id = a.alpha_id) AS has_pnl
             FROM alpha a
             WHERE {where}

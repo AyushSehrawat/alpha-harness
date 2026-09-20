@@ -1845,6 +1845,8 @@ export interface components {
             alphaId: string;
             /** Calmar */
             calmar: number | null;
+            /** Classifications */
+            classifications?: string[];
             /** Datecreated */
             dateCreated: string | null;
             /** Datesubmitted */
@@ -1863,22 +1865,36 @@ export interface components {
             hasPnl: boolean;
             /** Kratio */
             kRatio: number | null;
+            /** Longcount */
+            longCount?: number | null;
             /** Margin */
             margin: number | null;
+            /** Maxposition */
+            maxPosition?: string | null;
+            /** Maxtrade */
+            maxTrade?: string | null;
             /** Name */
             name: string | null;
             /** Neutralization */
             neutralization: string | null;
             /** Operatorcount */
             operatorCount: number | null;
+            /** Pyramids */
+            pyramids?: string[];
             /** Region */
             region: string | null;
             /** Returns */
             returns: number | null;
             /** Sharpe */
             sharpe: number | null;
+            /** Shortcount */
+            shortCount?: number | null;
             /** Status */
             status: string | null;
+            /** Testsharpe */
+            testSharpe?: number | null;
+            /** Trainsharpe */
+            trainSharpe?: number | null;
             /** Truncation */
             truncation: number | null;
             /** Turnover */

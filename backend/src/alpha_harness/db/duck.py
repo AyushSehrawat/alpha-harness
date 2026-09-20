@@ -157,6 +157,10 @@ ALTER TABLE alpha ADD COLUMN IF NOT EXISTS series_fitness DOUBLE;
 ALTER TABLE alpha ADD COLUMN IF NOT EXISTS series_returns DOUBLE;
 ALTER TABLE alpha ADD COLUMN IF NOT EXISTS series_drawdown DOUBLE;
 ALTER TABLE alpha ADD COLUMN IF NOT EXISTS series_margin DOUBLE;
+-- K-Ratios stored before the 2003 form are cleared once and recomputed from alpha_pnl.
+UPDATE alpha SET k_ratio = NULL
+WHERE NOT EXISTS (SELECT 1 FROM duckdb_tables() WHERE table_name = 'k_ratio_2003');
+CREATE TABLE IF NOT EXISTS k_ratio_2003 (done BOOLEAN);
 
 -- One row per alpha per trading day. ~2,500 rows per alpha.
 CREATE TABLE IF NOT EXISTS alpha_pnl (
