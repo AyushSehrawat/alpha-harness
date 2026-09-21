@@ -27,7 +27,7 @@ wheels = [
 
 [[package]]
 name = "alpha-harness"
-version = "0.1.0"
+version = "0.0.0.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
@@ -39,6 +39,7 @@ dependencies = [
     { name = "msgspec" },
     { name = "numpy" },
     { name = "optuna" },
+    { name = "packaging" },
     { name = "pyarrow" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -67,6 +68,7 @@ requires-dist = [
     { name = "msgspec", specifier = ">=0.21.1" },
     { name = "numpy", specifier = ">=2.5.3" },
     { name = "optuna", specifier = ">=5.0.0" },
+    { name = "packaging", specifier = ">=26.3" },
     { name = "pyarrow", specifier = ">=25.0.1" },
     { name = "pydantic", specifier = ">=2.13.5" },
     { name = "pydantic-settings", specifier = ">=2.15.0" },

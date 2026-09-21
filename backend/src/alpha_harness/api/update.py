@@ -1,0 +1,111 @@
+"""Checking for a new version and handing the install to the launcher."""
+
+from __future__ import annotations
+
+import asyncio
+import signal
+from typing import Any
+
+import structlog
+from fastapi import APIRouter, BackgroundTasks, Request
+
+from .. import updates
+from ..schemas import Out
+from .deps import refuse
+
+log = structlog.get_logger(__name__)
+
+router = APIRouter(prefix="/api/update", tags=["update"])
+
+#: Only when no server handle was published — a reload-mode dev server. Long enough for the
+#: response to have left, short enough that the user is not left waiting on it.
+GOODBYE_SECONDS = 0.5
+
+
+class UpdateStatus(Out):
+    current: str
+    #: False for a development checkout, where the version is a placeholder and every release
+    #: reads as newer. Nothing is offered then.
+    is_release: bool
+    #: The newest published release, or null when GitHub could not be read.
+    latest: str | None
+    available: bool
+    #: False for a development checkout or a manual install: there is no launcher to install
+    #: it, so the UI offers the release page instead of an Update button.
+    can_install: bool
+    #: Already requested and waiting for the restart that applies it.
+    pending: str | None
+    notes: str
+    url: str
+    published_at: str | None
+    #: Why the check could not be made, said plainly. Null when it worked.
+    problem: str | None
+
+
+class UpdateStarted(Out):
+    version: str
+    #: The app is closing itself; the launcher installs and reopens it.
+    restarting: bool
+
+
+@router.get("")
+async def status(refresh: bool = False) -> UpdateStatus:
+    """Whether a newer release is out. Asked of GitHub at most once an hour."""
+    release, problem = await updates.latest(force=refresh)
+    running = updates.current()
+    # A failed install outranks a failed check: it is the answer to "I clicked Update and
+    # nothing happened", which is the only question the user is actually asking.
+    problem = updates.last_failure() or problem
+    return UpdateStatus(
+        current=running,
+        is_release=updates.is_release(),
+        latest=release.version if release else None,
+        available=bool(
+            release and updates.is_release() and updates.is_newer(release.version, running)
+        ),
+        can_install=updates.launcher_home() is not None,
+        pending=updates.pending(),
+        notes=release.notes if release else "",
+        url=release.url if release else "",
+        published_at=release.published_at if release else None,
+        problem=problem,
+    )
+
+
+@router.post("")
+async def apply(request: Request, background: BackgroundTasks) -> UpdateStarted:
+    """Ask the launcher to install the newest release, then close the app so it can.
+
+    The request file is written before anything else, so an app that then fails to close
+    still gets updated the next time it is started — see :mod:`alpha_harness.updates`.
+    """
+    release, problem = await updates.latest()
+    if release is None:
+        raise refuse(503, "update_unavailable", problem or "No release could be read.")
+    if not updates.is_newer(release.version, updates.current()):
+        raise refuse(409, "already_current", f"Already running {updates.current()}.")
+    try:
+        updates.request(release.version, wheel_url=release.wheel_url)
+    except RuntimeError as exc:
+        raise refuse(409, "no_launcher", str(exc)) from exc
+
+    background.add_task(_stop, getattr(request.app.state, "server", None))
+    return UpdateStarted(version=release.version, restarting=True)
+
+
+async def _stop(server: Any) -> None:
+    """Close the app once this response has been flushed to the socket.
+
+    A background task runs after the body is written, so there is no race with the browser
+    and no arbitrary delay to tune. ``should_exit`` is uvicorn's own graceful path: it
+    unwinds the lifespan, which is what closes DuckDB and SQLite.
+
+    Without a server handle — ``uvicorn --reload`` in development — SIGINT reaches the same
+    handler. Stopping the loop outright would skip the lifespan and leave both stores open,
+    so that is deliberately not a fallback here.
+    """
+    if server is not None:
+        server.should_exit = True
+        return
+    log.warning("update.no_server_handle")
+    asyncio.get_running_loop().call_later(GOODBYE_SECONDS, signal.raise_signal, signal.SIGINT)

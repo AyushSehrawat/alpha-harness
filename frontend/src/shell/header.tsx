@@ -16,6 +16,7 @@ import { useRefetchOn } from '@/lib/ws'
 import { Button, STATUS } from '@/ui/kit'
 import { Tooltip } from '@/ui/overlay'
 import { useCommandMenu } from './command-menu'
+import { UpdateBadge, VersionBadge } from './update'
 
 export function Header() {
   const openMenu = useCommandMenu((s) => s.setOpen)
@@ -25,6 +26,8 @@ export function Header() {
       <HeaderCores />
       <div className="flex items-center gap-4">
         <Clocks />
+        <VersionBadge />
+        <UpdateBadge />
         <ConnectionNotice />
         <Button
           size="icon-sm"

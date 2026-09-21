@@ -1,0 +1,269 @@
+"""Is a newer release out, and asking the launcher to install it.
+
+The app never upgrades itself in place. On Windows a running process keeps its extension
+modules open, so an install that touches ``duckdb`` or ``numpy`` fails part-way and leaves a
+broken tree behind. The Windows launcher supervises the app instead: Update writes the wanted
+version to a file, the app exits, the launcher installs that version with ``uv`` and starts
+the app again.
+
+The file is what matters, not the restart. If the app cannot close itself the request still
+sits there, and the next start applies it — so a failed shutdown costs the user one manual
+restart rather than the update.
+
+Run without the launcher — a development checkout, or the ``uvx --from`` route in CLAUDE.md —
+there is nothing to hand the request to. Updates then report themselves unavailable and say
+why, rather than failing at the last step.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import time
+from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as installed_version
+from pathlib import Path
+from typing import Any
+
+import httpx
+import structlog
+from packaging.version import InvalidVersion, Version
+
+log = structlog.get_logger(__name__)
+
+PACKAGE = "alpha-harness"
+REPOSITORY = "residual-lab/alpha-harness"
+RELEASES_URL = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
+
+#: Set by the launcher to the directory it owns: ``uv.exe``, the Python it fetched, the venv.
+HOME_VARIABLE = "ALPHA_HARNESS_HOME"
+#: Read by the launcher once the app has exited, then deleted.
+REQUEST_FILE = "update-request.json"
+#: Written by the launcher when an install failed, so the app can say why rather than offer
+#: the same update again with no explanation.
+ERROR_FILE = "update-error.json"
+
+#: An answer holds for an hour. A *failure* holds for a minute: a laptop that was offline
+#: when it asked should not insist there is no update for the rest of the hour.
+CACHE_SECONDS = 3600.0
+FAILURE_CACHE_SECONDS = 60.0
+CHECK_TIMEOUT = 10.0
+#: Release notes are shown in a dialog, not a document.
+NOTES_LIMIT = 4000
+
+
+@dataclass(frozen=True, slots=True)
+class Release:
+    version: str
+    notes: str
+    url: str
+    published_at: str | None
+    #: The wheel's own download URL, read from the release rather than built from the version.
+    #: A constructed name breaks the moment a build tags it anything but ``py3-none-any``.
+    wheel_url: str | None = None
+
+
+#: Serialises the look at GitHub, so concurrent callers make one call between them.
+_checking = asyncio.Lock()
+
+#: ``(checked at, release, error)`` of the last look at GitHub.
+_cache: tuple[float, Release | None, str | None] | None = None
+
+
+def current() -> str:
+    """The running version, from the installed distribution's own metadata.
+
+    Releases are dated (``2026.9.21``). The repository itself stays at ``0.0.0.dev0``, which
+    the release workflow stamps over — so any version below a real date is a checkout.
+    """
+    try:
+        return installed_version(PACKAGE)
+    except PackageNotFoundError:
+        # A source checkout with nothing installed has no distribution to read.
+        return "0.0.0.dev0"
+
+
+def is_release() -> bool:
+    """Whether this is a published build rather than a development tree."""
+    parsed = _parse(current())
+    return parsed is not None and not parsed.is_devrelease
+
+
+def launcher_home() -> Path | None:
+    """The directory the launcher owns, or ``None`` when the app was started some other way."""
+    raw = os.environ.get(HOME_VARIABLE)
+    return Path(raw) if raw else None
+
+
+def _parse(raw: str) -> Version | None:
+    try:
+        return Version(raw.removeprefix("v"))
+    except InvalidVersion:
+        return None
+
+
+def is_newer(candidate: str, running: str) -> bool:
+    """Whether ``candidate`` is a release to move to. Anything unreadable is not."""
+    new, now = _parse(candidate), _parse(running)
+    return new is not None and now is not None and new > now
+
+
+async def latest(*, force: bool = False) -> tuple[Release | None, str | None]:
+    """The newest published release and why it could not be read, each possibly ``None``.
+
+    Cached for an hour. A failure is cached too: a machine with no route to GitHub should ask
+    once an hour rather than on every poll of the header.
+    """
+    global _cache
+    # One caller at a time. Several open tabs poll this at once, and without the gate each
+    # one that arrives while the cache is cold makes its own call — the anonymous allowance
+    # is sixty an hour, and spending it in bursts is how a machine ends up rate limited by
+    # its own UI. Whoever waits reads the answer the first one stored.
+    async with _checking:
+        if not force and _cache is not None:
+            held = CACHE_SECONDS if _cache[1] is not None else FAILURE_CACHE_SECONDS
+            if time.monotonic() - _cache[0] < held:
+                return _cache[1], _cache[2]
+
+        return await _ask()
+
+
+async def _ask() -> tuple[Release | None, str | None]:
+    global _cache
+    release: Release | None = None
+    problem: str | None = None
+    try:
+        async with httpx.AsyncClient(timeout=CHECK_TIMEOUT) as client:
+            response = await client.get(
+                RELEASES_URL,
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                    # GitHub asks every caller to name itself, and a named one is far easier
+                    # to argue about if this ever does trip a limit.
+                    "User-Agent": f"AlphaHarness/{current()}",
+                },
+            )
+        if response.status_code == 404:
+            problem = "No release has been published yet."
+        elif response.status_code == 403:
+            problem = "GitHub is rate limiting this machine. It will try again later."
+        elif response.status_code >= 400:
+            problem = f"GitHub answered {response.status_code}."
+        else:
+            release = _read(response.json())
+            if release is None:
+                problem = "GitHub's answer did not name a version."
+    except httpx.HTTPError as exc:
+        problem = f"Could not reach GitHub: {exc}"
+
+    _cache = (time.monotonic(), release, problem)
+    return release, problem
+
+
+def _read(body: Any) -> Release | None:
+    # ``/releases/latest`` already skips drafts and pre-releases, so this is belt and braces
+    # — and the belt that matters if this ever reads the full release list instead. A release
+    # candidate reaching consultants is the one mistake this file cannot take back.
+    if not isinstance(body, dict) or body.get("draft") or body.get("prerelease"):
+        return None
+    tag = body.get("tag_name")
+    if not isinstance(tag, str) or _parse(tag) is None:
+        return None
+    return Release(
+        version=tag.removeprefix("v"),
+        notes=str(body.get("body") or "")[:NOTES_LIMIT],
+        url=str(body.get("html_url") or ""),
+        published_at=body.get("published_at")
+        if isinstance(body.get("published_at"), str)
+        else None,
+        wheel_url=_wheel_of(body.get("assets")),
+    )
+
+
+def _wheel_of(assets: Any) -> str | None:
+    """The release's own wheel, by extension rather than by a name we guessed."""
+    if not isinstance(assets, list):
+        return None
+    for asset in assets:
+        if not isinstance(asset, dict):
+            continue
+        name, url = asset.get("name"), asset.get("browser_download_url")
+        # Named as well as suffixed: a release may carry more than one wheel one day,
+        # and installing whichever came first would be a coin toss.
+        if (
+            isinstance(name, str)
+            and name.startswith("alpha_harness-")
+            and name.endswith(".whl")
+            and isinstance(url, str)
+        ):
+            return url
+    return None
+
+
+def request(version: str, *, wheel_url: str | None = None) -> Path:
+    """Record the version the launcher should install, and return the file it wrote.
+
+    Raises :class:`RuntimeError` when nothing is supervising this process, because writing a
+    request nobody reads would report an update that never happens.
+    """
+    home = launcher_home()
+    if home is None:
+        raise RuntimeError(
+            "This copy was not started by the Alpha Harness launcher, so it cannot update "
+            "itself. Install the new version the same way you installed this one."
+        )
+    home.mkdir(parents=True, exist_ok=True)
+    # A previous failure is the user's answer to "why am I still on the old version"; once
+    # they have asked again it is history.
+    (home / ERROR_FILE).unlink(missing_ok=True)
+    path = home / REQUEST_FILE
+    path.write_text(
+        json.dumps(
+            {
+                "version": version,
+                "wheelUrl": wheel_url,
+                "requestedAt": time.time(),
+                "from": current(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    log.warning("update.requested", version=version, path=str(path))
+    return path
+
+
+def last_failure() -> str | None:
+    """Why the launcher could not install the last requested version, if it could not.
+
+    Without this an install that failed leaves the same Update button on screen and no
+    account of why nothing changed.
+    """
+    home = launcher_home()
+    if home is None:
+        return None
+    try:
+        body = json.loads((home / ERROR_FILE).read_text(encoding="utf-8"))
+    except OSError, ValueError:
+        return None
+    if not isinstance(body, dict):
+        return None
+    version, reason = body.get("version"), body.get("error")
+    if not isinstance(reason, str):
+        return None
+    return f"Installing {version} failed: {reason}" if version else f"The update failed: {reason}"
+
+
+def pending() -> str | None:
+    """The version already requested and not yet installed, if any."""
+    home = launcher_home()
+    if home is None:
+        return None
+    try:
+        body = json.loads((home / REQUEST_FILE).read_text(encoding="utf-8"))
+    except OSError, ValueError:
+        return None
+    wanted = body.get("version") if isinstance(body, dict) else None
+    return wanted if isinstance(wanted, str) else None

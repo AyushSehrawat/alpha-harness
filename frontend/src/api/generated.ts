@@ -1557,6 +1557,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Status
+         * @description Whether a newer release is out. Asked of GitHub at most once an hour.
+         */
+        get: operations["status_api_update_get"];
+        put?: never;
+        /**
+         * Apply
+         * @description Ask the launcher to install the newest release, then close the app so it can.
+         *
+         *     The request file is written before anything else, so an app that then fails to close
+         *     still gets updated the next time it is started — see :mod:`alpha_harness.updates`.
+         */
+        post: operations["apply_api_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/vault": {
         parameters: {
             query?: never;
@@ -4461,6 +4488,36 @@ export interface components {
             /** N */
             n: number;
         };
+        /** UpdateStarted */
+        UpdateStarted: {
+            /** Restarting */
+            restarting: boolean;
+            /** Version */
+            version: string;
+        };
+        /** UpdateStatus */
+        UpdateStatus: {
+            /** Available */
+            available: boolean;
+            /** Caninstall */
+            canInstall: boolean;
+            /** Current */
+            current: string;
+            /** Isrelease */
+            isRelease: boolean;
+            /** Latest */
+            latest: string | null;
+            /** Notes */
+            notes: string;
+            /** Pending */
+            pending: string | null;
+            /** Problem */
+            problem: string | null;
+            /** Publishedat */
+            publishedAt: string | null;
+            /** Url */
+            url: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -6920,6 +6977,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_api_update_get: {
+        parameters: {
+            query?: {
+                refresh?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_api_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateStarted"];
                 };
             };
         };

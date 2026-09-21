@@ -25,6 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from . import updates
 from .api import (
     alphas,
     auth,
@@ -41,6 +42,7 @@ from .api import (
     template_lab,
     today,
     tools,
+    update,
     vault,
     ws,
 )
@@ -108,7 +110,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="Alpha Harness",
         description=DESCRIPTION,
-        version="0.1.0",
+        # One source of truth: the installed distribution's own metadata, which the release
+        # tag sets. A hardcoded string here drifts from what the updater compares against.
+        version=updates.current(),
         lifespan=lifespan,
         openapi_url="/openapi.json",
         docs_url="/docs",
@@ -166,6 +170,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(lab_tasks.router)
     app.include_router(power_pool_lab.router)
     app.include_router(chat.router)
+    app.include_router(update.router)
     app.include_router(ws.router)
 
     @app.get("/api/health", tags=["meta"])

@@ -1,0 +1,212 @@
+# Cut a release: push a tag and users get an Update button. That is the whole procedure —
+# the tag is the only place a version is written, and `backend/pyproject.toml` stays at
+# 0.0.0.dev0 on main.
+#
+#   git tag v2026.9.21 && git push origin v2026.9.21
+#
+# Versions are dates, unpadded (`2026.9.5`, not `2026.09.05`), with `.1` for a second release
+# in a day. Dated rather than semantic on purpose: the app is a local tool with no API
+# consumers, so a major number would signal a stability promise nobody is owed, while a date
+# answers the only question a screenshot raises — how old is this build.
+#
+# To publish without offering it to anyone, tag a pre-release: `v2026.9.21rc1`. GitHub keeps
+# it out of /releases/latest, which is the only thing the in-app updater reads.
+#
+# The wheel carries the app and its built UI; `constraints.txt` pins every transitive
+# dependency to `uv.lock`, so an install a year from now resolves to what was tested today.
+# `AlphaHarness.exe` only changes when the launcher does — users who already have it keep it
+# and take the wheel alone, which is the point of splitting them.
+#
+# The exe must be built on Windows: neither PyInstaller nor Nuitka cross-compiles.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build, without the leading v
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  wheel:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      # The tag is the only place a version is written. `backend/pyproject.toml` stays at
+      # 0.0.0.dev0 on main and is stamped here, so there is no bump commit to forget and no
+      # way for a tag and a file to disagree.
+      #
+      # Through the environment, never interpolated into the script: a ref name is attacker
+      # shaped text, and `${{ }}` pastes it in before bash ever sees a quote.
+      - name: Read the version from the tag
+        id: version
+        shell: bash
+        env:
+          REF: ${{ inputs.version || github.ref_name }}
+        run: |
+          uv run --with packaging --no-project --quiet python - <<'PY'
+          import os, pathlib
+          from packaging.version import InvalidVersion, Version
+
+          raw = os.environ["REF"].removeprefix("v")
+          try:
+              parsed = Version(raw)
+          except InvalidVersion:
+              raise SystemExit(f"::error::{raw!r} is not a PEP 440 version")
+          # The launcher builds `/releases/download/v{version}/`, and the wheel is named with
+          # the *normalised* version. A tag of v2026.09.21 would publish assets under a path
+          # that says 2026.9.21, so every download 404s. Demand the canonical spelling.
+          if str(parsed) != raw:
+              raise SystemExit(f"::error::tag v{raw} is not canonical; tag v{parsed} instead")
+
+          # Appended, never rewritten: these files carry whatever earlier steps put in them.
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              # A release candidate must never become /releases/latest: the updater reads
+              # that, and every running copy would offer it within the hour.
+              out.write(f"prerelease={str(parsed.is_prerelease).lower()}\n")
+              out.write(f"version={raw}\n")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"VERSION={raw}\n")
+          print(f"version {raw}, prerelease {parsed.is_prerelease}")
+          PY
+
+      # The same gate as `lefthook run check`, so a tag cannot ship what a commit could not.
+      # Run against the committed lockfile, before anything is stamped: measured, uv is happy
+      # to sync a pyproject whose version has moved off uv.lock, but gating the tree exactly
+      # as it sits in git does not depend on it staying happy.
+      - run: cd backend && uv sync --frozen
+      - run: cd backend && uv run ruff check . && uv run ruff format --check . && uv run basedpyright
+      - run: cd frontend && pnpm install --frozen-lockfile && pnpm check
+
+      # Into the package, so one wheel serves the whole app with no Node at runtime.
+      - run: cd frontend && pnpm build
+
+      # Only now, and only for the artefacts.
+      - name: Stamp the version into pyproject
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, pathlib
+          path = pathlib.Path("backend/pyproject.toml")
+          text = path.read_text(encoding="utf-8")
+          old = 'version = "0.0.0.dev0"'
+          if old not in text:
+              raise SystemExit(f"::error::{old!r} not found in pyproject.toml")
+          path.write_text(text.replace(old, f'version = "{os.environ["VERSION"]}"', 1), encoding="utf-8")
+          PY
+          grep -m1 '^version' backend/pyproject.toml
+
+      - run: cd backend && uv build --wheel
+      - run: cd backend && uv export --frozen --no-dev --no-emit-project --no-hashes -o dist/constraints.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          path: backend/dist/*
+
+  launcher:
+    # After the wheel job, so the version baked into the exe is the one that passed the
+    # canonical check rather than whatever the tag happened to say.
+    needs: wheel
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.wheel.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      # Pinned, not `latest`: this binary ships inside the exe, so an upstream release must
+      # never change what a re-run of an old tag produces.
+      - name: Fetch uv.exe
+        shell: bash
+        env:
+          UV_VERSION: "0.12.17"
+        run: |
+          curl -fsSL -o uv.zip \
+            "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-pc-windows-msvc.zip"
+          unzip -j uv.zip uv.exe -d launcher/
+          ./launcher/uv.exe --version
+
+      # A fresh machine installs exactly the version this launcher shipped with; the in-app
+      # updater moves it on from there.
+      #
+      # Python, not `sed -i`: Git Bash rewrites in place by renaming a temp file, which on
+      # Windows contends with the checkout's own handles and mangles CRLF. And a stamp that
+      # silently misses ships BUILD_VERSION = "0.0.0", whose download URL 404s on every fresh
+      # install — so a miss has to fail the build, which `sed` would not do.
+      - name: Stamp the version
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, pathlib
+          path = pathlib.Path("launcher/alpha_harness_launcher.py")
+          text = path.read_text(encoding="utf-8")
+          old = 'BUILD_VERSION = "0.0.0"'
+          if old not in text:
+              raise SystemExit(f"::error::{old!r} not found — the constant was renamed")
+          new = f'BUILD_VERSION = "{os.environ["VERSION"]}"'
+          path.write_text(text.replace(old, new), encoding="utf-8")
+          print(new)
+          PY
+
+      - run: pip install pyinstaller==6.22.3
+      - name: Build AlphaHarness.exe
+        shell: bash
+        run: |
+          # Semicolon: PyInstaller splits SOURCE from DEST on os.pathsep, and this runs on
+          # Windows however bash-shaped the step looks.
+          pyinstaller --onefile --windowed --name AlphaHarness \
+            --add-binary "launcher/uv.exe;." \
+            --distpath dist \
+            launcher/alpha_harness_launcher.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launcher
+          path: dist/AlphaHarness.exe
+
+  publish:
+    needs: [wheel, launcher]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version && format('v{0}', inputs.version) || github.ref_name }}
+          generate_release_notes: true
+          # Keeps a candidate out of /releases/latest, which is the only thing the in-app
+          # updater reads. Tag `v0.1.1rc1` to build and publish without offering it to anyone.
+          prerelease: ${{ needs.wheel.outputs.prerelease == 'true' }}
+          files: release/*
+          body: |
+            **New here?** Download `AlphaHarness.exe` and run it. It installs everything on
+            first start, which takes a couple of minutes, then opens in your browser.
+
+            Windows will warn that it does not recognise the app — it is unsigned. Choose
+            **More info** then **Run anyway**.
+
+            **Already have it?** Do nothing. Alpha Harness offers this version in the app.

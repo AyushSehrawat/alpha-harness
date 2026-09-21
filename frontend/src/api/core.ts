@@ -63,3 +63,14 @@ export const simulations = {
 export const tasks = {
   list: () => http.get<TasksSummary>('/api/tasks'),
 }
+
+export type UpdateStatus = Schemas['UpdateStatus']
+export type UpdateStarted = Schemas['UpdateStarted']
+
+export const update = {
+  /** Asked of GitHub at most once an hour; `refresh` overrides that. */
+  status: (refresh = false) =>
+    http.get<UpdateStatus>(`/api/update${qs({ refresh: refresh || null })}`),
+  /** Hands the install to the launcher and closes the app so it can run. */
+  apply: () => http.post<UpdateStarted>('/api/update'),
+}

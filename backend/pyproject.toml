@@ -4,7 +4,7 @@ requires = [ "uv-build>=0.12.13,<0.13.0" ]
 
 [project]
 name = "alpha-harness"
-version = "0.1.0"
+version = "0.0.0.dev0"
 description = "Local Research Studio for the WorldQuant BRAIN Platform"
 requires-python = ">=3.14"
 dependencies = [
@@ -17,6 +17,7 @@ dependencies = [
     "msgspec>=0.21.1",
     "numpy>=2.5.3",
     "optuna>=5.0.0",
+    "packaging>=26.3",
     "pyarrow>=25.0.1",
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",

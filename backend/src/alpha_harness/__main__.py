@@ -12,7 +12,12 @@ PORT = 8000
 
 
 async def _serve() -> None:
-    server = uvicorn.Server(uvicorn.Config("alpha_harness.main:app", host=HOST, port=PORT))
+    from .main import app
+
+    server = uvicorn.Server(uvicorn.Config(app, host=HOST, port=PORT))
+    # The one handle that can stop this process gracefully. Reached by the update route, which
+    # has to close the app so the launcher can replace it while nothing holds the files open.
+    app.state.server = server
     serving = asyncio.create_task(server.serve())
     # Startup reconciles in-flight simulations first; open the page once it can answer.
     # uvicorn exposes readiness only as the ``started`` flag, never an event.
