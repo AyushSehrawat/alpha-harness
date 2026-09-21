@@ -44,7 +44,13 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+      # The pnpm version comes from `packageManager` in the frontend's package.json. Said
+      # here because the action looks in the repository root by default, and this repository
+      # keeps no package.json there — naming a version inline instead would be a second
+      # place to keep in step with the lockfile.
       - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
       - uses: actions/setup-node@v4
         with:
           node-version: 22
