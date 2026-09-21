@@ -8,6 +8,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from ..brain.schemas import REGION_AGNOSTIC_REGION
 from ..brain.settings_schema import valid_values
 from ..catalog.pyramids import pyramid_grid
 from ..catalog.queries import FieldFilter, Tuple4
@@ -205,7 +206,10 @@ class DatasetRow(BaseModel):
 async def _markets(state: State) -> list[SyncTarget]:
     """Every EQUITY market the account can simulate, from BRAIN's own settings schema.
 
-    A new region or universe is picked up without a code change.
+    A new region or universe is picked up without a code change. Region ``ALL`` is in here
+    like any other: it is drawn in the sync matrix so an account that can run region-agnostic
+    alphas can see whether it holds them. What it is *not* is part of a sync by default —
+    see :func:`start_sync_all`.
     """
     schema = (
         await state.metadata.cached_settings_schema() or await state.metadata.refresh_metadata()
@@ -215,9 +219,6 @@ async def _markets(state: State) -> list[SyncTarget]:
     return [
         SyncTarget(instrument_type="EQUITY", region=region, delay=int(delay), universe=universe)
         for region in valid_values(schema, "region", base)
-        # ALL is left out: BRAIN pages it 50 fields at a time, which is hours of requests
-        # for one region. Drop this line and the frontend's HIDDEN_REGIONS to bring it back.
-        if region != "ALL"
         for delay in valid_values(schema, "delay", {**base, "region": region})
         for universe in valid_values(schema, "universe", {**base, "region": region, "delay": delay})
     ]
@@ -225,7 +226,7 @@ async def _markets(state: State) -> list[SyncTarget]:
 
 @router.get("/markets")
 async def markets(state: State) -> list[Market]:
-    """Every market a full sync covers: what the Data Explorer's sync matrix draws."""
+    """Every market BRAIN offers: what the sync matrix draws."""
     return [
         Market(
             instrument_type=t.instrument_type, region=t.region, delay=t.delay, universe=t.universe
@@ -236,17 +237,38 @@ async def markets(state: State) -> list[Market]:
 
 @router.post("/sync-all")
 async def start_sync_all(state: State) -> SyncAllRun:
-    """Download every market BRAIN offers: all fields first, then dataset details.
+    """Download every ordinary market: all fields first, then dataset details.
+
+    Region ``ALL`` is not one of them; it has :func:`start_sync_region_agnostic` to itself.
 
     Runs in the background; progress, including each market's state, arrives over the
     WebSocket ``sync`` topic.
     """
-    targets = await _markets(state)
+    targets = [t for t in await _markets(state) if t.region != REGION_AGNOSTIC_REGION]
     if not targets:
         raise refuse(
             503,
             "no_markets",
             "BRAIN's settings list no markets to download. Sign in again and retry.",
+        )
+    return SyncAllRun.model_validate(await state.sync.start_all(targets))
+
+
+@router.post("/sync-region-agnostic")
+async def start_sync_region_agnostic(state: State) -> SyncAllRun:
+    """Download the region-agnostic market: every universe of region ``ALL``.
+
+    Its own route because it is its own download. BRAIN serves this market only fifty fields
+    at a time, so it is read dataset by dataset — about ten minutes per universe where an
+    ordinary market is seconds — and only an account running region-agnostic alphas needs it.
+    """
+    targets = [t for t in await _markets(state) if t.region == REGION_AGNOSTIC_REGION]
+    if not targets:
+        raise refuse(
+            403,
+            "no_region_agnostic",
+            "This account cannot run region-agnostic simulations, so BRAIN offers no "
+            "all-regions market to download.",
         )
     return SyncAllRun.model_validate(await state.sync.start_all(targets))
 

@@ -3,6 +3,7 @@
 import { DatabaseIcon, XIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { DASH, fmt } from '@/lib/format'
+import { isRegionAgnostic, regionLabel } from '@/lib/scope'
 import {
   Button,
   Chips,
@@ -160,10 +161,17 @@ export function SettingsPanel({
           )}
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
-          <Metric boxed label="Market" value={`${draft.region} · D${draft.delay}`} />
+          <Metric boxed label="Market" value={`${regionLabel(draft.region)} · D${draft.delay}`} />
           <Metric boxed label="Fields" value={fmt.int(plan?.fields.total)} />
           <Metric boxed label="Universes" value={fmt.int(plan?.universes.length)} />
         </div>
+        {isRegionAgnostic(draft) && (
+          <Notice tone="info" title="Every alpha here runs in four regions at once">
+            One simulation covers USA, Europe, Asia and Global, and spends four of today's
+            allowance. The alphas it makes can be submitted where two or more of those regions hold
+            up.
+          </Notice>
+        )}
         {simulations !== null && simulations > maxSimulations && (
           <Notice
             tone="error"

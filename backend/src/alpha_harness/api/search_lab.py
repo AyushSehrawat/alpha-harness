@@ -12,6 +12,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from ..brain.errors import BrainError
+from ..brain.schemas import REGION_AGNOSTIC_REGION
 from ..catalog.pyramids import pyramid_grid
 from ..db.models import Study, utcnow
 from ..labs import search
@@ -192,6 +193,15 @@ async def quick(body: QuickRequest, state: State) -> QuickRun:
     left = (await simulations_today(state))["unspoken"]
     if left < 1:
         raise refuse(409, "nothing_left", "Today's simulations are already running or queued.")
+    if body.region == REGION_AGNOSTIC_REGION:
+        # The guided path stays on one region: region-agnostic alphas are submittable only
+        # where two regions hold up, which is not a bar to put a first run behind.
+        raise refuse(
+            422,
+            "region_agnostic_quick_run",
+            "All regions at once is a Search Lab choice, not a one-click run. Open Search Lab "
+            "to start one.",
+        )
     ranked = body.dataset_ids or await open_pyramid_datasets(state, body.region, body.delay)
     if not ranked:
         raise refuse(

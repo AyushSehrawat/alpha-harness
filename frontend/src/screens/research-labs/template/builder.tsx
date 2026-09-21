@@ -792,7 +792,7 @@ function OptionInput({
       <Checkbox
         label={<span className="num">{name}</span>}
         checked={Boolean(value ?? fallback)}
-        onChange={(e) => onChange(e.target.checked === fallback ? undefined : e.target.checked)}
+        onChange={(next) => onChange(next === fallback ? undefined : next)}
       />
     )
   }

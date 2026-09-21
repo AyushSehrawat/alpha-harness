@@ -7,11 +7,12 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useMemo } from 'react'
 import { catalog } from '@/api/catalog'
+import type { Scope } from '@/api/types'
 import { cn } from '@/lib/cn'
 import { DASH, fmt } from '@/lib/format'
 import { useScope } from '@/lib/scope'
 import { Empty, ErrorNotice, Page, PageHeader, Panel, Skeleton } from '@/ui/kit'
-import { SyncHero } from './sync-matrix'
+import { RegionAgnosticHero, SyncHero } from './sync-matrix'
 
 const REFRESH_MS = 10 * 60 * 1000
 
@@ -128,17 +129,16 @@ export function PyramidsScreen() {
   }, [data?.cells])
   const navigate = useNavigate()
   const [scope, update] = useScope('data')
+  const open = (change: Partial<Scope>) => {
+    update(change)
+    void navigate({ to: '/data/$tab', params: { tab: 'fields' } })
+  }
 
   return (
     <Page>
       <PageHeader title="Sync with BRAIN" description="Download Data Fields" />
-      <SyncHero
-        scope={scope}
-        onPick={(change) => {
-          update(change)
-          void navigate({ to: '/data/$tab', params: { tab: 'fields' } })
-        }}
-      />
+      <SyncHero scope={scope} onPick={open} />
+      <RegionAgnosticHero scope={scope} onPick={open} />
       <Panel title="Pyramid Multiplier Map">
         {query.isError ? (
           <ErrorNotice error={query.error} title="Could not load pyramids from BRAIN" />

@@ -27,6 +27,7 @@ import {
   type CheckGroups,
   checkName,
   isCeiling,
+  isQuickMode,
   matches,
   powerPoolRules,
   type Rule,
@@ -91,7 +92,7 @@ function CheckRow({ check }: { check: AlphaCheck }) {
         <span className="min-w-0 flex-1 truncate text-body text-ink" title={check.name}>
           {checkName(check.name)}
         </span>
-        {isNum(value) && (
+        {isNum(value) ? (
           <span className="num shrink-0 text-body-compact text-ink-muted">
             {figure(check.name, value)}
             {isNum(limit) && (
@@ -101,6 +102,17 @@ function CheckRow({ check }: { check: AlphaCheck }) {
               </span>
             )}
           </span>
+        ) : (
+          // Not every check measures a number: the orthogonal-neutralization one names the
+          // neutralization it found and the one it wanted.
+          typeof value === 'string' && (
+            <span className="num shrink-0 text-body-compact text-ink-muted">
+              {value}
+              {typeof limit === 'string' && limit !== value && (
+                <span className="text-ink-subtle"> · wants {limit}</span>
+              )}
+            </span>
+          )
         )}
         <Badge tone={checkTone(result)}>{result}</Badge>
       </div>
@@ -164,7 +176,9 @@ export function VerdictPanel({
             {kind === 'submitted' &&
               `Status ${alpha.status}${alpha.dateSubmitted ? `, submitted ${fmt.date(alpha.dateSubmitted)}` : ''}.`}
             {kind === 'blocked' &&
-              'Each bar shows the value against the limit it must clear. Fix these, then run Check Submission again.'}
+              (isQuickMode(alpha)
+                ? 'This was run in Quick mode. Every figure on this page is the real one, but BRAIN does not run the submission checks on a Quick mode alpha and will not accept it. Simulate the same expression again with Quick mode off.'
+                : 'Each bar shows the value against the limit it must clear. Fix these, then run Check Submission again.')}
             {kind === 'pending' &&
               (groups.pending.length === 0
                 ? 'Nothing here has been checked, so nothing says it can be submitted. Run Check Submission.'

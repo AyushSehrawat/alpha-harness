@@ -16,6 +16,7 @@ import { toast } from 'sonner'
 import { errorMessage } from '@/api/http'
 import { cn } from '@/lib/cn'
 import { DASH, fmt } from '@/lib/format'
+import { regionLabel } from '@/lib/scope'
 import { AstInspector } from '@/screens/pool/shared'
 import {
   Button,
@@ -257,7 +258,7 @@ function Tree({
           >
             <div className={GRID}>
               <GroupChip
-                label={<span className="font-medium">{branch.region}</span>}
+                label={<span className="font-medium">{regionLabel(branch.region)}</span>}
                 group={branch.group}
                 onChange={onChange}
               />

@@ -120,7 +120,7 @@ export function SubmissionPlannerScreen() {
         <Checkbox
           label=""
           checked={r.submitted}
-          onChange={(e) => mark.mutate({ alphaId: r.alphaId, submitted: e.target.checked })}
+          onChange={(next) => mark.mutate({ alphaId: r.alphaId, submitted: next })}
           aria-label={`Mark ${r.alphaId} submitted on BRAIN`}
         />
       ),

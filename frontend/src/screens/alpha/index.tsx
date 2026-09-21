@@ -30,6 +30,7 @@ import {
   daily,
   drawdowns,
   hitRate,
+  isQuickMode,
   kRatio,
   rollingSharpe,
   underwater,
@@ -99,6 +100,28 @@ export function AlphaScreen() {
   )
 }
 
+/**
+ * What the checks on this page cannot say about a region-agnostic alpha: it is one of a
+ * family of four, and the rules that decide its fate are applied across the family.
+ */
+function RegionAgnosticNote({ type }: { type: string | null }) {
+  if (type === 'RA_CHILD')
+    return (
+      <Notice tone="info" title="One region of an alpha that ran in four">
+        It can be submitted once a second region also passes its tests. Production Correlation is
+        judged across the whole family: it only blocks when every passing region fails it.
+      </Notice>
+    )
+  if (type === 'RA_PARENT')
+    return (
+      <Notice tone="info" title="This alpha holds four, one per region">
+        It carries no performance of its own — USA, Europe, Asia and Global each have their own
+        alpha, and submitting it submits every region that passed, at the cost of one submission.
+      </Notice>
+    )
+  return null
+}
+
 function Body({ view, refresh }: { view: AlphaView; refresh: React.ReactNode }) {
   const a = view.alpha
   const verdict = verdictOf(a)
@@ -112,12 +135,15 @@ function Body({ view, refresh }: { view: AlphaView; refresh: React.ReactNode }) 
           {p}
         </Notice>
       ))}
+      <RegionAgnosticNote type={a.type} />
       <VerdictPanel
         verdict={verdict}
         alpha={a}
         actions={
           <>
-            <RecheckButton alphaId={a.alphaId} />
+            {/* BRAIN refuses the submission check on a Quick mode alpha outright, so the
+                button could only ever report its own refusal. */}
+            {!isQuickMode(a) && <RecheckButton alphaId={a.alphaId} />}
             <OpenInBrain url={a.brainUrl} />
             <AlphaActionsMenu alphaId={a.alphaId} />
           </>
@@ -186,6 +212,7 @@ const SETTING_LABELS: [string, string][] = [
   ['unitHandling', 'Unit handling'],
   ['maxTrade', 'Max trade'],
   ['maxPosition', 'Max position'],
+  ['simulationMode', 'Simulation mode'],
   ['testPeriod', 'Test period'],
   ['language', 'Language'],
   ['startDate', 'Start'],

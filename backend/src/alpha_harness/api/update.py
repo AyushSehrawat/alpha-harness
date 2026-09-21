@@ -89,11 +89,11 @@ async def apply(request: Request, background: BackgroundTasks) -> UpdateStarted:
     except RuntimeError as exc:
         raise refuse(409, "no_launcher", str(exc)) from exc
 
-    background.add_task(_stop, getattr(request.app.state, "server", None))
+    background.add_task(stop_server, getattr(request.app.state, "server", None))
     return UpdateStarted(version=release.version, restarting=True)
 
 
-async def _stop(server: Any) -> None:
+async def stop_server(server: Any) -> None:
     """Close the app once this response has been flushed to the socket.
 
     A background task runs after the body is written, so there is no race with the browser
@@ -103,6 +103,9 @@ async def _stop(server: Any) -> None:
     Without a server handle — ``uvicorn --reload`` in development — SIGINT reaches the same
     handler. Stopping the loop outright would skip the lifespan and leave both stores open,
     so that is deliberately not a fallback here.
+
+    Shared with ``POST /api/quit``, which the launcher's notification-area Quit calls: an
+    update and a quit differ only in whether anything starts afterwards.
     """
     if server is not None:
         server.should_exit = True

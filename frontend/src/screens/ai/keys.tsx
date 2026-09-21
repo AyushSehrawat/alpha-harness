@@ -163,7 +163,7 @@ function EnabledCell({ apiKey: k }: { apiKey: LLMKey }) {
       aria-label={`Enable ${nameOf(k)}`}
       checked={k.enabled}
       disabled={toggle.isPending}
-      onChange={(e) => toggle.mutate(e.target.checked)}
+      onChange={(next) => toggle.mutate(next)}
     />
   )
 }

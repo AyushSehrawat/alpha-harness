@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import structlog
 from sqlalchemy import select
 
+from ..brain.schemas import QUICK_MODE
 from ..db.models import SimulationRecord
 
 if TYPE_CHECKING:
@@ -75,14 +76,21 @@ def checks_of(checks_json: str | None) -> list[dict[str, Any]]:
     return [c for c in checks if isinstance(c, dict)] if isinstance(checks, list) else []
 
 
-def verdict(checks: list[dict[str, Any]]) -> Verdict | None:
+def verdict(checks: list[dict[str, Any]], simulation_mode: str | None = None) -> Verdict | None:
     """The one rule for whether an alpha can be submitted, from BRAIN's checks.
 
     ``None`` when nothing gating was reported (no checks, or only labels): not shown to be good,
     which callers must never read as fine. Otherwise any refusal decides it, then anything
     still ``PENDING``; an alpha whose every gating check is ``PASS`` or ``WARNING`` is
     submittable.
+
+    ``simulation_mode`` is needed because the checks alone cannot answer for a quick-mode
+    alpha: BRAIN sends it the performance checks and *omits* every submission check, so one
+    that beats every threshold would otherwise read as submittable when the platform will not
+    even check it, let alone take it.
     """
+    if simulation_mode == QUICK_MODE:
+        return "refused"
     results = {
         str(c.get("result", "")).upper()
         for c in checks
@@ -97,18 +105,18 @@ def verdict(checks: list[dict[str, Any]]) -> Verdict | None:
     return "pending"
 
 
-def is_submittable(checks_json: str | None) -> bool:
+def is_submittable(checks_json: str | None, simulation_mode: str | None = None) -> bool:
     """Whether BRAIN has finished and nothing gating refused this alpha."""
-    return verdict(checks_of(checks_json)) == "submittable"
+    return verdict(checks_of(checks_json), simulation_mode) == "submittable"
 
 
-def is_promising(checks_json: str | None) -> bool:
+def is_promising(checks_json: str | None, simulation_mode: str | None = None) -> bool:
     """Whether this alpha can still come out submittable: nothing refused it, some check PENDING.
 
     A finished simulation leaves ``SELF_CORRELATION``, ``PROD_CORRELATION``,
     ``REGULAR_SUBMISSION`` and ``IS_LADDER_SHARPE`` ``PENDING`` until BRAIN is asked to check it.
     """
-    return verdict(checks_of(checks_json)) == "pending"
+    return verdict(checks_of(checks_json), simulation_mode) == "pending"
 
 
 class YieldBook:
@@ -151,8 +159,8 @@ class YieldBook:
         # few hundred rows hid every submittable alpha ranked below it. Parsed once per row,
         # off the event loop, because at tens of thousands of alphas that takes seconds.
         every = await self.catalog.query(
-            f"SELECT a.alpha_id, a.checks FROM alpha a WHERE {' AND '.join(clauses)} "  # noqa: S608
-            "AND a.checks IS NOT NULL",
+            f"SELECT a.alpha_id, a.checks, a.simulation_mode FROM alpha a "  # noqa: S608
+            f"WHERE {' AND '.join(clauses)} AND a.checks IS NOT NULL",
             params,
         )
         ready_ids, pending, near = await asyncio.to_thread(_tally, every)
@@ -303,7 +311,7 @@ def _tally(rows: list[dict[str, Any]]) -> tuple[list[str], int, int]:
     pending = near = 0
     for row in rows:
         checks = checks_of(row.get("checks"))
-        found = verdict(checks)
+        found = verdict(checks, row.get("simulation_mode"))
         if found == "submittable":
             ready.append(str(row["alpha_id"]))
         elif found == "pending":

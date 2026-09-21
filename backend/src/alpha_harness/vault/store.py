@@ -105,6 +105,7 @@ def alpha_row(alpha: Alpha, fetched_at: datetime) -> tuple[Any, ...]:
         json.dumps(_names(alpha, "pyramids")),
         stats.pnl if stats else None,
         _end_date(alpha),
+        settings.simulation_mode if settings else None,
     )
 
 

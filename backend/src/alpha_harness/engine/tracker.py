@@ -33,6 +33,7 @@ from ..db.models import QuotaSnapshot, SimStatus, SimulationRecord, utcnow
 from . import reconcile
 from .lifecycle import (
     ACTIVE,
+    SIMULATION_COST,
     ChangeHook,
     Outcome,
     SubmissionFailed,
@@ -368,11 +369,12 @@ class SimulationTracker:
         comes back with its headers, and the Today page needs a number before the first one
         runs. Batch *parents* are excluded and their children counted instead, since the
         platform charges for every child; rows count on the day they were actually sent.
+        A region-agnostic row counts four, the most regions it can be translated into.
         """
         start = platform_midnight()
         async with self.db.session() as session:
             total = await session.scalar(
-                select(func.count())
+                select(func.sum(SIMULATION_COST))
                 .select_from(SimulationRecord)
                 .where(
                     SimulationRecord.is_batch.is_(False),

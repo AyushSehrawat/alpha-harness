@@ -10,10 +10,11 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { catalog } from '@/api/catalog'
 import { errorMessage } from '@/api/http'
-import type { Scope, SyncMarket } from '@/api/types'
+import type { Scope, SyncMarket, SyncRun } from '@/api/types'
 import { cn } from '@/lib/cn'
 import { DASH, fmt } from '@/lib/format'
 import { useLive } from '@/lib/live'
+import { REGION_AGNOSTIC } from '@/lib/scope'
 import { STAT } from '@/screens/data/state'
 import { Button, Empty, ErrorNotice, Metric, Notice, Panel, Progress, Skeleton } from '@/ui/kit'
 import { Confirm } from '@/ui/overlay'
@@ -63,6 +64,22 @@ function Elapsed({ since }: { since: string }) {
   return <span className="num text-ink">{fmt.duration((now - Date.parse(since)) / 1000)}</span>
 }
 
+/**
+ * The live run, but only when it is the kind the asking panel owns.
+ *
+ * Both downloads report through the same run row, so a panel has to recognise its own: an
+ * all-regions sync carries nothing but region ALL markets, and an ordinary one carries none.
+ */
+function ownRun(run: SyncRun | null | undefined, regionAgnostic: boolean) {
+  const markets = run?.markets ?? []
+  const mine =
+    markets.length === 0
+      ? !regionAgnostic
+      : markets.every((m) => (m.region === REGION_AGNOSTIC) === regionAgnostic)
+  const full = run?.all && mine ? run : null
+  return { full, running: full?.status === 'RUNNING' ? full : null }
+}
+
 export function SyncHero({
   scope,
   onPick,
@@ -87,8 +104,7 @@ export function SyncHero({
 
   // Progress arrives on the socket; a finished run refreshes everything the catalog feeds.
   const run = useLive((s) => s.sync)
-  const full = run?.all ? run : null
-  const running = full?.status === 'RUNNING' ? full : null
+  const { full, running } = ownRun(run, false)
   const settled = run && run.status !== 'RUNNING' ? `${run.id}:${run.status}` : null
   // A run that had already ended when this screen opened is in the catalog the queries just
   // loaded; only a run settling under the open screen is news.
@@ -122,12 +138,17 @@ export function SyncHero({
       universes.set(m.region, column)
     }
     // Widest markets first, so the tallest columns lead and the grid fills from the left.
-    const regions = [...universes.keys()].sort(
-      (a, b) =>
-        (universes.get(b)?.length ?? 0) - (universes.get(a)?.length ?? 0) || a.localeCompare(b),
-    )
+    const ordinary = [...universes.keys()]
+      .filter((r) => r !== REGION_AGNOSTIC)
+      .sort(
+        (a, b) =>
+          (universes.get(b)?.length ?? 0) - (universes.get(a)?.length ?? 0) || a.localeCompare(b),
+      )
+    // All regions is a different kind of market, not a wider one, so it is drawn in its own
+    // panel rather than as a tenth column here.
+    const ordinaryMarkets = list.filter((m) => m.region !== REGION_AGNOSTIC)
     const exists = new Set(list.map((m) => keyOf(m.region, m.delay, m.universe)))
-    return { total: list.length, regions, delays, universes, exists }
+    return { total: ordinaryMarkets.length, regions: ordinary, delays, universes, exists }
   }, [markets.data])
 
   // While a sync runs its own per-market states are the truth; otherwise what the catalog holds,
@@ -150,11 +171,14 @@ export function SyncHero({
     return map
   }, [scopes.data, full, running])
 
-  const syncedMarkets = scopes.data?.length ?? 0
-  const syncedFields = (scopes.data ?? []).reduce((sum, r) => sum + r.fields, 0)
+  // The all-regions market is counted in its own panel, never here, or the totals read as
+  // more markets synced than this grid draws.
+  const held = (scopes.data ?? []).filter((r) => r.region !== REGION_AGNOSTIC)
+  const syncedMarkets = held.length
+  const syncedFields = held.reduce((sum, r) => sum + r.fields, 0)
   const finished = seconds(full?.startedAt, full?.finishedAt)
   // From the catalog rather than the run, so it survives a restart with the other figures.
-  const regionsSynced = new Set((scopes.data ?? []).map((r) => r.region)).size
+  const regionsSynced = new Set(held.map((r) => r.region)).size
 
   return (
     <Panel
@@ -368,13 +392,175 @@ export function SyncHero({
   )
 }
 
+/**
+ * The region-agnostic market, on its own.
+ *
+ * One expression, run in USA, Europe, Asia and Global at once. BRAIN will not hand its fields
+ * over the way it hands over every other market's — fifty at a time, dataset by dataset — so
+ * it is a separate download, in a panel that says what it costs before you start it. Three
+ * universes, one row: `ALL` has no Delay 0 and never will.
+ */
+export function RegionAgnosticHero({
+  scope,
+  onPick,
+}: {
+  scope: Scope
+  onPick: (change: Partial<Scope>) => void
+}) {
+  const markets = useQuery({
+    queryKey: ['catalog', 'markets'],
+    queryFn: catalog.markets,
+    staleTime: 60 * 60 * 1000,
+  })
+  const scopes = useQuery({ queryKey: ['catalog', 'scopes'], queryFn: catalog.scopes })
+  const { full, running } = ownRun(
+    useLive((s) => s.sync),
+    true,
+  )
+
+  const [cancelId, setCancelId] = useState<number | null>(null)
+  const cancel = useMutation({
+    mutationFn: catalog.cancel,
+    onSuccess: (result) =>
+      toast.success(result.cancelled ? 'Sync cancelled' : 'The sync had already finished'),
+    onError: (error) => toast.error(errorMessage(error)),
+    onSettled: () => setCancelId(null),
+  })
+
+  const universes = useMemo(
+    () => (markets.data ?? []).filter((m) => m.region === REGION_AGNOSTIC).map((m) => m.universe),
+    [markets.data],
+  )
+  const held = useMemo(
+    () =>
+      new Map(
+        (scopes.data ?? [])
+          .filter((r) => r.region === REGION_AGNOSTIC)
+          .map((r) => [r.universe, r.fields]),
+      ),
+    [scopes.data],
+  )
+  const live = useMemo(
+    () =>
+      new Map<string, SyncMarket>(
+        (full?.markets ?? [])
+          .filter((m) => m.region === REGION_AGNOSTIC)
+          .map((m) => [m.universe, m] as const),
+      ),
+    [full],
+  )
+
+  // BRAIN lists region ALL only for an account that may simulate region-agnostically, so an
+  // empty market list is the permission answer: nothing to offer, nothing to show.
+  if (universes.length === 0) return null
+
+  const syncedFields = [...held.values()].reduce((sum, n) => sum + n, 0)
+
+  return (
+    <Panel
+      title="Sync Region Agnostic Data"
+      description={
+        <span className="mt-1.5 flex flex-wrap items-center gap-2">
+          <span className={STAT}>
+            <span className="num text-ink">{fmt.int(held.size)}</span>of
+            <span className="num text-ink">{fmt.int(universes.length)}</span>
+            universes synced
+          </span>
+          <span className={STAT}>
+            <span className="num text-ink">{fmt.int(syncedFields)}</span>
+            fields
+          </span>
+          {running?.startedAt && (
+            <span className={STAT}>
+              <Elapsed since={running.startedAt} />
+            </span>
+          )}
+        </span>
+      }
+      actions={
+        running ? (
+          <Button
+            variant="danger"
+            size="sm"
+            loading={cancel.isPending}
+            onClick={() => setCancelId(running.id)}
+          >
+            {!cancel.isPending && <XIcon />}
+            Cancel Sync
+          </Button>
+        ) : (
+          <SyncButton regionAgnostic>Sync Region Agnostic Data</SyncButton>
+        )
+      }
+      bodyClassName="flex flex-col gap-4"
+    >
+      <div className="grid gap-2 sm:grid-cols-3">
+        {universes.map((universe) => {
+          const state: TileState =
+            live.get(universe)?.state ?? (held.has(universe) ? 'done' : 'waiting')
+          const fields = live.get(universe)?.fields ?? held.get(universe) ?? null
+          const selected = scope.region === REGION_AGNOSTIC && scope.universe === universe
+          const label = `All Regions · Delay 1 · ${universe}: ${LABEL[state]}${fields != null ? ` · ${fmt.int(fields)} fields` : ''}${selected ? ' · shown in the Data Explorer' : ''}`
+          return (
+            <button
+              key={universe}
+              type="button"
+              title={label}
+              aria-label={label}
+              onClick={() => onPick({ region: REGION_AGNOSTIC, delay: 1, universe })}
+              className={cn(
+                'flex flex-col gap-1.5 rounded-md border border-hairline bg-surface-2 p-2 text-left transition-colors hover:border-hairline-strong',
+                selected && 'ring-2 ring-link ring-offset-1 ring-offset-surface-1',
+              )}
+            >
+              <span className="flex items-baseline justify-between gap-2">
+                <span className="num truncate text-body text-ink">{universe}</span>
+                <span className="num shrink-0 text-caption text-ink-subtle">
+                  {fields != null ? fmt.int(fields) : DASH}
+                </span>
+              </span>
+              <span className={cn('h-5 rounded-xs', HALF[state])} />
+            </button>
+          )
+        })}
+      </div>
+
+      {running && <Progress value={running.fraction} label="Region-agnostic sync progress" />}
+
+      {full && !running && full.error && (
+        <Notice
+          tone={full.status === 'FAILED' ? 'error' : 'warn'}
+          title={full.status === 'CANCELLED' ? 'The sync was cancelled' : 'The sync did not finish'}
+        >
+          {full.error}
+        </Notice>
+      )}
+
+      <Confirm
+        open={cancelId !== null}
+        onOpenChange={(open) => !open && setCancelId(null)}
+        title="Cancel this sync?"
+        confirmLabel="Cancel sync"
+        cancelLabel="Keep syncing"
+        danger
+        pending={cancel.isPending}
+        onConfirm={() => cancelId !== null && cancel.mutate(cancelId)}
+      >
+        Stops the download. Universes that already arrived stay in the catalog.
+      </Confirm>
+    </Panel>
+  )
+}
+
 /** Start a catalog download. Calls BRAIN, spends no simulations. */
-function useDownload() {
+function useDownload(regionAgnostic: boolean) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: () => catalog.syncAll(),
+    mutationFn: () => (regionAgnostic ? catalog.syncRegionAgnostic() : catalog.syncAll()),
     onSuccess: () => {
-      toast.success('Syncing every BRAIN Dataset')
+      toast.success(
+        regionAgnostic ? 'Syncing the all-regions market' : 'Syncing every BRAIN Dataset',
+      )
       void queryClient.invalidateQueries({ queryKey: ['catalog'] })
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -386,13 +572,16 @@ export function SyncButton({
   children,
   variant = 'secondary',
   size = 'sm',
+  regionAgnostic = false,
 }: {
   children: ReactNode
   variant?: 'primary' | 'secondary'
   size?: 'sm' | 'md'
+  /** Include region ALL, which BRAIN serves fifty fields at a time. */
+  regionAgnostic?: boolean
 }) {
   const [open, setOpen] = useState(false)
-  const sync = useDownload()
+  const sync = useDownload(regionAgnostic)
   return (
     <>
       <Button variant={variant} size={size} loading={sync.isPending} onClick={() => setOpen(true)}>
@@ -402,14 +591,14 @@ export function SyncButton({
       <Confirm
         open={open}
         onOpenChange={setOpen}
-        title="Sync BRAIN Datasets"
+        title={regionAgnostic ? 'Sync Region Agnostic Data' : 'Sync BRAIN Datasets'}
         confirmLabel="Sync"
         pending={sync.isPending}
         onConfirm={() => sync.mutate(undefined, { onSettled: () => setOpen(false) })}
       >
-        Downloads the Data Fields of every market BRAIN offers, then fills in Dataset Details.
-        Fields are browsable in the Data Explorer as soon as they arrive; progress shows in Sync
-        with BRAIN.
+        {regionAgnostic
+          ? 'The Data Fields an alpha can use when it runs in every region at once: 139 Datasets, about 28,000 fields per universe. BRAIN serves this market fifty fields at a time, so it takes around ten minutes per universe — the rest of the app keeps working meanwhile.'
+          : 'Downloads the Data Fields of every market BRAIN offers, then fills in Dataset Details. Fields are browsable in the Data Explorer as soon as they arrive; progress shows in Sync with BRAIN.'}
       </Confirm>
     </>
   )

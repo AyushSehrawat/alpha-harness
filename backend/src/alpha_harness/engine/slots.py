@@ -37,6 +37,7 @@ from ..db.models import DedupEntry, SimStatus, SimulationRecord, TaskQuota, utcn
 from .awake import StayAwake
 from .lifecycle import (
     ACTIVE,
+    SIMULATION_COST,
     ChangeHook,
     Outcome,
     SubmissionFailed,
@@ -1062,20 +1063,21 @@ class BatchEngine:
             return bool(queued)
 
     async def _in_flight_by_task(self, session: Any) -> dict[str, int]:
-        """Slots currently held, counted per task.
+        """Cores currently held, counted per task.
 
         Only parents and standalone simulations count — a batch's children ride in its
-        single slot and must not be double-counted.
+        single slot and must not be double-counted. A region-agnostic simulation holds four,
+        one per region it is translated into.
         """
         result = await session.execute(
-            select(SimulationRecord.task, func.count())
+            select(SimulationRecord.task, func.sum(SIMULATION_COST))
             .where(
                 SimulationRecord.status.in_([SimStatus.PENDING, SimStatus.RUNNING]),
                 SimulationRecord.parent_record_id.is_(None),
             )
             .group_by(SimulationRecord.task)
         )
-        return dict(result.all())
+        return {task: int(cost or 0) for task, cost in result.all()}
 
     async def _notify(self) -> None:
         if self._on_change is None:

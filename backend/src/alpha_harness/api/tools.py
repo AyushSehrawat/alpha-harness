@@ -308,12 +308,12 @@ async def _candidates(state: State, task_ids: list[int]) -> tuple[list[str], set
         if found_id in seen:
             continue
         seen.add(found_id)
-        checks = (stored.get(found_id) or {}).get("checks") or json.dumps(
-            (result or {}).get("checks") or []
-        )
-        if is_submittable(checks):
+        row = stored.get(found_id) or {}
+        checks = row.get("checks") or json.dumps((result or {}).get("checks") or [])
+        mode = row.get("simulation_mode")
+        if is_submittable(checks, mode):
             found.append(found_id)
-        elif is_promising(checks):
+        elif is_promising(checks, mode):
             pending += 1
     return found, marked, pending
 

@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, Field, ValidationError
 
 from ..brain.errors import BrainError
+from ..brain.schemas import region_label
 from ..brain.settings_schema import resolve_options
 from ..db.models import Study, StudyStatus
 from ..schemas import Out
@@ -156,7 +157,7 @@ async def market_for(body: SearchRequest, state: Any, need: tuple[str, ...] = ()
     downloaded = bool(universes)
     neutralizations = await neutralizations_for(state, body.region, body.delay)
     if schema and not neutralizations:
-        problems.append(f"BRAIN offers no neutralization for {body.region}.")
+        problems.append(f"BRAIN offers no neutralization for {region_label(body.region)}.")
 
     lacking: set[str] = set()
     if need and universes:
@@ -183,12 +184,14 @@ async def market_for(body: SearchRequest, state: Any, need: tuple[str, ...] = ()
         problems.append("Choose at least one dataset.")
     elif not downloaded:
         problems.append(
-            f"No {body.region} delay {body.delay} market is downloaded. "
+            f"No {region_label(body.region)} delay {body.delay} market is downloaded. "
             "Sync it in the Data Explorer."
         )
     elif not universes:
         names = ", ".join(sorted(lacking) or need)
-        problems.append(f"No downloaded {body.region} delay {body.delay} universe has {names}.")
+        problems.append(
+            f"No downloaded {region_label(body.region)} delay {body.delay} universe has {names}."
+        )
     else:
         pool = await search.field_pool(
             state.queries,

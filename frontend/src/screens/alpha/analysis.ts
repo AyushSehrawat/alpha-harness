@@ -32,6 +32,9 @@ const NAMES: Record<string, string> = {
   MATCHES_PYRAMID: 'Pyramids',
   MATCHES_THEMES: 'Themes',
   OSMOSIS_ALLOCATION: 'Osmosis allocation',
+  REVERSION_COMPONENT: 'Reversion component',
+  HT_AFTER_COST_SHARPE: 'After-cost Sharpe',
+  HT_ORTHOGONAL_RAM_NEUTRALIZATION: 'Orthogonal neutralization',
   UNITS: 'Units',
   OPERATOR_AUTHORIZATION: 'Operator access',
   DATA_SET_AUTHORIZATION: 'Dataset access',
@@ -100,9 +103,18 @@ export interface Verdict {
   groups: CheckGroups
 }
 
+/**
+ * Quick mode alphas carry every performance check and none of the submission ones, so their
+ * checks alone read as "all clear". BRAIN will not even run the submission check on one:
+ * `GET /alphas/{id}/check` answers 400. Measured.
+ */
+export const isQuickMode = (alpha: AlphaInfo): boolean =>
+  alpha.settings['simulationMode'] === 'QUICK'
+
 export function verdictOf(alpha: AlphaInfo): Verdict {
   const groups = groupChecks(alpha.checks)
   if (alpha.status && alpha.status !== 'UNSUBMITTED') return { kind: 'submitted', groups }
+  if (isQuickMode(alpha)) return { kind: 'blocked', groups }
   // The backend's rule, shared with Tasks and the Submission Planner. No gating check at all
   // (`null`) reads as pending: calling it ready would invite a permanent submission on nothing.
   if (alpha.verdict === 'refused') return { kind: 'blocked', groups }

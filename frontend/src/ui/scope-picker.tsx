@@ -29,6 +29,15 @@ export function ScopePicker({
 }) {
   const options = useScopeOptions(scope)
 
+  // The delay first: the universes are resolved *against* it, so an impossible delay leaves
+  // the universe list empty and nothing below it can correct itself. All regions runs at
+  // delay 1 only, so arriving there from a delay-0 market would otherwise stick.
+  useEffect(() => {
+    const first = options.delays[0]
+    if (first && !options.delays.some((d) => d.value === String(scope.delay)))
+      onChange({ delay: Number(first.value) })
+  }, [options.delays, scope.delay, onChange])
+
   useEffect(() => {
     const first = options.universes[0]
     if (options.ready && first && !options.universes.some((u) => u.value === scope.universe))

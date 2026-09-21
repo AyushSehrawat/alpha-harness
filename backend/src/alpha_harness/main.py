@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, override
 
 import structlog
-from fastapi import FastAPI, Request
+from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -48,6 +48,7 @@ from .api import (
 )
 from .api.auth import Session
 from .api.deps import install_exception_handlers
+from .api.update import stop_server
 from .config import Settings, get_settings
 from .schemas import Out
 from .state import AppState
@@ -187,9 +188,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             websocket_clients=state.hub.client_count,
         )
 
+    @app.post("/api/quit", tags=["meta"], status_code=202)
+    async def quit_app(background: BackgroundTasks) -> Quitting:
+        """Close the app for good. The launcher's notification-area Quit calls this.
+
+        Not a courtesy: killing the process outright leaves DuckDB's single-writer lock held
+        and the next start finds its own catalog busy. This unwinds uvicorn's lifespan, which
+        closes both stores, and the launcher exits when the process does.
+        """
+        background.add_task(stop_server, getattr(app.state, "server", None))
+        return Quitting(stopping=True)
+
     # Last, so every API and socket route matches first.
     app.mount("/", SinglePageApp(directory=WEB, html=True, check_dir=False), name="web")
     return app
+
+
+class Quitting(Out):
+    stopping: bool
 
 
 class Health(Out):

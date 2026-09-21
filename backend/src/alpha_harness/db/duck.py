@@ -89,6 +89,10 @@ CREATE TABLE IF NOT EXISTS data_category (
     PRIMARY KEY (category_id, instrument_type, region, delay, universe)
 );
 
+-- Only region ALL sends it: how many regions hold the field, which is what says whether it
+-- can survive a region-agnostic simulation's intersection of regions.
+ALTER TABLE data_field ADD COLUMN IF NOT EXISTS region_coverage INTEGER;
+
 CREATE INDEX IF NOT EXISTS ix_field_tuple
     ON data_field (instrument_type, region, delay, universe);
 CREATE INDEX IF NOT EXISTS ix_set_tuple
@@ -140,6 +144,9 @@ ALTER TABLE alpha ADD COLUMN IF NOT EXISTS test_start DATE;
 -- pyramids ("ASI/D1/OTHER") are JSON arrays of names; an empty array means "none".
 ALTER TABLE alpha ADD COLUMN IF NOT EXISTS max_trade VARCHAR;
 ALTER TABLE alpha ADD COLUMN IF NOT EXISTS max_position VARCHAR;
+-- Quick mode alphas carry every performance metric and none of the submission checks,
+-- so nothing in `checks` reveals that BRAIN will never take one.
+ALTER TABLE alpha ADD COLUMN IF NOT EXISTS simulation_mode VARCHAR;
 ALTER TABLE alpha ADD COLUMN IF NOT EXISTS tags VARCHAR;
 ALTER TABLE alpha ADD COLUMN IF NOT EXISTS classifications VARCHAR;
 ALTER TABLE alpha ADD COLUMN IF NOT EXISTS pyramids VARCHAR;
@@ -193,6 +200,7 @@ FIELD_COLUMNS = (
     "alpha_count",
     "pyramid_multiplier",
     "themes",
+    "region_coverage",
     "instrument_type",
     "region",
     "delay",
@@ -271,6 +279,7 @@ ALPHA_COLUMNS = (
     "pyramids",
     "is_pnl",
     "end_date",
+    "simulation_mode",
 )
 
 #: Written only with an Alpha that has a ``train`` block (see ``AlphaVault.save_alphas``).
@@ -319,6 +328,7 @@ ARROW_TYPES: dict[str, dict[str, pa.DataType]] = {
         "alpha_count": _I32,
         "pyramid_multiplier": _F64,
         "themes": _STR,
+        "region_coverage": _I32,
         "instrument_type": _STR,
         "region": _STR,
         "delay": _I32,
@@ -387,6 +397,7 @@ ARROW_TYPES: dict[str, dict[str, pa.DataType]] = {
         "pyramids": _STR,
         "is_pnl": _F64,
         "end_date": _DATE,
+        "simulation_mode": _STR,
         "test_turnover": _F64,
         "series_version": _I32,
         "series_sharpe": _F64,

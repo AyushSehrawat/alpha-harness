@@ -48,6 +48,8 @@ export const catalog = {
   scopes: () => http.get<CatalogScopeRow[]>(`${B}/scopes`),
   size: () => http.get<CatalogSize>(`${B}/size`),
   syncAll: () => http.post<Schemas['SyncAllRun']>(`${B}/sync-all`),
+  /** Region ALL only: its own download, because BRAIN pages it fifty fields at a time. */
+  syncRegionAgnostic: () => http.post<Schemas['SyncAllRun']>(`${B}/sync-region-agnostic`),
   markets: () => http.get<Market[]>(`${B}/markets`),
   cancel: (id: number) => http.post<Schemas['Cancelled']>(`${B}/sync/runs/${id}/cancel`),
 

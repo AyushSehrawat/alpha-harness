@@ -20,7 +20,7 @@ import structlog
 from sqlalchemy import func, select
 
 from ..brain.errors import BrainError, BrainValidationError
-from ..brain.schemas import SimulationRequest, SimulationSettings
+from ..brain.schemas import REGION_AGNOSTIC_REGION, SimulationRequest, SimulationSettings
 from ..brain.settings_schema import valid_values
 from ..db.models import MetadataCache, SimStatus, StudyStatus, Trial, TrialState, utcnow
 from ..engine.packer import MAX_BATCH
@@ -93,7 +93,10 @@ async def _probe_regions(state: Any) -> set[str]:
     if not schema:
         return set()
     base = {"instrumentType": "EQUITY"}
-    regions = [str(r) for r in valid_values(schema, "region", base) if r != "ALL"]
+    # All regions is left unprobed, so a region-agnostic sweep is offered Max Trade only.
+    # BRAIN decides Max Position per child region there ("Compatibility constraints" in
+    # docs/learn/advanced-topics/region-agnostic-alpha), which this two-way probe cannot read.
+    regions = [str(r) for r in valid_values(schema, "region", base) if r != REGION_AGNOSTIC_REGION]
     gate = asyncio.Semaphore(PROBE_CONCURRENCY)
 
     async def ask(region: str) -> bool | None:

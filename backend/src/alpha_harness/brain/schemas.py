@@ -32,8 +32,40 @@ class BrainModel(BaseModel):
 
 
 class SimulationType(StrEnum):
+    """What a simulation is, and what the Alphas it makes are.
+
+    ``REGION_AGNOSTIC`` is a request type only; it produces one ``RA_PARENT`` Alpha holding
+    up to four ``RA_CHILD`` Alphas, one per region (``docs/learn/advanced-topics/
+    region-agnostic-alpha.json``). Measured live: the simulation answers with the parent's
+    id, and the parent carries ``children``.
+    """
+
     REGULAR = "REGULAR"
     SUPER = "SUPER"
+    REGION_AGNOSTIC = "REGION_AGNOSTIC"
+    RA_PARENT = "RA_PARENT"
+    RA_CHILD = "RA_CHILD"
+
+
+#: The region that means "all of them at once". BRAIN offers it only under the
+#: ``REGION_AGNOSTIC`` simulation type, so choosing it *is* choosing that type.
+REGION_AGNOSTIC_REGION = "ALL"
+
+
+#: The simulation mode whose Alphas BRAIN refuses to submit — and refuses even to check:
+#: ``GET /alphas/{id}/check`` answers ``400 Cannot check submission for QUICK mode alphas``.
+#:
+#: Measured against the same expression run both ways: every figure is identical to the last
+#: decimal, daily PnL series included. What a quick Alpha does *not* get is the
+#: investability-constrained and risk-neutralized blocks, the yearly-stats recordset, and
+#: every submission check. It costs one simulation and one concurrent core, exactly like a
+#: full one, and finishes in the same time — so there is nothing to spend it on.
+QUICK_MODE = "QUICK"
+
+
+def region_label(region: str) -> str:
+    """A region as a sentence says it. ``ALL`` on its own reads as a placeholder."""
+    return "all regions" if region == REGION_AGNOSTIC_REGION else region
 
 
 class SimulationStatus(StrEnum):
@@ -119,6 +151,9 @@ class SimulationSettings(BrainModel):
     test_period: str | None = None
     max_trade: str | None = None
     max_position: str | None = None
+    #: ``FULL`` or ``QUICK``; BRAIN defaults it to ``FULL`` and this application never sends
+    #: ``QUICK`` (see :data:`QUICK_MODE`). Read back off an Alpha, where it matters.
+    simulation_mode: str | None = None
 
     @property
     def batch_key(self) -> tuple[str, str, int, str]:
@@ -165,6 +200,21 @@ class SimulationRequest(BrainModel):
             self.settings = self.settings.model_copy(update={"test_period": TEST_PERIOD})
         return self
 
+    @model_validator(mode="after")
+    def _region_carries_the_type(self) -> Self:
+        """Region ``ALL`` means a region-agnostic simulation; BRAIN offers it nowhere else.
+
+        Deriving the type from the region rather than asking every lab to set it keeps one
+        place to be wrong, and makes a market chosen in a form arrive here already correct.
+        """
+        if self.settings.region == REGION_AGNOSTIC_REGION:
+            self.type = SimulationType.REGION_AGNOSTIC
+        return self
+
+    @property
+    def is_region_agnostic(self) -> bool:
+        return self.type is SimulationType.REGION_AGNOSTIC
+
     def to_wire(self) -> dict[str, Any]:
         return self.model_dump(by_alias=True, exclude_none=True)
 
@@ -179,15 +229,29 @@ class SimulationRequest(BrainModel):
 
 
 class Check(BrainModel):
-    """One entry of the submission-check array."""
+    """One entry of the submission-check array.
+
+    ``limit`` and ``value`` are usually a threshold and the figure measured against it, but
+    not always: ``HT_ORTHOGONAL_RAM_NEUTRALIZATION`` puts *neutralization names* in both
+    (*"Neutralization of RAM matches Orthogonal High Turnover neutralization of RAM"*). Typed
+    numeric, one such check aborted the whole listing page it arrived on, so both accept
+    either and readers test before they compute.
+    """
 
     name: str
     result: CheckResult | None = None
-    limit: float | None = None
-    value: float | None = None
+    limit: float | str | None = None
+    value: float | str | None = None
     # MATCHES_COMPETITION carries arrays instead of a numeric value.
     matched: list[Any] | None = None
     unmatched: list[Any] | None = None
+
+    @property
+    def numbers(self) -> tuple[float, float] | None:
+        """``(value, limit)`` when both are real numbers, else ``None``."""
+        if isinstance(self.value, float | int) and isinstance(self.limit, float | int):
+            return float(self.value), float(self.limit)
+        return None
 
 
 class SampleStats(BrainModel):
@@ -238,6 +302,10 @@ class Alpha(BrainModel):
     grade: str | None = None
     stage: str | None = None
     status: str | None = None
+    #: Region-agnostic only: an ``RA_PARENT`` lists its per-region children here, and each
+    #: ``RA_CHILD`` names the parent. Measured; the parent carries no statistics of its own.
+    children: list[str] = Field(default_factory=list)
+    parent: str | None = None
     # `is` is a Python keyword; the wire name is restored on serialisation.
     in_sample: SampleStats | None = Field(default=None, alias="is")
     os: SampleStats | None = None
@@ -246,10 +314,15 @@ class Alpha(BrainModel):
     test: SampleStats | None = None
     prod: SampleStats | None = None
 
-    @field_validator("tags", mode="before")
+    @field_validator("tags", "children", mode="before")
     @classmethod
-    def _drop_null_tags(cls, value: Any) -> Any:
-        """The codec allows a null tag; dropping it here keeps every reader on ``list[str]``."""
+    def _drop_nulls(cls, value: Any) -> Any:
+        """The codec allows a null tag, and a null ``children`` on anything not RA.
+
+        Normalising both here keeps every reader on ``list[str]``.
+        """
+        if value is None:
+            return []
         return [t for t in value if t is not None] if isinstance(value, list) else value
 
     @property
@@ -354,6 +427,9 @@ class BulkField(msgspec.Struct, rename="camel"):
     alpha_count: int | None = None
     pyramid_multiplier: float | None = None
     themes: list[str] | None = None
+    #: How many regions hold this field. Only region ``ALL`` sends it, and it is the one
+    #: local signal of whether a field can survive a region-agnostic intersection.
+    region_coverage: int | None = None
     dataset: FieldRef | None = None
     category: FieldRef | None = None
     subcategory: FieldRef | None = None

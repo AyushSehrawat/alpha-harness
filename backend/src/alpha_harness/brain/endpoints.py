@@ -45,8 +45,41 @@ V_ALPHA_LIST = "4.0"  # GET /users/{id}/alphas
 #: decommissioned} where 2.0 returns {is, os, prod}.
 V_ALPHA_SUMMARY = "4.0"
 
-#: The simulation type this application sends; its per-type settings tree is merged in.
-SIMULATION_TYPE = "REGULAR"
+#: The simulation types this application sends; their per-type settings trees are merged in.
+#: Region-agnostic is included because its only region, ``ALL``, appears nowhere else — so
+#: merging the two trees is what makes "all regions at once" a market a user can choose.
+SIMULATION_TYPES = ("REGULAR", "REGION_AGNOSTIC")
+
+
+def _fold(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    """Merge one simulation type's settings tree into the schema built so far.
+
+    A setting the base has not seen is taken whole; one it has keeps its own description and
+    gains the other's choices.
+    """
+    merged = dict(base)
+    for name, node in overrides.items():
+        held = merged.get(name)
+        if not isinstance(held, dict) or not isinstance(node, dict):
+            merged[name] = node
+            continue
+        merged[name] = held | {"choices": _union(held.get("choices"), node.get("choices"))}
+    return merged
+
+
+def _union(held: Any, other: Any) -> Any:
+    """Combine two ``choices`` trees, which are dependency maps ending in lists.
+
+    Dependency maps merge key by key, so a type that only offers region ``ALL`` adds that one
+    branch and leaves every other region's universes alone.
+    """
+    if isinstance(held, dict) and isinstance(other, dict):
+        return {k: _union(held.get(k), other.get(k)) for k in {**held, **other}}
+    if isinstance(held, list) and isinstance(other, list):
+        by_value = {c.get("value") if isinstance(c, dict) else c: c for c in held}
+        extra = [c for c in other if (c.get("value") if isinstance(c, dict) else c) not in by_value]
+        return [*held, *extra]
+    return other if held is None else held
 
 
 class BrainEndpoints:
@@ -112,22 +145,31 @@ class BrainEndpoints:
     # -- platform metadata ----------------------------------------------
 
     async def settings_schema(self) -> dict[str, Any]:
-        """``OPTIONS /simulations`` at 4.0, resolved for ``REGULAR`` simulations.
+        """``OPTIONS /simulations`` at 4.0, resolved for the types this application sends.
 
-        ``actions.POST.settings.children`` is the common tree; the ``REGULAR`` choice's
+        ``actions.POST.settings.children`` is the common tree; each type's
         ``settings.children`` overrides it, and region, universe, delay and neutralization
         live only there (``docs/wqb-api/schemas/simulation.md``, "Merging rule").
+
+        The region-agnostic tree is folded into the same schema rather than kept apart:
+        ``universe``, ``delay`` and ``neutralization`` are keyed *by region*, so it only adds
+        an ``ALL`` branch to each, and region ``ALL`` then reads like any other market to
+        every form, lab and validator downstream.
         """
         r = await self.client.request("OPTIONS", "/simulations", version=V_SETTINGS_SCHEMA)
         body = r.body if isinstance(r.body, dict) else {}
         post = body.get("actions", {}).get("POST", {})
         common = post.get("settings", {}).get("children", {})
         merged: dict[str, Any] = dict(common) if isinstance(common, dict) else {}
-        for choice in post.get("type", {}).get("choices") or []:
-            if isinstance(choice, dict) and choice.get("value") == SIMULATION_TYPE:
-                overrides = (choice.get("settings") or {}).get("children")
-                if isinstance(overrides, dict):
-                    merged.update(overrides)
+        by_type = {
+            choice.get("value"): (choice.get("settings") or {}).get("children")
+            for choice in post.get("type", {}).get("choices") or []
+            if isinstance(choice, dict)
+        }
+        for name in SIMULATION_TYPES:
+            overrides = by_type.get(name)
+            if isinstance(overrides, dict):
+                merged = _fold(merged, overrides)
         return merged
 
     async def list_operators(self) -> list[Operator]:
@@ -287,6 +329,48 @@ class BrainEndpoints:
         if r.body[:64].lstrip().startswith(b"{"):
             return BULK_FIELDS_ENVELOPE.decode(r.body).results
         return BULK_FIELDS.decode(r.body)
+
+    #: The page size region ``ALL`` allows. Measured: 51 is refused outright.
+    PAGED_FIELDS_SIZE = 50
+    #: Rows the flat listing will hand out for region ``ALL``, of 27,882 that exist —
+    #: ``offset + limit`` past this is a 400, which is why the paging goes dataset by dataset.
+    PAGED_FIELDS_CEILING = 10_000
+
+    async def list_data_fields_paged(self, dataset_id: str, **params: Any) -> list[BulkField]:
+        """Every field of one dataset in one scope, fifty at a time.
+
+        Region ``ALL`` refuses an unlimited read (``400 ["Invalid query"]``) and caps its flat
+        listing well below what it holds, so the only complete route is one dataset at a time.
+        Every other region is served whole by :meth:`list_data_fields_all`.
+        """
+        out: list[BulkField] = []
+        offset = 0
+        while offset < self.PAGED_FIELDS_CEILING:
+            r = await self.client.request_retrying(
+                "GET",
+                "/data-fields",
+                version=V_FIELDS_ALL,
+                params={
+                    **params,
+                    "dataset.id": dataset_id,
+                    "limit": self.PAGED_FIELDS_SIZE,
+                    "offset": offset,
+                },
+                raw=True,
+            )
+            if not isinstance(r.body, bytes):
+                break
+            page = BULK_FIELDS_ENVELOPE.decode(r.body).results
+            out.extend(page)
+            if len(page) < self.PAGED_FIELDS_SIZE:
+                return out
+            offset += self.PAGED_FIELDS_SIZE
+        # Still handing out full pages at the ceiling: there is more than can be read this
+        # way. Said rather than swallowed — a quietly short catalog is worse than a failed sync.
+        raise BrainError(
+            f"{dataset_id} has more than {self.PAGED_FIELDS_CEILING:,} fields, which is as far "
+            "as BRAIN will page this market."
+        )
 
     async def pyramid_multipliers(self) -> list[dict[str, Any]]:
         """``{category, region, delay, multiplier}`` for every pyramid on this account.

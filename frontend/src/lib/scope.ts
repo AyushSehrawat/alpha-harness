@@ -6,7 +6,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { auth } from '@/api/core'
@@ -19,12 +19,22 @@ export const DEFAULT_SCOPE: Scope = {
   universe: 'TOP3000',
 }
 
-/** Regions the app does not offer for now. ALL: BRAIN serves it only 50 fields per request. */
-const HIDDEN_REGIONS = new Set(['ALL'])
+/**
+ * The region that means every region at once. Choosing it makes the simulation
+ * region-agnostic: one run across USA, Europe, Asia and Global, submittable when it works
+ * in two or more of them. BRAIN offers it under no other simulation type.
+ */
+export const REGION_AGNOSTIC = 'ALL'
 
-/** A stored scope, unless it points at a hidden region. */
-const usable = (scope: Scope | undefined): Scope =>
-  scope && !HIDDEN_REGIONS.has(scope.region) ? scope : DEFAULT_SCOPE
+export const isRegionAgnostic = (scope: { region: string }): boolean =>
+  scope.region === REGION_AGNOSTIC
+
+/** BRAIN labels the region-agnostic market `ALL`, which says nothing about what it does. */
+export const regionLabel = (region: string): string =>
+  region === REGION_AGNOSTIC ? 'All Regions' : region
+
+/** A stored scope, or the default when there is none. */
+const usable = (scope: Scope | undefined): Scope => scope ?? DEFAULT_SCOPE
 
 interface ScopeStore {
   scopes: Record<string, Scope>
@@ -74,6 +84,10 @@ const choices = (list: { value: string | number; label: string }[] | null | unde
     label: String(c.label ?? c.value),
   }))
 
+/** Keeps BRAIN's own label for every region but `ALL`, which says nothing about what it does. */
+const named = (choice: Choice): Choice =>
+  choice.value === REGION_AGNOSTIC ? { ...choice, label: regionLabel(choice.value) } : choice
+
 /** Legal regions, delays, universes and neutralizations for a scope, from BRAIN's schema. */
 export function useScopeOptions(scope: Scope): ScopeOptions {
   const query = useQuery({
@@ -86,14 +100,19 @@ export function useScopeOptions(scope: Scope): ScopeOptions {
       }),
     staleTime: 10 * 60 * 1000,
   })
+  // Memoised because `ScopePicker` keeps these arrays in effect dependencies. Rebuilt on
+  // every render they would re-run those effects on every render of every screen that shows
+  // a market picker — harmless today, but only because the effects happen to be idempotent.
   const fields = query.data?.fields
-  const universes = choices(fields?.['universe']?.choices)
-  return {
-    regions: choices(fields?.['region']?.choices).filter((c) => !HIDDEN_REGIONS.has(c.value)),
-    delays: choices(fields?.['delay']?.choices),
-    universes,
-    neutralizations: choices(fields?.['neutralization']?.choices),
-    ready: universes.length > 0,
-    isError: query.isError,
-  }
+  return useMemo(() => {
+    const universes = choices(fields?.['universe']?.choices)
+    return {
+      regions: choices(fields?.['region']?.choices).map(named),
+      delays: choices(fields?.['delay']?.choices),
+      universes,
+      neutralizations: choices(fields?.['neutralization']?.choices),
+      ready: universes.length > 0,
+      isError: query.isError,
+    }
+  }, [fields, query.isError])
 }

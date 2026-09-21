@@ -9,7 +9,7 @@ import { PlayIcon } from 'lucide-react'
 import { useState } from 'react'
 import type { Today } from '@/api/types'
 import { fmt } from '@/lib/format'
-import { DEFAULT_SCOPE } from '@/lib/scope'
+import { DEFAULT_SCOPE, isRegionAgnostic } from '@/lib/scope'
 import { searchLab } from '@/screens/research-labs/search/api'
 import { useSearchLab } from '@/screens/research-labs/search/state'
 import { Button, Disclosure, ErrorNotice, Input, LINK, QuotaGauge } from '@/ui/kit'
@@ -25,8 +25,10 @@ export function RunToday({ today }: { today: Today | undefined }) {
   const run = useMutation({
     mutationFn: (simulations: number) => {
       const pick = useSearchLab.getState()
+      // All regions at once is a Search Lab choice: its alphas need two regions to hold up
+      // before any of them can be submitted, which no first run should be steered into.
       return searchLab.quick(
-        pick.datasetIds.length > 0
+        pick.datasetIds.length > 0 && !isRegionAgnostic(pick)
           ? {
               region: pick.region,
               delay: pick.delay,

@@ -87,8 +87,9 @@ export type CheckResult = 'PASS' | 'FAIL' | 'PENDING' | 'WARNING' | 'ERROR'
 export interface AlphaCheck {
   name: string
   result: CheckResult | null
-  limit?: number | null
-  value?: number | null
+  /** A threshold on most checks; a neutralization name on `HT_ORTHOGONAL_RAM_NEUTRALIZATION`. */
+  limit?: number | string | null
+  value?: number | string | null
   message?: string | null
   [extra: string]: unknown
 }

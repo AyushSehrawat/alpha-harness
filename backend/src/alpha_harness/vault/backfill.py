@@ -42,6 +42,11 @@ CAPTURE_DEBOUNCE_SECONDS = 2.0
 #: from batches not yet read back sit ahead of the landed ones on the newest page, so one
 #: page is often not enough; newest-first paging only ever shifts rows later, never skips.
 CAPTURE_PAGES = 3
+#: Alphas read one by one at a time, for the few a list page did not carry. Measured on a
+#: region-agnostic capture, the list pages held every child and this path read nothing — but
+#: a backfill reaching past ``CAPTURE_PAGES`` does use it, and serial it is one round trip
+#: each. Four, the same width every other BRAIN read here uses.
+CAPTURE_CONCURRENCY = 4
 
 
 def _now() -> str:
@@ -353,8 +358,13 @@ class Backfill:
             # No await between the loop's last check and here, so nothing lands unseen.
             self._drainer = None
 
-    async def _capture_batch(self, alpha_ids: list[str]) -> None:
-        """Store what the newest list page holds; read the rest one by one."""
+    async def _capture_batch(self, alpha_ids: list[str], *, follow: bool = True) -> None:
+        """Store what the newest list page holds; read the rest one by one.
+
+        ``follow`` chases the per-region children of a region-agnostic parent, which the
+        simulation never names — it answers with the parent alone. Children have no children
+        of their own, so the chase is one deep.
+        """
         missing = set(alpha_ids)
         found: dict[str, Alpha] = {}
         complete: list[Alpha] = []
@@ -387,17 +397,32 @@ class Backfill:
         self.capture_counts["listed"] += len(complete)
         self.capture_counts["fetched"] += len(fetch)
         log.info("vault.captured", listed=len(complete), fetched=len(fetch))
-        for alpha_id in fetch:
-            await self._capture_one(alpha_id)
+        gate = asyncio.Semaphore(CAPTURE_CONCURRENCY)
 
-    async def _capture_one(self, alpha_id: str) -> None:
+        async def read(alpha_id: str) -> Alpha | None:
+            async with gate:
+                return await self._capture_one(alpha_id)
+
+        # In order, so what is stored does not depend on which request answered first.
+        for one in await asyncio.gather(*(read(a) for a in fetch)):
+            if one is not None:
+                complete.append(one)
+
+        asked = set(alpha_ids)
+        children = list(dict.fromkeys(c for a in complete for c in a.children if c not in asked))
+        if follow and children:
+            log.info("vault.capture_children", parents=len(complete), children=len(children))
+            await self._capture_batch(children, follow=False)
+
+    async def _capture_one(self, alpha_id: str) -> Alpha | None:
         try:
             alpha = await self.endpoints.get_alpha(alpha_id)
             await self.vault.save_alpha(alpha)
         except Exception:
             log.warning("vault.capture_failed", alpha_id=alpha_id, exc_info=True)
-            return
+            return None
         await self._captured(alpha)
+        return alpha
 
     async def _captured(self, alpha: Alpha) -> None:
         alpha_id = alpha.id

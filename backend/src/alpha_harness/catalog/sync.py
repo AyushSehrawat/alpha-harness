@@ -24,7 +24,7 @@ import structlog
 from sqlalchemy import select, update
 
 from ..brain.errors import BrainError
-from ..brain.schemas import BulkField, FieldRef
+from ..brain.schemas import REGION_AGNOSTIC_REGION, BulkField, FieldRef
 from ..db.duck import CatalogUnusableError
 from ..db.models import SyncRun, SyncStatus, utcnow
 
@@ -51,6 +51,10 @@ BULK_DATASETS_WAIT = 12.0
 #: Regions read at once for the shared dataset index. BRAIN allows a request a second, so a
 #: wider fan-out just trades 429s for the latency it saves.
 REGION_DATASETS_CONCURRENCY = 4
+
+#: Datasets paged at once when a market has to be read dataset by dataset (region ALL).
+#: 139 datasets and ~640 requests: serial is eleven minutes, and any wider draws 429s.
+PAGED_FIELDS_CONCURRENCY = 4
 
 #: Tries per market for each stage of a full sync. The client already retries throttling
 #: and server errors per request; this also covers an empty answer or a failed write.
@@ -281,6 +285,58 @@ class CatalogSync:
         log.info("sync_all.bulk_datasets", regions=len(scopes) - failed, markets=len(indexed))
         return indexed
 
+    async def _fields(
+        self,
+        target: SyncTarget,
+        bulk_datasets: asyncio.Task[dict[tuple[str, int, str], list[DataSet]] | None],
+        market: dict[str, Any],
+        run_id: int,
+        cancel: asyncio.Event,
+    ) -> list[BulkField]:
+        """One market's fields, however the platform is willing to hand them over."""
+        if target.region != REGION_AGNOSTIC_REGION:
+            return await self.endpoints.list_data_fields_all(**target.params)
+
+        # Region ALL refuses an unlimited read and stops answering past 10,000 of the ~28,000
+        # fields it holds, so it is read one dataset at a time. Hundreds of requests, hence
+        # the running count: a market that reports nothing for ten minutes looks hung.
+        datasets = await _shared_datasets(bulk_datasets, target)
+        if datasets is None:
+            datasets = await self.endpoints.list_data_sets_all(**target.params)
+        gate = asyncio.Semaphore(PAGED_FIELDS_CONCURRENCY)
+        out: list[BulkField] = []
+        lost: list[str] = []
+
+        async def one(dataset_id: str) -> None:
+            async with gate:
+                _check(cancel)
+                try:
+                    found = await self.endpoints.list_data_fields_paged(dataset_id, **target.params)
+                # One dataset BRAIN will not page to the end must not discard the hundred
+                # already downloaded: a bare gather cancels its siblings on the first raised
+                # exception, throwing away ten minutes of requests. Cancellation still does.
+                except SyncCancelled, CatalogUnusableError:
+                    raise
+                except Exception as exc:  # noqa: BLE001 - named in the run's own report
+                    lost.append(f"{dataset_id}: {_reason(exc)}")
+                    log.warning("sync_all.dataset_failed", dataset=dataset_id, error=_reason(exc))
+                    return
+                out.extend(found)
+                market["fields"] = len(out)
+                await self._emit(run_id)
+
+        await asyncio.gather(*(one(d.id) for d in datasets))
+        if lost:
+            # Kept, not raised: raising would send the whole market back through ``_retry``
+            # and spend another 640 requests re-reading the 136 datasets that worked. The
+            # fields that arrived are stored, and the ones that did not are named in the run
+            # so the user is told rather than left with a quietly short catalog.
+            self._all.get(run_id, {}).setdefault("failed", []).append(
+                f"{target.label}: {len(lost)} of {len(datasets)} datasets could not be read "
+                f"({'; '.join(lost[:3])})"
+            )
+        return out
+
     async def _crawl_all(
         self, run_id: int, targets: list[SyncTarget], cancel: asyncio.Event
     ) -> None:
@@ -317,7 +373,7 @@ class CatalogSync:
 
                 async def store() -> tuple[int, int, int]:
                     started = time.perf_counter()
-                    raw = await self.endpoints.list_data_fields_all(**target.params)
+                    raw = await self._fields(target, bulk_datasets, market, run_id, cancel)
                     fetched = time.perf_counter()
                     _check(cancel)
                     if not raw:
@@ -594,6 +650,7 @@ def _field_rows(raw: list[BulkField], target: SyncTarget, now: datetime) -> list
             item.alpha_count,
             item.pyramid_multiplier,
             json.dumps(item.themes) if item.themes else None,
+            item.region_coverage,
             instrument,
             region,
             delay,

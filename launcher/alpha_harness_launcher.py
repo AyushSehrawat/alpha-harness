@@ -22,9 +22,12 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
+import urllib.request
 import webbrowser
 from pathlib import Path
+from typing import Any
 
 #: Written in by the release workflow; the version a fresh machine installs.
 BUILD_VERSION = "0.0.0"
@@ -255,21 +258,357 @@ def install(root: Path, uv: Path, slot: str, version: str, wheel: str | None = N
     say(root, f"installed {version} into slot {slot}")
 
 
+# --- the notification area -----------------------------------------------------------------
+
+#: Our own callback message. ``WM_APP`` begins the range Windows reserves for an application.
+_WM_APP = 0x8000
+_TRAY_MESSAGE = _WM_APP + 1
+_WM_DESTROY, _WM_CLOSE, _WM_COMMAND = 0x0002, 0x0010, 0x0111
+_WM_LBUTTONUP, _WM_LBUTTONDBLCLK, _WM_RBUTTONUP = 0x0202, 0x0203, 0x0205
+_NIM_ADD, _NIM_DELETE = 0x0, 0x2
+_NIF_MESSAGE, _NIF_ICON, _NIF_TIP = 0x1, 0x2, 0x4
+_MF_STRING, _MF_SEPARATOR = 0x0000, 0x0800
+_TPM_RIGHTBUTTON = 0x0002
+_IDI_APPLICATION = 32512
+_OPEN, _QUIT = 1, 2
+
+#: How long the app is given to close itself before it is terminated. Worth waiting for: a
+#: clean exit unwinds uvicorn's lifespan, which is what releases DuckDB's single-writer lock.
+QUIT_SECONDS = 15.0
+
+#: Set when the user chooses Quit, so the launcher can tell a deliberate exit from a crash.
+_quitting = threading.Event()
+#: The running app, so Quit can close it. ``None`` whenever none is running.
+_child: subprocess.Popen[bytes] | None = None
+
+
+def open_app() -> None:
+    """Show the app. It is a local web page, so this is the whole of "open the window"."""
+    webbrowser.open(f"http://127.0.0.1:{APP_PORT}")
+
+
+def close_app(root: Path) -> None:
+    """Ask the app to close itself; make sure it has.
+
+    Asked over HTTP because there is no graceful signal to send a windowed process on
+    Windows: no console, so no Ctrl-Break, and terminating it skips the shutdown that closes
+    DuckDB. ``POST /api/quit`` is the app's own front door, and only 127.0.0.1 can knock.
+    """
+    _quitting.set()
+    child = _child
+    # The app refuses a write that carries no ``X-Harness-Client``, which is what stops
+    # another page in the browser from driving it. The launcher is a client like any other.
+    ask = urllib.request.Request(
+        f"http://127.0.0.1:{APP_PORT}/api/quit", data=b"", headers={"X-Harness-Client": "1"}
+    )
+    try:
+        with urllib.request.urlopen(ask, timeout=5) as answer:  # noqa: S310 - fixed loopback URL
+            answer.read()
+        say(root, "asked the app to close")
+    except Exception as exc:  # noqa: BLE001 - an app that will not answer is still closing
+        say(root, f"the app did not take the quit request: {exc}")
+    if child is None:
+        return
+    try:
+        child.wait(timeout=QUIT_SECONDS)
+    except subprocess.TimeoutExpired:
+        say(root, "the app did not close in time; terminating it")
+        child.terminate()
+        try:
+            child.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            child.kill()
+
+
+class Tray:
+    """The notification-area icon: click to open the app, right-click to quit it.
+
+    Win32 through ctypes rather than a library, because the launcher is frozen separately
+    from the app and stays standard library only — and an icon is one hidden window and one
+    message loop. Off Windows every method does nothing; the launcher is exercised there but
+    never shipped there.
+
+    Without this the app cannot be closed at all: it is a server with no window, so closing
+    the browser leaves it running, holding port 8000 and the catalog lock.
+    """
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.hwnd = 0
+        self._thread: threading.Thread | None = None
+        #: ctypes frees a callback as soon as nothing refers to it, and Windows then calls
+        #: into freed memory. These live as long as the icon does.
+        self._kept: list[Any] = []
+        self._ready = threading.Event()
+        #: The prototyped ``user32``, so :meth:`stop` posts through declared argtypes.
+        self._user32: Any = None
+
+    def start(self) -> None:
+        if sys.platform != "win32":
+            return
+        self._thread = threading.Thread(target=self._guarded, name="tray", daemon=True)
+        self._thread.start()
+        # Nothing may be posted to the window until it exists.
+        self._ready.wait(timeout=5)
+
+    def stop(self) -> None:
+        # Through the library the prototypes were declared on, never ``ctypes.windll``: that
+        # one is a shared cache with no argtypes, so the window handle would go out truncated
+        # and WM_CLOSE would be delivered to nothing. The loop would then never end.
+        if self._user32 is not None and self.hwnd:
+            self._user32.PostMessageW(self.hwnd, _WM_CLOSE, 0, 0)
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+
+    def _guarded(self) -> None:
+        try:
+            self._run()
+        except Exception as exc:  # noqa: BLE001 - no icon is a far smaller problem than no app
+            say(self.root, f"the notification icon could not be created: {exc}")
+        finally:
+            self._ready.set()
+
+    def _run(self) -> None:
+        from ctypes import wintypes
+
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+        lresult = ctypes.c_ssize_t
+        procedure = ctypes.WINFUNCTYPE(
+            lresult, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM
+        )
+        # Every prototype, declared. This is not tidiness. An undeclared ctypes argument is
+        # passed as a C `int`, so a 64-bit handle arrives sign-extended from its low half —
+        # 0x000001a2b3c4d5e6 becomes 0xffffffffb3c4d5e6 — and Win32 either fails or faults on
+        # it. Measured. The same applies to a return value left at the default type.
+        HWND, LPCWSTR, INT = wintypes.HWND, wintypes.LPCWSTR, ctypes.c_int  # noqa: N806
+        prototypes: dict[Any, list[tuple[str, Any, list[Any]]]] = {
+            user32: [
+                (
+                    "DefWindowProcW",
+                    lresult,
+                    [HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM],
+                ),
+                ("RegisterClassW", wintypes.ATOM, [ctypes.c_void_p]),
+                (
+                    "CreateWindowExW",
+                    HWND,
+                    [
+                        wintypes.DWORD,
+                        LPCWSTR,
+                        LPCWSTR,
+                        wintypes.DWORD,
+                        INT,
+                        INT,
+                        INT,
+                        INT,
+                        HWND,
+                        wintypes.HMENU,
+                        wintypes.HINSTANCE,
+                        wintypes.LPVOID,
+                    ],
+                ),
+                ("DestroyWindow", wintypes.BOOL, [HWND]),
+                (
+                    "PostMessageW",
+                    wintypes.BOOL,
+                    [HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM],
+                ),
+                ("PostQuitMessage", None, [INT]),
+                ("GetMessageW", INT, [ctypes.c_void_p, HWND, wintypes.UINT, wintypes.UINT]),
+                ("TranslateMessage", wintypes.BOOL, [ctypes.c_void_p]),
+                ("DispatchMessageW", lresult, [ctypes.c_void_p]),
+                ("GetCursorPos", wintypes.BOOL, [ctypes.c_void_p]),
+                ("SetForegroundWindow", wintypes.BOOL, [HWND]),
+                ("CreatePopupMenu", wintypes.HMENU, []),
+                (
+                    "AppendMenuW",
+                    wintypes.BOOL,
+                    [wintypes.HMENU, wintypes.UINT, ctypes.c_size_t, LPCWSTR],
+                ),
+                (
+                    "TrackPopupMenu",
+                    wintypes.BOOL,
+                    [
+                        wintypes.HMENU,
+                        wintypes.UINT,
+                        INT,
+                        INT,
+                        INT,
+                        HWND,
+                        ctypes.c_void_p,
+                    ],
+                ),
+                ("DestroyMenu", wintypes.BOOL, [wintypes.HMENU]),
+                ("LoadIconW", wintypes.HICON, [wintypes.HINSTANCE, LPCWSTR]),
+            ],
+            shell32: [
+                ("ExtractIconW", wintypes.HICON, [wintypes.HINSTANCE, LPCWSTR, wintypes.UINT]),
+                ("Shell_NotifyIconW", wintypes.BOOL, [wintypes.DWORD, ctypes.c_void_p]),
+            ],
+            kernel32: [("GetModuleHandleW", wintypes.HMODULE, [LPCWSTR])],
+        }
+        for library, entries in prototypes.items():
+            for name, restype, argtypes in entries:
+                function = getattr(library, name)
+                function.restype = restype
+                function.argtypes = argtypes
+        # A fresh WinDLL, not ``ctypes.windll``: that one is cached process-wide, and
+        # declaring argtypes on it would change calls made anywhere else in this process.
+        self._user32 = user32
+
+        class WindowClass(ctypes.Structure):
+            _fields_ = (
+                ("style", wintypes.UINT),
+                ("lpfnWndProc", procedure),
+                ("cbClsExtra", ctypes.c_int),
+                ("cbWndExtra", ctypes.c_int),
+                ("hInstance", wintypes.HINSTANCE),
+                ("hIcon", wintypes.HICON),
+                ("hCursor", wintypes.HANDLE),
+                ("hbrBackground", wintypes.HBRUSH),
+                ("lpszMenuName", wintypes.LPCWSTR),
+                ("lpszClassName", wintypes.LPCWSTR),
+            )
+
+        class IconData(ctypes.Structure):
+            """``NOTIFYICONDATAW``, stopping at ``dwInfoFlags``.
+
+            That is not an arbitrary place to stop: ``cbSize`` must equal one of the sizes
+            Windows knows, and this one is exactly ``NOTIFYICONDATAW_V2_SIZE`` (952 on x64).
+            Dropping the fields below ``szTip`` — none of which this uses — would make it a
+            size Windows has never heard of, and ``Shell_NotifyIconW`` would answer FALSE and
+            show nothing, with no error anywhere.
+            """
+
+            _fields_ = (
+                ("cbSize", wintypes.DWORD),
+                ("hWnd", wintypes.HWND),
+                ("uID", wintypes.UINT),
+                ("uFlags", wintypes.UINT),
+                ("uCallbackMessage", wintypes.UINT),
+                ("hIcon", wintypes.HICON),
+                ("szTip", wintypes.WCHAR * 128),
+                ("dwState", wintypes.DWORD),
+                ("dwStateMask", wintypes.DWORD),
+                ("szInfo", wintypes.WCHAR * 256),
+                ("uVersion", wintypes.UINT),
+                ("szInfoTitle", wintypes.WCHAR * 64),
+                ("dwInfoFlags", wintypes.DWORD),
+            )
+
+        icon_data: IconData | None = None
+
+        def menu(hwnd: int) -> None:
+            where = wintypes.POINT()
+            user32.GetCursorPos(ctypes.byref(where))
+            handle = user32.CreatePopupMenu()
+            user32.AppendMenuW(handle, _MF_STRING, _OPEN, "Open Alpha Harness")
+            user32.AppendMenuW(handle, _MF_SEPARATOR, 0, None)
+            user32.AppendMenuW(handle, _MF_STRING, _QUIT, "Quit Alpha Harness")
+            # Windows dismisses a tray menu only while its owner is the foreground window,
+            # and only repaints after one more message reaches that window.
+            user32.SetForegroundWindow(hwnd)
+            user32.TrackPopupMenu(handle, _TPM_RIGHTBUTTON, where.x, where.y, 0, hwnd, None)
+            user32.PostMessageW(hwnd, 0, 0, 0)
+            user32.DestroyMenu(handle)
+
+        def chosen(command: int) -> None:
+            if command == _OPEN:
+                open_app()
+            elif command == _QUIT:
+                # Off the message loop: closing the app takes seconds, and a frozen icon
+                # during them reads as a crash.
+                threading.Thread(target=self._quit, name="tray-quit", daemon=True).start()
+
+        def handle(hwnd: int, message: int, wparam: int, lparam: int) -> int:
+            if message == _TRAY_MESSAGE:
+                if lparam in (_WM_LBUTTONUP, _WM_LBUTTONDBLCLK):
+                    open_app()
+                elif lparam == _WM_RBUTTONUP:
+                    menu(hwnd)
+            elif message == _WM_COMMAND:
+                chosen(wparam & 0xFFFF)
+            elif message == _WM_DESTROY:
+                if icon_data is not None:
+                    shell32.Shell_NotifyIconW(_NIM_DELETE, ctypes.byref(icon_data))
+                user32.PostQuitMessage(0)
+                return 0
+            return user32.DefWindowProcW(hwnd, message, wparam, lparam)
+
+        instance = kernel32.GetModuleHandleW(None)
+        callback = procedure(handle)
+        registration = WindowClass()
+        registration.lpfnWndProc = callback
+        registration.hInstance = instance
+        registration.lpszClassName = "AlphaHarnessTray"
+        self._kept += [callback, registration]
+        user32.RegisterClassW(ctypes.byref(registration))
+
+        # Never shown: it exists only to receive the icon's callbacks.
+        hwnd = user32.CreateWindowExW(
+            0, "AlphaHarnessTray", "Alpha Harness", 0, 0, 0, 0, 0, None, None, instance, None
+        )
+        if not hwnd:
+            raise OSError(f"CreateWindowExW failed: {ctypes.get_last_error()}")
+        self.hwnd = hwnd
+
+        # The exe's own icon when frozen; Windows' generic one when run from source.
+        icon = shell32.ExtractIconW(instance, sys.executable, 0)
+        if not icon or icon == 1:
+            # MAKEINTRESOURCE: a numbered resource is its ordinal cast to a string pointer.
+            icon = user32.LoadIconW(None, ctypes.cast(_IDI_APPLICATION, wintypes.LPCWSTR))
+
+        icon_data = IconData()
+        icon_data.cbSize = ctypes.sizeof(IconData)
+        icon_data.hWnd = hwnd
+        icon_data.uID = 1
+        icon_data.uFlags = _NIF_MESSAGE | _NIF_ICON | _NIF_TIP
+        icon_data.uCallbackMessage = _TRAY_MESSAGE
+        icon_data.hIcon = icon
+        icon_data.szTip = f"Alpha Harness {BUILD_VERSION}"[:127]
+        self._kept.append(icon_data)
+        if not shell32.Shell_NotifyIconW(_NIM_ADD, ctypes.byref(icon_data)):
+            raise OSError(f"Shell_NotifyIconW failed: {ctypes.get_last_error()}")
+        say(self.root, "notification icon added")
+
+        self._ready.set()
+        message = wintypes.MSG()
+        while user32.GetMessageW(ctypes.byref(message), None, 0, 0) > 0:
+            user32.TranslateMessage(ctypes.byref(message))
+            user32.DispatchMessageW(ctypes.byref(message))
+        self.hwnd = 0
+
+    def _quit(self) -> None:
+        close_app(self.root)
+        self.stop()
+
+
 def start(root: Path, slot: str) -> int:
-    """Run the app to completion, with its output in the log. Returns its exit code."""
+    """Run the app to completion, with its output in the log. Returns its exit code.
+
+    Held in ``_child`` rather than run to completion in one call, so the notification area's
+    Quit has something to close.
+    """
+    global _child
     environment = os.environ | {HOME_VARIABLE: str(root), "PYTHONUTF8": "1"}
     say(root, f"starting app from slot {slot}")
     with (root / LOG_FILE).open("a", encoding="utf-8") as handle:
-        done = subprocess.run(  # noqa: S603 - the venv this launcher built
+        _child = subprocess.Popen(  # noqa: S603 - the venv this launcher built
             [str(venv_pythonw(root, slot)), "-m", "alpha_harness"],
             stdout=handle,
             stderr=subprocess.STDOUT,
             env=environment,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            check=False,
         )
-    say(root, f"app exited {done.returncode}")
-    return done.returncode
+        try:
+            code = _child.wait()
+        finally:
+            _child = None
+    say(root, f"app exited {code}")
+    return code
 
 
 def main() -> int:
@@ -296,6 +635,16 @@ def main() -> int:
         fail(root, f"Could not unpack uv: {exc}")
         return 1
 
+    tray = Tray(root)
+    tray.start()
+    try:
+        return supervise(root, uv)
+    finally:
+        tray.stop()
+
+
+def supervise(root: Path, uv: Path) -> int:
+    """Install what is wanted, run it, and keep running it while updates are requested."""
     while True:
         slot = active(root)
         running = slot_version(root, slot)
@@ -319,10 +668,18 @@ def main() -> int:
         # Cleared whether or not it was applied: left behind, a request that cannot install
         # would retry on every start for good.
         (root / REQUEST_FILE).unlink(missing_ok=True)
+        if _quitting.is_set():
+            # Quit chosen during an install, which cannot be interrupted part-way without
+            # leaving a half-built slot. Nothing is started now.
+            return 0
 
         began = time.monotonic()
         code = start(root, slot)
         alive = time.monotonic() - began
+
+        if _quitting.is_set():
+            say(root, "closed from the notification area")
+            return 0
 
         # A version that dies on the way up cannot report anything itself: no server, no page,
         # no button. The launcher is the only thing left that can notice, so it does.

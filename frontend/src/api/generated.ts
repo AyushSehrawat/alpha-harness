@@ -362,7 +362,7 @@ export interface paths {
         };
         /**
          * Markets
-         * @description Every market a full sync covers: what the Data Explorer's sync matrix draws.
+         * @description Every market BRAIN offers: what the sync matrix draws.
          */
         get: operations["markets_api_catalog_markets_get"];
         put?: never;
@@ -464,12 +464,38 @@ export interface paths {
         put?: never;
         /**
          * Start Sync All
-         * @description Download every market BRAIN offers: all fields first, then dataset details.
+         * @description Download every ordinary market: all fields first, then dataset details.
+         *
+         *     Region ``ALL`` is not one of them; it has :func:`start_sync_region_agnostic` to itself.
          *
          *     Runs in the background; progress, including each market's state, arrives over the
          *     WebSocket ``sync`` topic.
          */
         post: operations["start_sync_all_api_catalog_sync_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/sync-region-agnostic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Sync Region Agnostic
+         * @description Download the region-agnostic market: every universe of region ``ALL``.
+         *
+         *     Its own route because it is its own download. BRAIN serves this market only fifty fields
+         *     at a time, so it is read dataset by dataset — about ten minutes per universe where an
+         *     ordinary market is seconds — and only an account running region-agnostic alphas needs it.
+         */
+        post: operations["start_sync_region_agnostic_api_catalog_sync_region_agnostic_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1134,6 +1160,30 @@ export interface paths {
         put?: never;
         /** Add Task */
         post: operations["add_task_api_power_pool_lab_tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Quit App
+         * @description Close the app for good. The launcher's notification-area Quit calls this.
+         *
+         *     Not a courtesy: killing the process outright leaves DuckDB's single-writer lock held
+         *     and the next start finds its own catalog busy. This unwinds uvicorn's lifespan, which
+         *     closes both stores, and the launcher exits when the process does.
+         */
+        post: operations["quit_app_api_quit_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3598,6 +3648,11 @@ export interface components {
             /** Simulations */
             simulations: number;
         };
+        /** Quitting */
+        Quitting: {
+            /** Stopping */
+            stopping: boolean;
+        };
         /** RankedAlpha */
         RankedAlpha: {
             /** Alphaid */
@@ -5296,6 +5351,26 @@ export interface operations {
             };
         };
     };
+    start_sync_region_agnostic_api_catalog_sync_region_agnostic_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncAllRun"];
+                };
+            };
+        };
+    };
     cancel_run_api_catalog_sync_runs__run_id__cancel_post: {
         parameters: {
             query?: never;
@@ -6323,6 +6398,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quit_app_api_quit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Quitting"];
                 };
             };
         };

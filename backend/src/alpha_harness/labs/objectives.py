@@ -171,17 +171,16 @@ def constraints(alpha: Alpha) -> tuple[dict[str, float], list[dict[str, Any]]]:
 def _violation(check: Check) -> float:
     if check.result in (CheckResult.PASS, CheckResult.WARNING, CheckResult.PENDING, None):
         return 0.0
-    if (
-        check.value is None
-        or check.limit is None
-        or not (math.isfinite(check.value) and math.isfinite(check.limit))
-    ):
-        # Failed, but gave us no usable numbers — feasibility is binary here. A NaN would
-        # be refused by Optuna and leave the trial RUNNING in the sampler for good.
+    numbers = check.numbers
+    if numbers is None or not all(math.isfinite(n) for n in numbers):
+        # Failed, but gave us no usable numbers — a check whose limit is a neutralization
+        # name, or none at all. Feasibility is binary here; a NaN would be refused by Optuna
+        # and leave the trial RUNNING in the sampler for good.
         return 1.0
+    value, limit = numbers
     # The distance alone: the platform does not label a check as a floor or a ceiling, and a
     # table of check names would go stale as BRAIN adds them.
-    return abs(float(check.limit) - float(check.value))
+    return abs(limit - value)
 
 
 def feasible(violations: dict[str, float]) -> bool:

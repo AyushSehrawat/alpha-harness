@@ -216,6 +216,7 @@ def _power_pool_counts(code: Any) -> tuple[int | None, list[str] | None, list[st
 def _info(alpha_id: str, body: dict[str, Any]) -> AlphaInfo:
     code = body.get("regular") or body.get("combo") or body.get("selection") or {}
     sample = body.get("is") or {}
+    settings = body.get("settings") or {}
     counted, fields, operators = _power_pool_counts(code.get("code"))
     checks = [c for c in sample.get("checks") or [] if isinstance(c, dict)]
     return AlphaInfo(
@@ -234,7 +235,7 @@ def _info(alpha_id: str, body: dict[str, Any]) -> AlphaInfo:
         date_created=body.get("dateCreated"),
         date_submitted=body.get("dateSubmitted"),
         date_modified=body.get("dateModified"),
-        settings=body.get("settings") or {},
+        settings=settings,
         classifications=[
             AlphaClassification.model_validate(c)
             for c in body.get("classifications") or []
@@ -247,7 +248,9 @@ def _info(alpha_id: str, body: dict[str, Any]) -> AlphaInfo:
         power_pool_operators=counted,
         data_fields=fields,
         operators=operators,
-        verdict=verdict(checks),
+        # The mode matters as much as the checks: a quick-mode alpha is sent the performance
+        # checks and none of the submission ones, so the checks alone read as "all clear".
+        verdict=verdict(checks, settings.get("simulationMode")),
     )
 
 

@@ -21,13 +21,30 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-from sqlalchemy import update
+from sqlalchemy import case, update
 
 from ..brain.errors import BrainError
-from ..brain.schemas import SimulationRequest, SimulationStatus
+from ..brain.schemas import SimulationRequest, SimulationStatus, SimulationType
 from ..db.models import DedupEntry, QuotaSnapshot, SimStatus, SimulationRecord, utcnow
 
 ChangeHook = Callable[[list[dict[str, Any]]], Awaitable[None] | None]
+
+#: Most regions a region-agnostic simulation is translated into, and so the most cores and
+#: daily simulations one can cost (``docs/learn/advanced-topics/region-agnostic-alpha``:
+#: "Concurrent simulation quota: counts the sum of RA Child Alphas' concurrent quota").
+#:
+#: A ceiling rather than the figure: the expression runs on the *intersection* of the regions
+#: its fields cover, and one measured here made two children, not four. Nothing says which
+#: before it is sent, so reserving four spends the day a little early rather than asking BRAIN
+#: for capacity it has already given away.
+RA_CHILDREN = 4
+
+#: What one row costs, in concurrent cores and in simulations off the day's allowance. BRAIN
+#: charges a region-agnostic row per region it is translated into rather than per request
+#: (``docs/learn/advanced-topics/region-agnostic-alpha``, "Quota Management").
+SIMULATION_COST = case(
+    (SimulationRecord.sim_type == SimulationType.REGION_AGNOSTIC, RA_CHILDREN), else_=1
+)
 
 #: Platform status -> our local lifecycle.
 _STATUS_MAP = {

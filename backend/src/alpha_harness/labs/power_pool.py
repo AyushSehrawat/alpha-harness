@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 from sqlalchemy import func, or_, select
 
-from ..brain.schemas import SimulationRequest, SimulationSettings
+from ..brain.schemas import REGION_AGNOSTIC_REGION, SimulationRequest, SimulationSettings
 from ..db.models import SimStatus, Study, StudyStatus, Trial, TrialState, utcnow
 from ..llm.keys import BudgetExhaustedError, LLMError
 from ..llm.prompts import PROMPTS
@@ -83,6 +83,8 @@ class Field:
     type: str
     coverage: float | None
     description: str
+    #: How many regions carry it, in the region-agnostic market; null in every other.
+    regions: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,7 +109,8 @@ async def context_for(
     extra = (*BASICS, *GROUPING)
     rows = await catalog.query(
         f"""
-        SELECT field_id, dataset_id, field_type, universe, coverage, description FROM data_field
+        SELECT field_id, dataset_id, field_type, universe, coverage, description,
+               region_coverage FROM data_field
         WHERE instrument_type = 'EQUITY' AND region = ? AND delay = ? AND universe IN ({marks})
           AND field_type IN ('MATRIX', 'VECTOR', 'GROUP')
           AND (dataset_id = ? OR field_id IN ({", ".join("?" for _ in extra)}))
@@ -134,7 +137,13 @@ async def context_for(
 
     def field(f: str) -> Field:
         r = info[f]
-        return Field(f, str(r["field_type"]), r["coverage"], str(r["description"] or "")[:160])
+        return Field(
+            f,
+            str(r["field_type"]),
+            r["coverage"],
+            str(r["description"] or "")[:160],
+            r["region_coverage"],
+        )
 
     fields = sorted((field(f) for f in own if f not in GROUPING), key=lambda x: -(x.coverage or 0))
     m = meta[0] if meta else {}
@@ -210,7 +219,10 @@ def operators_text(operators: list[dict[str, Any]]) -> str:
 
 def _line(f: Field) -> str:
     coverage = "?" if f.coverage is None else f"{f.coverage * 100:.0f}%"
-    return f"{f.id} · {f.type} · {coverage} · {f.description}"
+    # The region count only exists in the region-agnostic market, and there it decides
+    # whether two fields can appear in one expression at all.
+    regions = f" · {f.regions}/4 regions" if f.regions is not None else ""
+    return f"{f.id} · {f.type} · {coverage}{regions} · {f.description}"
 
 
 async def memory_of(optimizer: Optimizer, study_id: int, dataset: str) -> str:
@@ -280,6 +292,19 @@ def budget_for(model: ModelInfo) -> int:
     return min(40_000, int(model.tpm * 0.6))
 
 
+#: What a model cannot infer from the market line when the region is ALL. The warning about
+#: cross-sectional comparison is BRAIN's own ("Tips for Success",
+#: ``docs/learn/advanced-topics/region-agnostic-alpha``): one expression is translated into
+#: four markets whose currencies, market caps and face values are not on one scale.
+REGION_AGNOSTIC_BRIEF = """
+This expression runs in USA, Europe, Asia and Global at once, and the alpha is submittable
+where two or more of them hold up. Two fields combine only where their regions overlap, so
+prefer fields carried by all four, and stay inside one dataset. Comparing raw values across
+stocks is unsafe here — currencies, market caps and face values differ by region — so
+normalise by scale, or compare a stock against its own history with time-series operators.
+""".rstrip()
+
+
 def user_prompt(
     ctx: Context,
     operators: list[dict[str, Any]],
@@ -291,7 +316,8 @@ def user_prompt(
     """The user turn, and how many field lines it shows."""
     head = "\n\n".join(
         [
-            f"MARKET\n{run.region} · Delay {run.delay} · Universes {', '.join(run.universes)}",
+            f"MARKET\n{run.region} · Delay {run.delay} · Universes {', '.join(run.universes)}"
+            + (REGION_AGNOSTIC_BRIEF if run.region == REGION_AGNOSTIC_REGION else ""),
             "OPERATORS\n" + operators_text(operators),
             f"DATASET\n{ctx.id} · {ctx.name} · {ctx.category}\n{ctx.description}",
         ]
