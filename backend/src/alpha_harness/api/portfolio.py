@@ -109,6 +109,9 @@ class PortfolioResult(Out):
     #: Pairs sharing enough days to be measured.
     measured_pairs: int
     highest: CorrelatedPair | None
+    #: Why a series is missing, when the single-Alpha route tried to download one and could
+    #: not. Null everywhere else: on this page a missing series is listed in ``missing``.
+    problem: str | None = None
 
 
 class PortfolioRequest(BaseModel):

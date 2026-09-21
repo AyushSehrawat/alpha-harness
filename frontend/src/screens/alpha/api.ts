@@ -17,6 +17,8 @@ export type AlphaStats = Schemas['AlphaStats']
 export type AlphaYear = Schemas['AlphaYear']
 export type AlphaLineage = Schemas['AlphaLineage']
 export type AlphaProperties = Schemas['AlphaProperties']
+/** The Portfolio page's result shape, over a book of one — see `/api/alphas/{id}/after-cost`. */
+export type AfterCost = Schemas['PortfolioResult']
 
 export type CorrelationKind = 'self' | 'power-pool' | 'prod'
 
@@ -48,4 +50,7 @@ export const alpha = {
     http.get<Correlation>(`/api/alphas/${id(alphaId)}/correlations/${kind}${read(mode)}`),
   performance: (alphaId: string, mode: Read) =>
     http.get<Performance>(`/api/alphas/${id(alphaId)}/performance${read(mode)}`),
+  /** Gross and after-cost PnL, charging `costBps` against each day's own turnover. */
+  afterCost: (alphaId: string, costBps: number) =>
+    http.get<AfterCost>(`/api/alphas/${id(alphaId)}/after-cost${qs({ costBps })}`),
 }

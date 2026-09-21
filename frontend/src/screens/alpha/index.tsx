@@ -11,11 +11,13 @@ import { toast } from 'sonner'
 import { errorMessage } from '@/api/http'
 import { cn } from '@/lib/cn'
 import { DASH, fmt, isNum } from '@/lib/format'
+import { useDebounced } from '@/lib/use-debounced'
 import { AlphaActionsMenu, AstInspector, OpenInBrain, RecheckButton } from '@/screens/pool/shared'
 import {
   Badge,
   Button,
   ErrorNotice,
+  Input,
   Metric,
   Notice,
   Page,
@@ -230,6 +232,22 @@ function PerformancePanel({
 }) {
   const [shown, setShown] = useState<ChartView>('pnl')
   const book = view.alpha.inSample?.bookSize ?? 20_000_000
+  const alphaId = view.alpha.alphaId
+
+  // Cost is opt-in: at 0 bps the page is exactly what BRAIN reports, and nothing is fetched.
+  const [costText, setCostText] = useState('0')
+  const costBps = useDebounced(Math.min(100, Math.max(0, Number(costText) || 0)), 400)
+  const cost = useQuery({
+    queryKey: ['alpha', alphaId, 'after-cost', costBps],
+    queryFn: () => api.afterCost(alphaId, costBps),
+    enabled: costBps > 0 && shown === 'pnl',
+    staleTime: 10 * 60 * 1000,
+  })
+  const netCurve = useMemo(() => {
+    const d = costBps > 0 ? cost.data : undefined
+    return d ? cumulative(d.dates, d.afterCostCurve) : []
+  }, [cost.data, costBps])
+  const netStats = costBps > 0 ? (cost.data?.afterCost?.inSample ?? null) : null
 
   const series = useMemo(() => {
     const pnl = cumulative(view.dates, view.pnl)
@@ -270,6 +288,22 @@ function PerformancePanel({
       description={`${fmt.int(series.pnl.length)} trading days, ${fmt.date(series.pnl[0]?.date)} to ${fmt.date(series.pnl.at(-1)?.date)}`}
       actions={
         <>
+          {shown === 'pnl' && (
+            <label className="flex items-center gap-2 text-body text-ink-muted">
+              Cost
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                step={0.5}
+                aria-label="Trading cost in basis points"
+                value={costText}
+                onChange={(e) => setCostText(e.target.value)}
+                className="w-20"
+              />
+              bps
+            </label>
+          )}
           <Segmented label="Chart" items={VIEWS} value={shown} onChange={setShown} />
           {refresh}
         </>
@@ -291,41 +325,63 @@ function PerformancePanel({
           value={below === null ? DASH : fmt.pct(below, 0)}
         />
       </div>
+      {costBps > 0 && (cost.isPending || cost.isError || cost.data?.problem) && (
+        <Notice tone={cost.isError || cost.data?.problem ? 'warn' : 'info'}>
+          {cost.isError
+            ? errorMessage(cost.error)
+            : (cost.data?.problem ??
+              `Working out the after-cost PnL of ${alphaId}. Its daily turnover downloads the first time.`)}
+        </Notice>
+      )}
       <AlphaChart
         view={shown}
         pnl={series.pnl}
         constrained={series.constrained}
+        net={netCurve}
         underwater={series.underwater}
         sharpe={series.sharpe}
         cutoff={cutoff}
         testStart={view.testStart}
         label={`${VIEWS.find((v) => v.value === shown)?.label} of ${view.alpha.alphaId}`}
       />
-      {shown === 'pnl' && (series.constrained.length > 1 || view.testStart !== null) && (
-        <p className="flex flex-wrap items-center gap-4 text-body-compact text-ink-subtle">
-          {view.testStart === null ? (
-            <span className="flex items-center gap-1.5">
-              <span className="h-0.5 w-4 bg-ink" aria-hidden /> PnL
-            </span>
-          ) : (
-            <>
+      {shown === 'pnl' &&
+        (series.constrained.length > 1 || view.testStart !== null || netCurve.length > 1) && (
+          <p className="flex flex-wrap items-center gap-4 text-body-compact text-ink-subtle">
+            {view.testStart === null ? (
               <span className="flex items-center gap-1.5">
-                <span className="h-0.5 w-4 bg-ink-subtle" aria-hidden /> Train
+                <span className="h-0.5 w-4 bg-ink" aria-hidden /> PnL
               </span>
+            ) : (
+              <>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-0.5 w-4 bg-ink-subtle" aria-hidden /> Train
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-0.5 w-4 bg-ink" aria-hidden /> Test, from{' '}
+                  <span className="num">{fmt.date(view.testStart)}</span>
+                </span>
+              </>
+            )}
+            {series.constrained.length > 1 && (
               <span className="flex items-center gap-1.5">
-                <span className="h-0.5 w-4 bg-ink" aria-hidden /> Test, from{' '}
-                <span className="num">{fmt.date(view.testStart)}</span>
+                <span className="w-4 border-t border-dashed border-ink-tertiary" aria-hidden />{' '}
+                Investability constrained
               </span>
-            </>
-          )}
-          {series.constrained.length > 1 && (
-            <span className="flex items-center gap-1.5">
-              <span className="w-4 border-t border-dashed border-ink-tertiary" aria-hidden />{' '}
-              Investability constrained
-            </span>
-          )}
-        </p>
-      )}
+            )}
+            {netCurve.length > 1 && (
+              <span className="flex items-center gap-1.5">
+                <span className="h-0.5 w-4 bg-status-warning" aria-hidden /> After {costBps} bps
+                {netStats?.sharpe != null && (
+                  <>
+                    {' '}
+                    · Sharpe <span className="num">{fmt.ratio(netStats.sharpe)}</span> from{' '}
+                    <span className="num">{fmt.ratio(view.alpha.inSample?.sharpe)}</span>
+                  </>
+                )}
+              </span>
+            )}
+          </p>
+        )}
       {shown === 'underwater' && series.episodes.length > 0 && (
         <table className="w-full text-body">
           <thead>

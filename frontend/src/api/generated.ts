@@ -47,6 +47,36 @@ export interface paths {
         patch: operations["update_properties_api_alphas__alpha_id__patch"];
         trace?: never;
     };
+    "/api/alphas/{alpha_id}/after-cost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * After Cost
+         * @description This Alpha's PnL, gross and after a trading cost of ``costBps`` on every dollar traded.
+         *
+         *     The cost is charged per day against *that day's* turnover and the statistics are then
+         *     computed from the resulting series — never the gross mean with an average cost subtracted.
+         *     The two differ: turnover is not constant, so a cost changes the volatility of the series
+         *     and not only its mean, and a Sharpe taken from ``mean - c * turnover`` over the gross
+         *     standard deviation flatters a high-turnover Alpha.
+         *
+         *     It is the Portfolio page's own arithmetic over a book of one, so an Alpha reads the same
+         *     on both screens. Its daily turnover is downloaded the first time, since the cost of a day
+         *     cannot be known without it.
+         */
+        get: operations["after_cost_api_alphas__alpha_id__after_cost_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/alphas/{alpha_id}/check": {
         parameters: {
             query?: never;
@@ -3268,6 +3298,8 @@ export interface components {
             /** Missing */
             missing: string[];
             periods: components["schemas"]["Periods"] | null;
+            /** Problem */
+            problem?: string | null;
             stats: components["schemas"]["Windows"] | null;
             /** Teststart */
             testStart: string | null;
@@ -4579,6 +4611,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AlphaInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    after_cost_api_alphas__alpha_id__after_cost_get: {
+        parameters: {
+            query?: {
+                costBps?: number;
+            };
+            header?: never;
+            path: {
+                alpha_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioResult"];
                 };
             };
             /** @description Validation Error */

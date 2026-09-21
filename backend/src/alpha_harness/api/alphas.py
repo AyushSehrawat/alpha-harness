@@ -8,6 +8,7 @@ exists. Correlations are slow, rate-limited jobs, so their answers are kept in
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Annotated, Any, Literal
@@ -21,8 +22,10 @@ from ..db.models import BrainCache, SimulationRecord, Study, Trial, TrialState, 
 from ..labs.fastexpr import ParseError, data_fields, operator_count, operator_names, parse
 from ..labs.params import TASK_SAMPLERS
 from ..schemas import Out
+from ..tools import portfolio
 from ..vault.yields import PLATFORM_ALPHA_URL, Verdict, checks_of, verdict
 from .deps import State
+from .portfolio import PortfolioResult
 
 router = APIRouter(prefix="/api/alphas", tags=["alphas"])
 
@@ -428,6 +431,39 @@ async def page(alpha_id: str, state: State, refresh: Refresh = False) -> AlphaVi
         lineage=await _lineage(state, alpha_id),
         fetched_at=_iso(fetched),
         problems=problems,
+    )
+
+
+@router.get("/{alpha_id}/after-cost")
+async def after_cost(
+    alpha_id: str,
+    state: State,
+    cost_bps: Annotated[float, Query(alias="costBps", ge=0, le=100)] = 2.0,
+) -> PortfolioResult:
+    """This Alpha's PnL, gross and after a trading cost of ``costBps`` on every dollar traded.
+
+    The cost is charged per day against *that day's* turnover and the statistics are then
+    computed from the resulting series — never the gross mean with an average cost subtracted.
+    The two differ: turnover is not constant, so a cost changes the volatility of the series
+    and not only its mean, and a Sharpe taken from ``mean - c * turnover`` over the gross
+    standard deviation flatters a high-turnover Alpha.
+
+    It is the Portfolio page's own arithmetic over a book of one, so an Alpha reads the same
+    on both screens. Its daily turnover is downloaded the first time, since the cost of a day
+    cannot be known without it.
+    """
+    problem: str | None = None
+    if await state.alphas.lacking_series([alpha_id]):
+        try:
+            await state.backfill.fetch_returns(alpha_id)
+        # Reported rather than raised: the panel says why it is empty instead of vanishing.
+        except Exception as exc:  # noqa: BLE001
+            problem = f"Could not download the daily turnover: {exc}"
+    series = await state.alphas.series([alpha_id])
+    meta = await state.alphas.by_ids([alpha_id])
+    found = await asyncio.to_thread(portfolio.compute, series, meta, [alpha_id], cost_bps)
+    return PortfolioResult.model_validate(
+        found | {"missing": [] if series else [alpha_id], "problem": problem}
     )
 
 

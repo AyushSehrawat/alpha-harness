@@ -26,6 +26,7 @@ export function AlphaChart({
   view,
   pnl,
   constrained,
+  net,
   underwater,
   sharpe,
   cutoff,
@@ -35,6 +36,8 @@ export function AlphaChart({
   view: ChartView
   pnl: Point[]
   constrained: Point[]
+  /** Cumulative PnL after the chosen trading cost; empty when no cost is set. */
+  net: Point[]
   underwater: Point[]
   sharpe: Point[]
   /** The Sharpe a submission needs, drawn across the rolling view. */
@@ -107,6 +110,19 @@ export function AlphaChart({
           })
           .setData(at(constrained))
       }
+      if (net.length > 1) {
+        // Its own dates, not the gross line's: this series comes from the stored daily PnL,
+        // which carries the closing days BRAIN counts but exports in no recordset.
+        chart
+          .addSeries(LineSeries, {
+            color: color('color-status-warning'),
+            lineWidth: 1,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            title: 'After cost',
+          })
+          .setData(at(net))
+      }
       const ink = color('color-ink')
       const trained = color('color-ink-subtle')
       const series = chart.addSeries(LineSeries, {
@@ -170,7 +186,7 @@ export function AlphaChart({
     }
     chart.timeScale().fitContent()
     return () => chart.remove()
-  }, [view, pnl, constrained, underwater, sharpe, cutoff, testStart])
+  }, [view, pnl, constrained, net, underwater, sharpe, cutoff, testStart])
 
   return <div ref={element} role="img" aria-label={label} className="h-80 w-full min-w-0" />
 }
