@@ -16,3 +16,7 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 *.tsbuildinfo
+
+# Local research record and harness state (see CLAUDE.md).
+/.cache/
+/.data/
