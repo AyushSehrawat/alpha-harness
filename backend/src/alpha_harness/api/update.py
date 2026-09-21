@@ -2,24 +2,14 @@
 
 from __future__ import annotations
 
-import asyncio
-import signal
-from typing import Any
-
-import structlog
 from fastapi import APIRouter, BackgroundTasks, Request
 
 from .. import updates
 from ..schemas import Out
 from .deps import refuse
-
-log = structlog.get_logger(__name__)
+from .shutdown import stop_server
 
 router = APIRouter(prefix="/api/update", tags=["update"])
-
-#: Only when no server handle was published — a reload-mode dev server. Long enough for the
-#: response to have left, short enough that the user is not left waiting on it.
-GOODBYE_SECONDS = 0.5
 
 
 class UpdateStatus(Out):
@@ -89,23 +79,5 @@ async def apply(request: Request, background: BackgroundTasks) -> UpdateStarted:
     except RuntimeError as exc:
         raise refuse(409, "no_launcher", str(exc)) from exc
 
-    background.add_task(_stop, getattr(request.app.state, "server", None))
+    background.add_task(stop_server, getattr(request.app.state, "server", None))
     return UpdateStarted(version=release.version, restarting=True)
-
-
-async def _stop(server: Any) -> None:
-    """Close the app once this response has been flushed to the socket.
-
-    A background task runs after the body is written, so there is no race with the browser
-    and no arbitrary delay to tune. ``should_exit`` is uvicorn's own graceful path: it
-    unwinds the lifespan, which is what closes DuckDB and SQLite.
-
-    Without a server handle — ``uvicorn --reload`` in development — SIGINT reaches the same
-    handler. Stopping the loop outright would skip the lifespan and leave both stores open,
-    so that is deliberately not a fallback here.
-    """
-    if server is not None:
-        server.should_exit = True
-        return
-    log.warning("update.no_server_handle")
-    asyncio.get_running_loop().call_later(GOODBYE_SECONDS, signal.raise_signal, signal.SIGINT)

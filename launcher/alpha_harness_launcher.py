@@ -10,6 +10,10 @@ running process's extension modules open, so an install that replaces ``duckdb``
 app fails half-way. Here the app writes the version it wants and exits; the install happens
 with nothing running; then the app starts again.
 
+It is also the only part of Alpha Harness a user can point at. The app itself is a server
+with no window, so the launcher holds an icon in the notification area for as long as it is
+up, and Quit there is what closes the app rather than killing it.
+
 Deliberately standard library only: it is frozen separately from the app and must keep
 working when the venv it manages does not.
 """
@@ -23,8 +27,12 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.request
 import webbrowser
 from pathlib import Path
+from typing import Literal, NamedTuple
+
+import tray
 
 #: Written in by the release workflow; the version a fresh machine installs.
 BUILD_VERSION = "0.0.0"
@@ -37,6 +45,7 @@ ERROR_FILE = "update-error.json"
 ACTIVE_FILE = "active-slot.txt"
 LOCK_FILE = "running.lock"
 LOG_FILE = "launcher.log"
+ICON_FILE = "mark.ico"
 #: Where the app serves; kept in step with ``alpha_harness.__main__``.
 APP_PORT = 8000
 
@@ -50,6 +59,19 @@ INSTALL_TIMEOUT = 1800
 #: An app that exits faster than this, right after an update, never came up at all. A real
 #: session outlives it even if the user closes the browser immediately.
 BOOT_SECONDS = 20.0
+#: How long a graceful close is given before the app is killed instead. It has to unwind the
+#: lifespan, which is what closes DuckDB and SQLite.
+CLOSE_SECONDS = 20.0
+#: The ask itself. An app too wedged to answer this is one to kill, not to wait on.
+ASK_SECONDS = 3.0
+
+
+class Exit(NamedTuple):
+    """How the app ended, and what the user asked for if they were the one who ended it."""
+
+    code: int
+    #: Empty when the app closed on its own, which is what tells a crash from a Quit.
+    asked: Literal["", "restart", "quit"]
 
 
 def home() -> Path:
@@ -117,16 +139,16 @@ def claim(root: Path) -> bool:
     return True
 
 
-def bundled_uv() -> Path:
-    """``uv.exe`` as PyInstaller unpacked it, or beside this script when run from source."""
+def bundled(name: str) -> Path:
+    """A file PyInstaller unpacked with us, or beside this script when run from source."""
     base = getattr(sys, "_MEIPASS", None)
-    return Path(base or Path(__file__).parent) / "uv.exe"
+    return Path(base or Path(__file__).parent) / name
 
 
 def ensure_uv(root: Path) -> Path:
     """Copy the bundled uv out once, so an install is not reading from a temporary folder."""
     target = root / "uv.exe"
-    source = bundled_uv()
+    source = bundled("uv.exe")
     if source.exists() and (not target.exists() or source.stat().st_size != target.stat().st_size):
         target.write_bytes(source.read_bytes())
     return target
@@ -255,21 +277,87 @@ def install(root: Path, uv: Path, slot: str, version: str, wheel: str | None = N
     say(root, f"installed {version} into slot {slot}")
 
 
-def start(root: Path, slot: str) -> int:
-    """Run the app to completion, with its output in the log. Returns its exit code."""
+def ask_to_close(root: Path) -> bool:
+    """Ask the app to close itself, and say whether it took the request.
+
+    Killing it would skip the lifespan that closes DuckDB and SQLite, and there is no signal
+    that reaches a windowless child: a request on the port it already serves is the way in.
+    """
+    ask = urllib.request.Request(
+        f"http://127.0.0.1:{APP_PORT}/api/shutdown",
+        data=b"",
+        # The app refuses writes without it, which is what stops another page in the
+        # browser from driving this API.
+        headers={"X-Harness-Client": "1"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(ask, timeout=ASK_SECONDS) as answer:  # noqa: S310
+            say(root, f"asked the app to close -> {answer.status}")
+    except OSError as exc:
+        say(root, f"the app would not take a close request: {exc}")
+        return False
+    return True
+
+
+def watch(root: Path, app: subprocess.Popen[bytes], tip: str) -> str:
+    """Hold the tray icon open until the app stops, and report what the user asked for.
+
+    Only what they asked for: whether a restart happens is the main loop's call, not this
+    function's, and an app that stopped on its own asked for nothing.
+    """
+    asked = ""
+    deadline: float | None = None
+
+    def close(intent: str) -> None:
+        nonlocal asked, deadline
+        asked = intent
+        if ask_to_close(root):
+            deadline = time.monotonic() + CLOSE_SECONDS
+        else:
+            app.terminate()
+
+    def finished() -> bool:
+        if app.poll() is not None:
+            return True
+        if deadline is not None and time.monotonic() > deadline:
+            say(root, "the app did not close in time; killing it")
+            app.terminate()
+        return False
+
+    menu = [
+        ("Open Alpha Harness", lambda: webbrowser.open(f"http://127.0.0.1:{APP_PORT}")),
+        ("Restart", lambda: close("restart")),
+        ("Quit", lambda: close("quit")),
+    ]
+    try:
+        with tray.Tray(bundled(ICON_FILE), tip, menu) as icon:
+            icon.pump(finished)
+    except Exception as exc:  # noqa: BLE001 - an icon is a nicety; the app is not
+        say(root, f"no tray icon: {exc}")
+        app.wait()
+    return asked
+
+
+def start(root: Path, slot: str) -> Exit:
+    """Run the app to completion, with its output in the log and an icon in the tray."""
     environment = os.environ | {HOME_VARIABLE: str(root), "PYTHONUTF8": "1"}
     say(root, f"starting app from slot {slot}")
     with (root / LOG_FILE).open("a", encoding="utf-8") as handle:
-        done = subprocess.run(  # noqa: S603 - the venv this launcher built
+        app = subprocess.Popen(  # noqa: S603 - the venv this launcher built
             [str(venv_pythonw(root, slot)), "-m", "alpha_harness"],
             stdout=handle,
             stderr=subprocess.STDOUT,
             env=environment,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            check=False,
         )
-    say(root, f"app exited {done.returncode}")
-    return done.returncode
+        # Closing the Popen waits for the app, so the log handle outlives everything it
+        # might still write.
+        with app:
+            asked = watch(root, app, f"Alpha Harness {slot_version(root, slot) or BUILD_VERSION}")
+    code = app.returncode or 0
+    say(root, f"app exited {code}" + (f", {asked} asked for" if asked else ""))
+    return Exit(code, asked)
 
 
 def main() -> int:
@@ -321,25 +409,31 @@ def main() -> int:
         (root / REQUEST_FILE).unlink(missing_ok=True)
 
         began = time.monotonic()
-        code = start(root, slot)
+        ended = start(root, slot)
         alive = time.monotonic() - began
+        # A Quit that had to kill the app also exits non-zero, and that is not a version
+        # failing to start.
+        crashed = ended.code != 0 and not ended.asked and alive < BOOT_SECONDS
 
         # A version that dies on the way up cannot report anything itself: no server, no page,
         # no button. The launcher is the only thing left that can notice, so it does.
-        if swapped and code != 0 and alive < BOOT_SECONDS and slot_version(root, other(slot)):
+        if swapped and crashed and slot_version(root, other(slot)):
             previous = other(slot)
-            say(root, f"{wanted} exited {code} after {alive:.1f}s; reverting to {previous}")
+            say(root, f"{wanted} exited {ended.code} after {alive:.1f}s; reverting to {previous}")
             activate(root, previous)
             note_failure(
                 root,
                 wanted,
-                f"It closed straight after starting (exit code {code}). "
+                f"It closed straight after starting (exit code {ended.code}). "
                 f"Alpha Harness went back to {slot_version(root, previous)}.",
             )
             continue
 
+        if ended.asked == "restart":
+            say(root, "restart asked for from the tray")
+            continue
         if requested(root) is None:
-            return code
+            return ended.code
         say(root, "update requested; restarting")
 
 

@@ -182,8 +182,14 @@ jobs:
         run: |
           # Semicolon: PyInstaller splits SOURCE from DEST on os.pathsep, and this runs on
           # Windows however bash-shaped the step looks.
+          # --paths: tray.py sits beside the entry script, and naming its folder is what
+          # keeps a missing import from shipping as an exe that dies with no window to
+          # say so.
           pyinstaller --onefile --windowed --name AlphaHarness \
             --add-binary "launcher/uv.exe;." \
+            --add-data "launcher/mark.ico;." \
+            --icon launcher/mark.ico \
+            --paths launcher \
             --distpath dist \
             launcher/alpha_harness_launcher.py
 

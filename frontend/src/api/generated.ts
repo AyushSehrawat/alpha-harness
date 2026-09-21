@@ -1221,6 +1221,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shutdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close
+         * @description Close the app. Nothing here decides whether it comes back — the launcher does that.
+         */
+        post: operations["close_api_shutdown_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/simulations/active": {
         parameters: {
             query?: never;
@@ -3920,6 +3940,11 @@ export interface components {
             /** Warnings */
             warnings: string[];
         };
+        /** ShutdownStarted */
+        ShutdownStarted: {
+            /** Stopping */
+            stopping: boolean;
+        };
         /**
          * SimStatus
          * @description Local lifecycle. Distinct from the platform's own status.
@@ -6455,6 +6480,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_api_shutdown_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShutdownStarted"];
                 };
             };
         };
