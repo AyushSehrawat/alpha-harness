@@ -31,7 +31,8 @@ from typing import Any
 
 #: Written in by the release workflow; the version a fresh machine installs.
 BUILD_VERSION = "0.0.0"
-REPOSITORY = "residual-lab/alpha-harness"
+#: This fork publishes its own releases; the wheel and the update check both read it.
+REPOSITORY = "AyushSehrawat/alpha-harness"
 DOWNLOAD = f"https://github.com/{REPOSITORY}/releases/download"
 
 HOME_VARIABLE = "ALPHA_HARNESS_HOME"

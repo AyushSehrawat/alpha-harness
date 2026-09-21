@@ -34,7 +34,8 @@ from packaging.version import InvalidVersion, Version
 log = structlog.get_logger(__name__)
 
 PACKAGE = "alpha-harness"
-REPOSITORY = "residual-lab/alpha-harness"
+#: This fork publishes its own releases; the wheel and the update check both read it.
+REPOSITORY = "AyushSehrawat/alpha-harness"
 RELEASES_URL = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 
 #: Set by the launcher to the directory it owns: ``uv.exe``, the Python it fetched, the venv.
