@@ -24,6 +24,7 @@ const NAMES: Record<string, string> = {
   PROD_CORRELATION: 'Production Correlation',
   POWER_POOL_CORRELATION: 'Power Pool Correlation',
   CLUSTER_TEST: 'Cluster Sharpe',
+  QUICK_MODE: 'Quick mode',
   DATA_DIVERSITY: 'Data diversity',
   REGULAR_SUBMISSION: 'Submission quota',
   D0_SUBMISSION: 'Delay 0 quota',

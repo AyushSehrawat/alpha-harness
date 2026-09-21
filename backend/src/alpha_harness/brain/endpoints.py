@@ -258,6 +258,12 @@ class BrainEndpoints:
         raw = r.body if isinstance(r.body, list) else (r.body or {}).get("results", [])
         return [DataCategory.model_validate(c) for c in raw]
 
+    #: A market's fields are ~40 MB, and eight scopes download at once. Measured on a first
+    #: sync: every USA delay-1 scope (76,519 fields) blew the client's ordinary 30 s read and
+    #: only landed on its fourth attempt — ``fetch_s=114`` for a transfer that succeeds in
+    #: about forty. The retries were pure waste; this is the ceiling they were hitting.
+    ALL_FIELDS_TIMEOUT = 120.0
+
     async def list_data_fields_all(self, **params: Any) -> list[BulkField]:
         """Every field in one scope, in one request.
 
@@ -266,7 +272,12 @@ class BrainEndpoints:
         standard library's parser spent that on the event loop.
         """
         r = await self.client.request_retrying(
-            "GET", "/data-fields", version=V_FIELDS_ALL, params=params, raw=True
+            "GET",
+            "/data-fields",
+            version=V_FIELDS_ALL,
+            params=params,
+            raw=True,
+            read_timeout=self.ALL_FIELDS_TIMEOUT,
         )
         if not isinstance(r.body, bytes):
             return []

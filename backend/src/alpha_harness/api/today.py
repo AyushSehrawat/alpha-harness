@@ -142,6 +142,12 @@ FEATURES: dict[str, tuple[str, str]] = {
         "You can see how your pool of alphas would perform before and after adding an alpha.",
     ),
     "REFERRAL": ("Referrals", "You can invite other people to the platform."),
+    # BRAIN's own words for the matching check: "Quick mode alphas cannot be submitted."
+    "QUICK_MODE": (
+        "Quick mode",
+        "You can run a faster, rougher simulation to try an idea out. Alphas made this way "
+        "cannot be submitted.",
+    ),
     "WORKDAY": ("Workday", "You can sign in to BRAIN through Workday."),
 }
 
