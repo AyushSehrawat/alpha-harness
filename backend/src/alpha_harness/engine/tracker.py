@@ -63,6 +63,14 @@ DEFAULT_POLL_SECONDS = 3.0
 PENDING_GRACE_SECONDS = 120.0
 #: How often stale sends are looked for after startup.
 SWEEP_SECONDS = 60.0
+#: How long one simulation may answer every read with a server error, while BRAIN answers
+#: everything else, before it is given up on. BRAIN occasionally loses one: it then can
+#: neither report on it nor cancel it, and waiting on it holds a core for good.
+LOST_AFTER_SECONDS = 30 * 60
+LOST = (
+    "BRAIN answered every read of this simulation with a server error for 30 minutes while "
+    "answering everything else, so it is no longer waited on and its core is free again."
+)
 
 
 class SimulationTracker:
@@ -91,6 +99,8 @@ class SimulationTracker:
         # record_id -> monotonic time of the next allowed poll. In memory only; losing
         # it just means we poll once immediately after a restart.
         self._next_poll: dict[int, float] = {}
+        #: record_id -> monotonic time its reads started failing with a server error.
+        self._failing_since: dict[int, float] = {}
         #: Adopted rows this process is sending right now. Their ``created_at`` is when
         #: they were queued, so without this the stale-send check could orphan one
         #: mid-request.
@@ -476,6 +486,14 @@ class SimulationTracker:
             return False
 
         outcome = read_outcome(response.status, response.body, response.retry_after)
+        server_error = outcome.kind == "retry" and response.status >= 500
+        if not server_error:
+            self._failing_since.pop(record.id, None)
+        elif await self._lost(record.id):
+            log.warning("sim.lost", record_id=record.id, platform_id=record.platform_id)
+            return await self._apply_terminal(
+                record, Outcome("gone", SimStatus.ERROR, message=LOST)
+            )
         match outcome.kind:
             case "unauthorized":
                 log.warning("sim.poll_unauthenticated", record_id=record.id)
@@ -505,6 +523,23 @@ class SimulationTracker:
                 return await self._hand_over_children(record, outcome)
             case "gone" | "finished":
                 return await self._apply_terminal(record, outcome)
+
+    async def _lost(self, record_id: int) -> bool:
+        """Whether BRAIN has lost this simulation rather than being down altogether.
+
+        Only once its reads have failed for :data:`LOST_AFTER_SECONDS`, and only if BRAIN
+        still answers the cheapest read there is: in an outage every simulation fails the
+        same way, and giving up on them would throw away results that are still coming.
+        """
+        now = time.monotonic()
+        if now - self._failing_since.setdefault(record_id, now) < LOST_AFTER_SECONDS:
+            return False
+        try:
+            await self.endpoints.get_auth()
+        except BrainError:
+            return False
+        self._failing_since.pop(record_id, None)
+        return True
 
     async def _hand_over_children(self, record: SimulationRecord, outcome: Outcome) -> bool:
         """A multi-simulation has dispatched its children: the engine reads them from here.
