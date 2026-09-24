@@ -11,7 +11,7 @@ import {
   createContext,
   type DragEvent as ReactDragEvent,
   type ReactNode,
-  useContext,
+  use,
   useEffect,
   useRef,
   useState,
@@ -152,7 +152,7 @@ interface Ctx {
 const BuilderContext = createContext<Ctx | null>(null)
 
 function useBuilder(): Ctx {
-  const ctx = useContext(BuilderContext)
+  const ctx = use(BuilderContext)
   if (!ctx) throw new Error('Template blocks must render inside the builder.')
   return ctx
 }
@@ -251,7 +251,7 @@ export function Builder({
   }
 
   return (
-    <BuilderContext.Provider value={ctx}>
+    <BuilderContext value={ctx}>
       <Panel
         title="Blocks"
         actions={
@@ -291,7 +291,7 @@ export function Builder({
           )}
         </div>
       </Panel>
-    </BuilderContext.Provider>
+    </BuilderContext>
   )
 }
 
