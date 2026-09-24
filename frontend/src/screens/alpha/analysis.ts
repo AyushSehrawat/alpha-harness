@@ -56,13 +56,14 @@ export const isCeiling = (name: string) =>
 
 /**
  * Checks listed as notes rather than blockers. Display only, but it has to be the *same* set
- * as `IGNORED_CHECKS` in `vault/yields.py`, which decides `alpha.verdict`: a check excused
- * there and shown failing here reads as "ready" beside a red row, and one gating there but
- * excused here reads as "blocked" with nothing to point at.
+ * as `IGNORED_CHECKS` plus `QUOTA_CHECKS` in `vault/yields.py`, which decide `alpha.verdict`:
+ * a check excused there and shown failing here reads as "ready" beside a red row, and one
+ * gating there but excused here reads as "blocked" with nothing to point at.
  */
 const INFORMATIONAL = new Set([
   'PROD_CORRELATION',
   'REGULAR_SUBMISSION',
+  'D0_SUBMISSION',
   'MATCHES_COMPETITION',
   'MATCHES_PYRAMID',
   'MATCHES_THEMES',

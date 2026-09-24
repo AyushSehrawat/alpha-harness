@@ -15,6 +15,7 @@ from datetime import timedelta
 import structlog
 from sqlalchemy import select
 
+from . import updates
 from .account import AuthService, PlatformMetadata
 from .brain.client import BrainClient
 from .brain.endpoints import BrainEndpoints
@@ -25,7 +26,7 @@ from .catalog.sync import CatalogSync, serialise_run
 from .config import BRAIN_API_BASE, Settings
 from .db.duck import Catalog
 from .db.models import SimStatus, SimulationRecord, utcnow
-from .db.sqlite import Database
+from .db.sqlite import Database, snapshot
 from .engine.slots import BatchEngine
 from .engine.tracker import SimulationTracker
 from .labs.study import Optimizer
@@ -124,8 +125,11 @@ class AppState:
     # -- lifecycle -------------------------------------------------------
 
     async def startup(self) -> None:
-        await self.db.create_all()
+        # The catalog's single-writer lock is this process's claim on the data directory, so it
+        # comes first: a second backend must fail here, before it backs up or migrates.
         await self.catalog.open()
+        await asyncio.to_thread(snapshot, self.settings.sqlite_path, updates.current())
+        await self.db.create_all()
         # A catalog downloaded before the search index existed still has none; building it
         # costs a couple of seconds and nothing else depends on it, so it must not block.
         if not await search.ready(self.catalog):
@@ -188,7 +192,7 @@ class AppState:
             ids = (
                 await session.scalars(
                     select(SimulationRecord.alpha_id).where(
-                        SimulationRecord.status == SimStatus.COMPLETE,
+                        SimulationRecord.status.in_([SimStatus.COMPLETE, SimStatus.WARNING]),
                         SimulationRecord.alpha_id.is_not(None),
                         SimulationRecord.finished_at >= since,
                     )

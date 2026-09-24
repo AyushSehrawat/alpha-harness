@@ -81,7 +81,7 @@ class Hub:
         return len(self._clients)
 
 
-#: Topic names shared with the frontend. Keep in sync with frontend/src/lib/realtime.ts.
+#: Topic names shared with the frontend. Keep in sync with ``Topic`` in frontend/src/lib/ws.ts.
 TOPIC_SIMULATIONS = "simulations"
 TOPIC_SYNC = "sync"
 TOPIC_SESSION = "session"

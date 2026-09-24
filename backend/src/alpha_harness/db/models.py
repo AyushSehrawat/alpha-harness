@@ -134,7 +134,9 @@ class SimStatus(StrEnum):
         return self not in ACTIVE
 
 
-#: Not yet finished; every other status is final and no transition may leave it.
+#: Not yet finished; every other status is final. One exception: a cancel BRAIN refuses
+#: moves ``CANCELLED`` back to ``RUNNING``, because the simulation is in fact still running
+#: and still has to be polled (:func:`.engine.lifecycle.cancel_after_lost_race`).
 #: ``ORPHANED`` belongs here because an identical request arriving while its outcome is
 #: reconciled must share the row rather than pay for a second run.
 ACTIVE = (SimStatus.QUEUED, SimStatus.PENDING, SimStatus.RUNNING, SimStatus.ORPHANED)

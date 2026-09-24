@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from itertools import accumulate
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -425,8 +426,7 @@ def stability_order(rows: list[dict[str, Any]]) -> list[str]:
 def lab_of(task: str) -> str:
     """Which lab a task name belongs to.
 
-    Task names carry their lab and their day (``sweep-2026-09-08-1``), because quotas and
-    progress are keyed by task while yield is judged per lab across many days.
+    Task names are the lab and then a stamp (``settings-sampler-260922115019156223``),
+    because quotas and progress are keyed by task while yield is judged per lab across days.
     """
-    head = task.split("-", 1)[0]
-    return head or "manual"
+    return re.split(r"-\d", task, maxsplit=1)[0] or "manual"

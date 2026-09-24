@@ -23,6 +23,7 @@ from .params import (
     CORRELATION_BREAKER,
     GA_SAMPLER,
     POWER_POOL_SAMPLER,
+    SEARCH_SAMPLER,
     SETTINGS_SAMPLER,
     TASK_SAMPLERS,
     TEMPLATE_SAMPLER,
@@ -43,6 +44,9 @@ log = structlog.get_logger(__name__)
 
 #: Marks a trial answered from an Alpha already simulated: it spent no quota.
 FREE = "Matched an Alpha already simulated; no quota spent."
+
+#: Parks a written simulation outside every count until it is sent.
+PENDING_SEND = "Waiting for cores."
 
 
 def queued(outcome: dict[str, Any]) -> dict[str, Any]:
@@ -236,6 +240,23 @@ async def advance(optimizer: Optimizer, study_id: int) -> int:
             await optimizer.set_status(study_id, StudyStatus.COMPLETE)
         return 0
     want = to_ask(row.batch_size, int(in_flight or 0), row.max_trials - committed)
+    if row.sampler in (GA_SAMPLER, SEARCH_SAMPLER, TEMPLATE_SAMPLER) and want > 0:
+        # Only after a crash between writing a round's trials and sending them (`_queue`).
+        async with optimizer.db.session() as session:
+            leftovers = (
+                await session.scalars(
+                    select(Trial)
+                    .where(
+                        Trial.study_id == row.id,
+                        Trial.state == TrialState.PRUNED,
+                        Trial.message == PENDING_SEND,
+                    )
+                    .order_by(Trial.number)
+                    .limit(want)
+                )
+            ).all()
+            if leftovers:
+                return await send_parked(optimizer, row, leftovers)
     if row.sampler == GA_SAMPLER:
         return await _breed(optimizer, row, last_number, want, waiting)
     if row.sampler == POWER_POOL_SAMPLER:
@@ -326,22 +347,20 @@ async def _queue(
     last_number: int,
     picked: list[tuple[Any, dict[str, Any], SimulationRequest]],
 ) -> int:
-    """Send new points to the engine and record them as trials.
+    """Record new points as trials, then send them to the engine.
 
     A point asked of the search carries its live trial, told when its simulation returns; a
     bred child carries none.
     """
     from optuna.distributions import distribution_to_json
 
-    result = await optimizer.engine.enqueue([request for _, _, request in picked], task=row.task)
-    outcomes = result.get("outcomes", [])
     live = optimizer.open_trials.setdefault(row.id, {})
     number = last_number
     async with optimizer.db.session() as session:
-        for index, (asked, params, request) in enumerate(picked):
+        batch: list[Trial] = []
+        for asked, params, request in picked:
             number += 1
-            outcome = outcomes[index] if index < len(outcomes) else {}
-            session.add(
+            batch.append(
                 Trial(
                     study_id=row.id,
                     number=number,
@@ -353,12 +372,18 @@ async def _queue(
                     expression=request.regular,
                     settings=request.settings.model_dump(by_alias=True, exclude_none=True),
                     generation=params.get("generation"),
-                    **queued(outcome),
+                    state=TrialState.PRUNED,
+                    message=PENDING_SEND,
                 )
             )
             if asked is not None:
                 live[number] = asked
+        session.add_all(batch)
+        # Written before anything is queued: queued work outlives a crash and spends quota,
+        # so it must never exist without the trial that scores it. Resending a parked trial
+        # is free, because the engine shares a row with an identical queued request.
         await session.commit()
+        await send_parked(optimizer, row, batch)
 
     log.info("tasks.asked", study_id=row.id, trials=len(picked), task=row.task)
     return len(picked)
