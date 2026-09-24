@@ -14,8 +14,6 @@ So the legal universes depend on the region, which depends on the instrument typ
 their account cannot run.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 

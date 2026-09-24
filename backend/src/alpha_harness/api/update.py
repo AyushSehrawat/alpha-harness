@@ -1,7 +1,5 @@
 """Checking for a new version and handing the install to the launcher."""
 
-from __future__ import annotations
-
 import asyncio
 import signal
 from typing import Any

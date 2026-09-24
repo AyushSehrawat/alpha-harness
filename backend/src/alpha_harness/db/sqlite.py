@@ -14,8 +14,6 @@ with no default: nothing writes that one, so it blocks every insert into its tab
 is dropped because nothing reads it either.
 """
 
-from __future__ import annotations
-
 import re
 import sqlite3
 from contextlib import asynccontextmanager, closing

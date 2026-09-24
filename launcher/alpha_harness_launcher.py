@@ -14,8 +14,6 @@ Deliberately standard library only: it is frozen separately from the app and mus
 working when the venv it manages does not.
 """
 
-from __future__ import annotations
-
 import ctypes
 import json
 import os

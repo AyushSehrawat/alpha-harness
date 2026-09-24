@@ -15,8 +15,6 @@ deliberately conservative: a budget guessed high spends someone's day before any
 it was wrong, and a budget guessed low only costs a rotation.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from ..schemas import Out

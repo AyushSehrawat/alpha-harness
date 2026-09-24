@@ -4,8 +4,6 @@ Built on the OpenAI SDK, which also streams. Google's endpoint is its OpenAI-com
 one, which holds the answer to a JSON schema and takes a reasoning effort.
 """
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING, Any
 

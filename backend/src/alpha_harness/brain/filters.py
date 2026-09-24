@@ -16,8 +16,6 @@ matches nothing; and the v4 list refuses a bare date, so a date becomes the star
 day in ``America/New_York`` (``docs/wqb-api/03-conventions.md``, "Date filters").
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal

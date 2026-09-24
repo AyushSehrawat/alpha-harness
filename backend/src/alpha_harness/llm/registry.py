@@ -18,8 +18,6 @@ for free-tier quotas, so the numbers below are transcribed and *will* drift; cor
 is a one-line edit here.
 """
 
-from __future__ import annotations
-
 from typing import Literal
 
 import structlog

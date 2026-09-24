@@ -14,8 +14,6 @@ everything scored so far, kept apart by the correlation of their daily PnL over 
 years.
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 import math

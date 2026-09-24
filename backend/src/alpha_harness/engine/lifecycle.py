@@ -11,8 +11,6 @@ though the alpha already exists — so the full request is hashed to recognise a
 (``docs/wqb-documentation/brain-api/how-can-you-avoid-duplicate-simulations.md``).
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
 from dataclasses import dataclass

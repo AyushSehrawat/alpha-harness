@@ -7,8 +7,6 @@ Deliberately permissive — ``extra="allow"`` everywhere — because the platfor
 over time and unknown ones should survive into the UI rather than be silently dropped.
 """
 
-from __future__ import annotations
-
 from datetime import date, datetime
 from enum import StrEnum
 from typing import Any, Self

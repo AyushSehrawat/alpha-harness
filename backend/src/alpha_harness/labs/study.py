@@ -18,8 +18,6 @@ Restart safety: the Optuna study is rebuilt from the trial rows, never persisted
 separately, so trials stay joinable to the simulations that produced them.
 """
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 from datetime import timedelta

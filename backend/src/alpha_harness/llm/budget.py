@@ -16,8 +16,6 @@ Accounting is deliberately conservative — a request is refused here when it *w
 a limit — because a local refusal can name another key or model, and a ``429`` cannot.
 """
 
-from __future__ import annotations
-
 import time
 from collections import deque
 from dataclasses import dataclass, field

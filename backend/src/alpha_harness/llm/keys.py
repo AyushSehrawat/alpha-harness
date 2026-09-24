@@ -8,8 +8,6 @@ Keys are sealed with the same sealer as the BRAIN password and never leave the b
 UI only receives a masked hint.
 """
 
-from __future__ import annotations
-
 import hashlib
 from typing import TYPE_CHECKING, Any
 

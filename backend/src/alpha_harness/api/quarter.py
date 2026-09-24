@@ -6,8 +6,6 @@ pyramids formulated in it. The third, combined Alpha performance, is BRAIN's own
 and is not guessed at.
 """
 
-from __future__ import annotations
-
 import asyncio
 from datetime import UTC, datetime, timedelta
 

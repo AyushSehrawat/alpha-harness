@@ -11,8 +11,6 @@ delay fragments into small batches while one varying universe and expression pac
 perfectly. Pure by design — no database, no HTTP.
 """
 
-from __future__ import annotations
-
 import itertools
 from collections import defaultdict
 from dataclasses import dataclass

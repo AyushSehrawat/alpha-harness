@@ -4,8 +4,6 @@ Nothing here runs a search: a task is added not started and is run from Tasks. A
 reads the local store and downloads daily PnL where it is missing; it never simulates.
 """
 
-from __future__ import annotations
-
 import asyncio
 import time
 from typing import TYPE_CHECKING, Any, Literal

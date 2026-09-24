@@ -12,8 +12,6 @@ Two behaviours in here are the reason this file exists, and both break naive cli
 Versioning lives in the ``Accept`` header (``application/json;version=N``), not the path.
 """
 
-from __future__ import annotations
-
 import asyncio
 import math
 import random

@@ -5,8 +5,6 @@ tracker, the sync engine — and wires them together. Routers reach it through a
 dependency, so nothing constructs its own connections and shutdown is deterministic.
 """
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import time

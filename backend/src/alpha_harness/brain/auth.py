@@ -10,8 +10,6 @@ The captcha is required on sign-in (``docs/wqb-api/02-authentication.md``), and 
 failures lock the account, so sign-in is never attempted speculatively.
 """
 
-from __future__ import annotations
-
 import asyncio
 import time
 from dataclasses import dataclass, field

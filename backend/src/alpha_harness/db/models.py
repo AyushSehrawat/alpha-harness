@@ -12,8 +12,6 @@ the ability to cancel a running simulation, which is the exact failure this proj
 exists to prevent.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any

@@ -6,8 +6,6 @@ BRAIN counts them), given a random universe, neutralization and decay, and kept 
 waiting trial until cores are free. Calls never happen inside ``advance``.
 """
 
-from __future__ import annotations
-
 import json
 import random
 import time

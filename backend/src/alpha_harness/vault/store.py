@@ -8,8 +8,6 @@ if the series are kept. The stored series rebuilds the platform's own figures (s
 :mod:`.metrics`), so a mix can be judged before a simulation is spent on it.
 """
 
-from __future__ import annotations
-
 import itertools
 import json
 from datetime import date, datetime

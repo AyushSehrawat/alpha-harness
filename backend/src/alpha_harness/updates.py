@@ -15,8 +15,6 @@ there is nothing to hand the request to. Updates then report themselves unavaila
 why, rather than failing at the last step.
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 import os

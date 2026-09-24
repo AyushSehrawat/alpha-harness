@@ -10,8 +10,6 @@ of a platform id, and :class:`~alpha_harness.engine.tracker.SimulationTracker` p
 parent until it lists its children.
 """
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import dataclasses

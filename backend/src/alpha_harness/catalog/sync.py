@@ -10,8 +10,6 @@ scope in one response (``docs/wqb-api/endpoints/data.md``). Datasets are paged;
 categories are one request and do not depend on the scope.
 """
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import json

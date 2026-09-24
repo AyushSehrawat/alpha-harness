@@ -12,8 +12,6 @@ Only *finished* simulations count in the denominator. Counting queued work would
 every lab look worse the moment it was funded.
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 import re

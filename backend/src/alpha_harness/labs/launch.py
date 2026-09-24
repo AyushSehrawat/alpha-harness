@@ -8,8 +8,6 @@ Nothing here raises HTTP errors: a problem is returned as a sentence, and the ro
 decides whether it blocks.
 """
 
-from __future__ import annotations
-
 import random
 from typing import TYPE_CHECKING, Any
 
