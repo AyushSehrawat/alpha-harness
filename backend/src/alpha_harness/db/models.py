@@ -243,6 +243,19 @@ class TaskQuota(Base):
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow, onupdate=utcnow)
 
 
+class Preference(Base):
+    """One choice made in Settings, by name. A missing row means the default.
+
+    A row per choice rather than a column each: a choice added later needs no migration, and
+    a build older than it simply never reads the row.
+    """
+
+    __tablename__ = "preference"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[Any] = mapped_column(JSON)
+
+
 class QuotaSnapshot(Base):
     """A reading of ``X-RateLimit-*`` from a simulation POST.
 

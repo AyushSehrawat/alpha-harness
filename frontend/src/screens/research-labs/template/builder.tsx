@@ -404,7 +404,7 @@ function Floating({
       {trigger}
       <Popover.Portal>
         <Popover.Positioner sideOffset={6} align="start" className="z-50">
-          <Popover.Popup className="max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-hairline-strong bg-surface-3 outline-none">
+          <Popover.Popup className="max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-hairline-strong bg-surface-3 shadow-float outline-none">
             {children}
           </Popover.Popup>
         </Popover.Positioner>

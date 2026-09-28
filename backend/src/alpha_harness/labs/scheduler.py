@@ -15,6 +15,7 @@ from sqlalchemy import String, func, or_, select, type_coerce
 from ..brain.schemas import SimulationRequest, SimulationSettings
 from ..brain.settings_schema import validate_settings
 from ..db.models import SimStatus, SimulationRecord, Study, StudyStatus, Trial, TrialState, utcnow
+from ..engine.packer import MAX_BATCH
 from . import ga, search, template
 from .objectives import StudyNotFoundError
 from .params import (
@@ -128,6 +129,10 @@ async def start_waiting(optimizer: Optimizer) -> int:
         for task_id in started:
             await optimizer.engine.set_quota(by_id[task_id].task, cores_of(by_id[task_id]))
             await optimizer.set_status(task_id, StudyStatus.RUNNING)
+            used += cores_of(by_id[task_id])
+        optimizer.lendable_cores = (
+            max(0, optimizer.engine.slots - used) if optimizer.engine.lend_idle_cores else 0
+        )
     if started:
         log.info("tasks.started", tasks=started)
     return len(started)
@@ -237,7 +242,10 @@ async def advance(optimizer: Optimizer, study_id: int) -> int:
         if not waiting:
             await optimizer.set_status(study_id, StudyStatus.COMPLETE)
         return 0
-    want = to_ask(row.batch_size, int(in_flight or 0), row.max_trials - committed)
+    # Borrowed cores only run what is queued, so a task queues for them too; the engine then
+    # hands them to whichever tasks have work beyond their own cores.
+    room = row.batch_size + optimizer.lendable_cores * MAX_BATCH
+    want = to_ask(room, int(in_flight or 0), row.max_trials - committed)
     if row.sampler in (GA_SAMPLER, SEARCH_SAMPLER, TEMPLATE_SAMPLER) and want > 0:
         # Only after a crash between writing a round's trials and sending them (`_queue`).
         async with optimizer.db.session() as session:

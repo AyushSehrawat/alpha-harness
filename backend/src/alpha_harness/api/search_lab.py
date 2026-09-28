@@ -109,7 +109,7 @@ async def preview(body: SearchRequest, state: State) -> Preview:
 
 @router.post("/tasks", status_code=201)
 async def add_task(body: SearchRequest, state: State) -> AddedTask:
-    """Add the search to Tasks, queued to run."""
+    """Add the search to Tasks, not started. Running it is the Tasks route's job."""
     if body.simulations < 1:
         raise refuse(422, "no_simulations", NO_SIMULATIONS)
     plan = await _plan(body, state)
@@ -129,10 +129,8 @@ async def add_task(body: SearchRequest, state: State) -> AddedTask:
             cores=body.cores,
             dataset_ids=body.dataset_ids,
             n_startup_trials=startup_trials(len(plan["space"]["fields"]), size, per_round),
-            queued_at=now.isoformat(),
         ),
         simulations=size,
         batch_size=per_round,
         template_source="# Search Lab writes its own expressions; there is no template.",
-        run=True,
     )

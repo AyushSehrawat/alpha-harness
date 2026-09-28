@@ -100,7 +100,7 @@ function metricColumns<T>(
 function useSyncTask() {
   const live = useLive((s) => s.tasks)
   const polled = useQuery({
-    queryKey: ['portfolio', 'tasks'],
+    queryKey: ['background-tasks'],
     queryFn: tasks.list,
     enabled: live == null,
     refetchInterval: 3000,

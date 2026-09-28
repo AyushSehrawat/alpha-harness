@@ -98,6 +98,9 @@ class Optimizer:
         #: number. Lost on restart, which :func:`_tell_many` handles by replaying.
         self.open_trials: dict[int, dict[int, Any]] = {}
         self._locks: dict[int, asyncio.Lock] = {}
+        #: Cores no running task holds, while Settings lends them; 0 otherwise. Set each
+        #: tick by :func:`scheduler.start_waiting`, read by :func:`scheduler.advance`.
+        self.lendable_cores = 0
         self._task: asyncio.Task[None] | None = None
 
     # -- lifecycle -------------------------------------------------------

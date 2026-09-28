@@ -1,15 +1,15 @@
 /** LLM Power Pool Lab: an LLM writes Power Pool Alphas for your datasets while the task runs in Tasks. */
 
 import { useQuery } from '@tanstack/react-query'
-import { PlusIcon } from 'lucide-react'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { fmt } from '@/lib/format'
+import { useCores } from '@/lib/preferences'
 import { DEFAULT_SCOPE, useScopeOptions } from '@/lib/scope'
+import { AddTaskButtons, useAddTask } from '@/screens/research-labs/add-task'
 import {
   MAX_SIMULATIONS,
   simulationsValid,
-  useAddTask,
   useLabMarket,
   useLabPreview,
 } from '@/screens/research-labs/lab-task'
@@ -21,7 +21,6 @@ import {
   SimulationsSetting,
 } from '@/screens/research-labs/task-settings'
 import {
-  Button,
   Disclosure,
   ErrorNotice,
   Fieldset,
@@ -38,7 +37,8 @@ interface PowerPoolDraft {
   delay: number
   universe: string
   datasetIds: string[]
-  cores: number
+  /** `null` until chosen in the form: until then Settings' default applies. */
+  cores: number | null
   simulations: number | null
   model: string | null
   /** Empty keeps every neutralization BRAIN offers for the market. */
@@ -52,12 +52,17 @@ const useDraft = create<PowerPoolDraft>()(
       delay: DEFAULT_SCOPE.delay,
       universe: DEFAULT_SCOPE.universe,
       datasetIds: [],
-      cores: 4,
+      cores: null,
       simulations: null,
       model: null,
       neutralizations: [],
     }),
-    { name: 'alpha-harness-power-pool-lab' },
+    {
+      name: 'alpha-harness-power-pool-lab',
+      // Version 1 leaves cores unchosen, so Settings' default for new tasks applies.
+      version: 1,
+      migrate: (stored) => ({ ...(stored as PowerPoolDraft), cores: null }),
+    },
   ),
 )
 
@@ -86,6 +91,7 @@ export function PowerPoolLabScreen() {
     universe: draft.universe,
   })
 
+  const cores = useCores(draft.cores)
   const body: PowerPoolRequest = {
     region: draft.region,
     delay: draft.delay,
@@ -93,7 +99,7 @@ export function PowerPoolLabScreen() {
     dataset_ids: draft.datasetIds,
     model,
     neutralizations: draft.neutralizations,
-    cores: draft.cores,
+    cores,
     simulations: draft.simulations ?? 0,
   }
   const { preview, current } = useLabPreview('power-pool-lab', body, powerPoolLab.preview)
@@ -110,17 +116,7 @@ export function PowerPoolLabScreen() {
     <Page>
       <PageHeader
         title="LLM Power Pool Lab"
-        actions={
-          <Button
-            variant="primary"
-            disabled={!ready}
-            loading={add.isPending}
-            onClick={() => add.mutate()}
-          >
-            <PlusIcon />
-            Add Task
-          </Button>
-        }
+        actions={<AddTaskButtons add={add} disabled={!ready} />}
       />
       {options.isError && <ErrorNotice error={options.error} title="Could not load the models" />}
       {options.isSuccess && models.length === 0 && (
@@ -146,7 +142,7 @@ export function PowerPoolLabScreen() {
                 onChange={(v) => set({ model: v })}
               />
             </Fieldset>
-            <CoresSetting value={draft.cores} onChange={(cores) => set({ cores })} />
+            <CoresSetting value={cores} onChange={(next) => set({ cores: next })} />
             <SimulationsSetting
               value={draft.simulations}
               max={maxSimulations}

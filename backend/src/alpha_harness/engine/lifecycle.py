@@ -4,7 +4,8 @@ Both :class:`~alpha_harness.engine.tracker.SimulationTracker` (one simulation at
 and :class:`~alpha_harness.engine.slots.BatchEngine` (multi-simulations) move the same
 ``SimulationRecord`` rows through the same statuses, so what must be identical between
 them lives here: the compare-and-set that changes a status, the durable write of a
-platform id, how a finished body maps to a local outcome, and the dedup memory.
+platform id, how a finished body maps to a local outcome, the write that ends a row, and
+the dedup memory.
 
 Re-running an identical alpha consumes quota for nothing — the platform counts it even
 though the alpha already exists — so the full request is hashed to recognise a repeat
@@ -21,7 +22,7 @@ from sqlalchemy import case, update
 
 from ..brain.errors import BrainError
 from ..brain.schemas import SimulationRequest, SimulationStatus, SimulationType
-from ..db.models import DedupEntry, QuotaSnapshot, SimStatus, SimulationRecord, utcnow
+from ..db.models import ACTIVE, DedupEntry, QuotaSnapshot, SimStatus, SimulationRecord, utcnow
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -138,6 +139,38 @@ async def transition(
         .execution_options(synchronize_session=False)
     )
     return list(result.scalars().all())
+
+
+async def finish(
+    session: Any, record: SimulationRecord, outcome: Outcome, **values: Any
+) -> str | None:
+    """End an active row as ``outcome`` says. Returns its alpha id if this write ended it.
+
+    A simulation finishes the same way whether the tracker read it alone or the batch engine
+    read it as a child. ``values`` carries what only one caller knows, such as a child's
+    platform id. The alpha comes back only when this write won, so a row something else
+    ended first is never handed on twice.
+    """
+    alpha_id = outcome.alpha_id
+    won = await transition(
+        session,
+        record.id,
+        from_=ACTIVE,
+        status=outcome.status,
+        platform_status=str(outcome.platform_status) if outcome.platform_status else None,
+        alpha_id=alpha_id,
+        message=outcome.message,
+        progress=1.0 if alpha_id else record.progress,
+        finished_at=utcnow(),
+        **values,
+    )
+    if not won or alpha_id is None:
+        return None
+    # Without this, re-running an identical alpha spends daily quota to recreate something
+    # that already exists. Batch parents are excluded: their payload is the array.
+    if not record.is_batch:
+        await remember(session, record, alpha_id)
+    return alpha_id
 
 
 def new_record(

@@ -117,6 +117,15 @@ def checks_of(checks_json: str | None) -> list[dict[str, Any]]:
     return without_quota_checks([c for c in checks if isinstance(c, dict)])
 
 
+def gating_results(checks: list[dict[str, Any]]) -> set[str]:
+    """The results of the checks that decide anything: every one but :data:`IGNORED_CHECKS`."""
+    return {
+        str(c.get("result", "")).upper()
+        for c in checks
+        if str(c.get("name", "")).upper() not in IGNORED_CHECKS
+    }
+
+
 def verdict(checks: list[dict[str, Any]], simulation_mode: str | None = None) -> Verdict | None:
     """The one rule for whether an alpha can be submitted, from BRAIN's checks.
 
@@ -132,11 +141,7 @@ def verdict(checks: list[dict[str, Any]], simulation_mode: str | None = None) ->
     """
     if simulation_mode == QUICK_MODE:
         return "refused"
-    results = {
-        str(c.get("result", "")).upper()
-        for c in checks
-        if str(c.get("name", "")).upper() not in IGNORED_CHECKS
-    }
+    results = gating_results(checks)
     if not results:
         return None
     if results & REFUSING:

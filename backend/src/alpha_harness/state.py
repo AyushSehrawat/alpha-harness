@@ -13,7 +13,7 @@ from datetime import timedelta
 import structlog
 from sqlalchemy import select
 
-from . import updates
+from . import preferences, updates
 from .account import AuthService, PlatformMetadata
 from .brain.client import BrainClient
 from .brain.endpoints import BrainEndpoints
@@ -128,6 +128,7 @@ class AppState:
         await self.catalog.open()
         await asyncio.to_thread(snapshot, self.settings.sqlite_path, updates.current())
         await self.db.create_all()
+        preferences.apply(self, await preferences.load(self.db))
         # A catalog downloaded before the search index existed still has none; building it
         # costs a couple of seconds and nothing else depends on it, so it must not block.
         if not await search.ready(self.catalog):

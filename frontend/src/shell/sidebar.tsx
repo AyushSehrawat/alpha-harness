@@ -5,7 +5,13 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useRouterState } from '@tanstack/react-router'
-import { ChevronsUpDownIcon, ExternalLinkIcon, LogOutIcon, PanelLeftIcon } from 'lucide-react'
+import {
+  ChevronsUpDownIcon,
+  ExternalLinkIcon,
+  LogOutIcon,
+  PanelLeftIcon,
+  SettingsIcon,
+} from 'lucide-react'
 import { Fragment, useEffect } from 'react'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
@@ -17,6 +23,7 @@ import { useRefetchOn } from '@/lib/ws'
 import { Button, Kbd } from '@/ui/kit'
 import { Menu, Tooltip } from '@/ui/overlay'
 import { NAV } from './nav'
+import { SETTINGS_SHORTCUT, useSettings } from './settings'
 import { UpdateBadge, VersionBadge } from './update'
 
 /** Areas a new consultant has to open once: Data (download fields) and AI (add a key). They flash until visited. */
@@ -252,6 +259,12 @@ export function Sidebar({
             </button>
           }
           items={[
+            {
+              label: 'Settings',
+              icon: <SettingsIcon />,
+              shortcut: SETTINGS_SHORTCUT,
+              onClick: () => useSettings.getState().setOpen(true),
+            },
             {
               label: 'Open the BRAIN Platform',
               icon: <ExternalLinkIcon />,
