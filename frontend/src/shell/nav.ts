@@ -20,6 +20,7 @@ export const POOL_TABS = [
 export const AI_TABS = [
   { tab: 'providers', label: 'Providers' },
   { tab: 'keys', label: 'Keys' },
+  { tab: 'models', label: 'Models' },
   { tab: 'budget', label: 'Budget' },
   { tab: 'prompts', label: 'Prompts' },
   { tab: 'assistant', label: 'Assistant' },

@@ -1053,15 +1053,20 @@ export interface paths {
         };
         /**
          * Models
-         * @description The model roster with each one's daily budget.
-         *
-         *     Requests-per-day is the limit that ends a session, so it travels with every entry
-         *     rather than sitting in a help page.
+         * @description The models set up, each with the limits its user gave it.
          */
         get: operations["models_api_llm_models_get"];
-        put?: never;
+        /**
+         * Set Model
+         * @description Set a model up with its limits, or change the limits of one already set up.
+         */
+        put: operations["set_model_api_llm_models_put"];
         post?: never;
-        delete?: never;
+        /**
+         * Remove Model
+         * @description Query parameters, not a path: model ids carry slashes.
+         */
+        delete: operations["remove_model_api_llm_models_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1103,6 +1108,26 @@ export interface paths {
          *     payment details would turn a convenience into a purchase decision.
          */
         get: operations["providers_api_llm_providers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/llm/providers/{provider}/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Offered Models
+         * @description What a provider's Key can reach, asked live. Costs no generation request.
+         */
+        get: operations["offered_models_api_llm_providers__provider__models_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2245,10 +2270,8 @@ export interface components {
             keys: number;
             /** Requestsremainingtoday */
             requestsRemainingToday: number;
-            /** Resetsat */
-            resetsAt: string;
             /** Resetsinseconds */
-            resetsInSeconds: number;
+            resetsInSeconds: number | null;
         };
         /** AutoSeeds */
         AutoSeeds: {
@@ -2983,8 +3006,6 @@ export interface components {
             keyId: number;
             /** Models */
             models: number;
-            /** Newmodels */
-            newModels: string[];
             /**
              * Ok
              * @constant
@@ -2993,18 +3014,20 @@ export interface components {
         };
         /** LLMBudget */
         LLMBudget: {
-            /** Bulk */
-            bulk: boolean;
-            /** Label */
-            label: string;
+            /** Allowedtoday */
+            allowedToday: number;
             /** Model */
             model: string;
-            /** Perkeyperday */
-            perKeyPerDay: number;
             /** Provider */
             provider: string;
+            /** Ref */
+            ref: string;
             /** Remainingtoday */
             remainingToday: number;
+            /** Resetinseconds */
+            resetInSeconds: number;
+            /** Resettimezone */
+            resetTimezone: string;
         };
         /** LLMKey */
         LLMKey: {
@@ -3037,10 +3060,8 @@ export interface components {
             enabled: number;
             /** Keys */
             keys: components["schemas"]["LLMKey"][];
-            /** Quotatimezone */
-            quotaTimezone: string;
             /** Resetinseconds */
-            resetInSeconds: number;
+            resetInSeconds: number | null;
         };
         /** LLMKeyUsage */
         LLMKeyUsage: {
@@ -3059,7 +3080,8 @@ export interface components {
         };
         /** LLMModels */
         LLMModels: {
-            defaults: components["schemas"]["ModelDefaults"];
+            /** Defaultprompttokens */
+            defaultPromptTokens: number;
             /** Models */
             models: components["schemas"]["ModelInfo"][];
             /** Note */
@@ -3076,8 +3098,8 @@ export interface components {
             keyHint: string;
             /** Label */
             label: string;
-            /** Models */
-            models: components["schemas"]["ModelInfo"][];
+            /** Limitsurl */
+            limitsUrl: string;
             /** Onboardingurl */
             onboardingUrl: string;
             /** Paid */
@@ -3260,53 +3282,32 @@ export interface components {
             /** Universe */
             universe: string;
         };
-        /** ModelDefaults */
-        ModelDefaults: {
-            /** Chat */
-            chat: string;
-            /** Deep */
-            deep: string;
-        };
         /**
          * ModelInfo
-         * @description One model and its free-tier budget, as the screens show it.
+         * @description One model and the limits its user gave it. Each key gets these limits in full.
          */
         ModelInfo: {
-            /**
-             * Bulk
-             * @default false
-             */
-            bulk: boolean;
-            /**
-             * Discovered
-             * @default false
-             */
-            discovered: boolean;
             /** Id */
             id: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "text" | "embedding" | "open";
-            /** Label */
-            label: string;
-            /**
-             * Provider
-             * @default google
-             */
+            /** Maxprompttokens */
+            maxPromptTokens?: number | null;
+            /** Provider */
             provider: string;
-            /**
-             * Recommended
-             * @default false
-             */
-            recommended: boolean;
+            /** Ref */
+            readonly ref: string;
+            /** Resettimezone */
+            resetTimezone: string;
             /** Rpd */
             rpd: number;
             /** Rpm */
             rpm: number;
-            /** Tpm */
-            tpm: number;
+        };
+        /** OfferedModels */
+        OfferedModels: {
+            /** Error */
+            error: string | null;
+            /** Models */
+            models: string[];
         };
         /** OperatorsRead */
         OperatorsRead: {
@@ -3564,14 +3565,12 @@ export interface components {
         PowerPoolModel: {
             /** Id */
             id: string;
-            /** Label */
-            label: string;
             /** Provider */
             provider: string;
+            /** Ref */
+            ref: string;
             /** Remainingtoday */
             remainingToday: number;
-            /** Tpm */
-            tpm: number;
         };
         /** PowerPoolOptions */
         PowerPoolOptions: {
@@ -4100,6 +4099,30 @@ export interface components {
             userId: string | null;
             /** Verificationurl */
             verificationUrl: string | null;
+        };
+        /** SetModel */
+        SetModel: {
+            /**
+             * Max Prompt Tokens
+             * @description Most tokens one Power Pool prompt may use; null for default
+             */
+            max_prompt_tokens?: number | null;
+            /**
+             * Model
+             * @description The provider's model id
+             */
+            model: string;
+            /** Provider */
+            provider: string;
+            /** Requests Per Day */
+            requests_per_day: number;
+            /** Requests Per Minute */
+            requests_per_minute: number;
+            /**
+             * Reset Timezone
+             * @description IANA time zone whose midnight starts a new day
+             */
+            reset_timezone: string;
         };
         /** SettingsField */
         SettingsField: {
@@ -6474,6 +6497,69 @@ export interface operations {
             };
         };
     };
+    set_model_api_llm_models_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetModel"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_model_api_llm_models_delete: {
+        parameters: {
+            query: {
+                provider: string;
+                model: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_prompts_api_llm_prompts_get: {
         parameters: {
             query?: never;
@@ -6510,6 +6596,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LLMProviders"];
+                };
+            };
+        };
+    };
+    offered_models_api_llm_providers__provider__models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfferedModels"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -541,10 +541,9 @@ class ApiKey(Base):
 class KeyUsage(Base):
     """Local budget ledger per (key, model, quota day).
 
-    Google exposes no remaining-quota endpoint, so RPM/TPM/RPD have to be tracked
-    client-side or rotation is guesswork. The day is **America/Los_Angeles**, where AI
-    Studio's quota clock lives; counting UTC days would hand a key's daily budget back
-    hours early and produce 429s that look like the platform misbehaving.
+    Providers expose no remaining-quota endpoint, so requests per minute and per day are
+    tracked client-side or rotation is guesswork. ``day`` is the date in the model's own
+    reset time zone, since providers do not agree on when a day starts.
     """
 
     __tablename__ = "key_usage"
@@ -558,6 +557,34 @@ class KeyUsage(Base):
     last_request_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
     __table_args__ = (UniqueConstraint("api_key_id", "model", "day", name="uq_key_model_day"),)
+
+
+class LLMModel(Base):
+    """A model the user has set up, with the limits they read off their provider.
+
+    Nothing about models is built in: which ones exist and what each allows change faster
+    than any table here could keep up. Limits apply per key, so a second account doubles
+    them. A model id is unique per provider: two providers may serve the same one.
+    """
+
+    __tablename__ = "llm_model"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32))
+    model: Mapped[str] = mapped_column(String(200))
+    requests_per_minute: Mapped[int] = mapped_column(Integer)
+    requests_per_day: Mapped[int] = mapped_column(Integer)
+    #: The IANA time zone whose midnight starts the provider's new day for this model.
+    reset_timezone: Mapped[str] = mapped_column(
+        String(64), default="America/Los_Angeles", server_default="America/Los_Angeles"
+    )
+    #: The most tokens one Power Pool prompt may spend on this model, or null for the default.
+    max_prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+    # An index rather than a table constraint, so a database that already has the table
+    # gains it on startup: SQLite cannot add a constraint to a live table.
+    __table_args__ = (Index("uq_llm_model_provider_model", "provider", "model", unique=True),)
 
 
 class Submission(Base):

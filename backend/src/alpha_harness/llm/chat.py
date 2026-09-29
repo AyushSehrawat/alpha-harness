@@ -6,10 +6,10 @@ input; a field list is the output; the labs take it from there.
 
 Two controls:
 
-* **Model.** The daily budget varies twenty-five-fold across the roster, and running out
+* **Model.** One of those the user set up, each with its own daily budget; running out
   is the thing that ends a session. See :mod:`.registry`.
-* **Reasoning.** Thinking tokens are billed against the same per-minute budget as the
-  answer, so "think harder" is a real cost rather than a free upgrade.
+* **Reasoning.** Thinking tokens are billed like the answer's, so "think harder" is a real
+  cost rather than a free upgrade.
 
 History lives in the database so a conversation survives a restart.
 """
@@ -193,7 +193,7 @@ class ChatService:
         answer = await self.llm.generate(
             system=ASSISTANT,
             user=prompt,
-            model_id=model,
+            model_ref=model,
             temperature=0.6,
             response_schema=FIELD_PICK_SCHEMA,
             thinking=REASONING[reasoning]["level"],

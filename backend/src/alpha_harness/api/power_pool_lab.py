@@ -22,7 +22,6 @@ from ..labs.launch import (
 )
 from ..labs.params import POWER_POOL_SAMPLER, PowerPoolParams
 from ..llm.prompts import POWER_POOL_LAB
-from ..llm.registry import DEFAULT_MODEL
 from ..llm.text import estimate_tokens
 from ..schemas import Out
 from .deps import State, refuse
@@ -44,9 +43,9 @@ class PowerPoolRequest(BaseModel):
 
 class PowerPoolModel(Out):
     id: str
-    label: str
+    #: How the request names it: provider and id together.
+    ref: str
     provider: str
-    tpm: int
     remaining_today: int
 
 
@@ -73,34 +72,30 @@ class PowerPoolPreview(Out):
 
 
 async def _models(state: Any) -> list[dict[str, Any]]:
-    """Models whose provider has an enabled Key, richest daily budget first."""
+    """Set-up models whose provider has an enabled Key, most requests left today first."""
     keys = [k for k in await state.llm.keys.list_keys() if k.enabled]
     out = []
     for m in state.llm.registry.all():
         mine = [k for k in keys if k.provider == m.provider]
-        if m.kind == "embedding" or not mine:
+        if not mine:
             continue
-        left = sum([(await state.llm.ledger.headroom(k.id, m)).daily_remaining for k in mine])
-        out.append(
-            {
-                "id": m.id,
-                "label": m.label,
-                "provider": m.provider,
-                "tpm": m.tpm,
-                "remainingToday": left,
-            }
+        left = sum(
+            [
+                (await state.llm.ledger.headroom(k.id, m, cap=k.daily_limit)).daily_remaining
+                for k in mine
+            ]
         )
-    return out
+        out.append({"id": m.id, "ref": m.ref, "provider": m.provider, "remainingToday": left})
+    return sorted(out, key=lambda m: -m["remainingToday"])
 
 
 @router.get("/options")
 async def options(state: State) -> PowerPoolOptions:
     models = await _models(state)
-    ids = [m["id"] for m in models]
     return PowerPoolOptions.model_validate(
         {
             "models": models,
-            "defaultModel": DEFAULT_MODEL if DEFAULT_MODEL in ids else (ids[0] if ids else None),
+            "defaultModel": models[0]["ref"] if models else None,
             "maxSimulations": search.MAX_SIMULATIONS,
         }
     )
@@ -114,11 +109,15 @@ async def _plan(body: PowerPoolRequest, state: Any) -> dict[str, Any]:
         problems.append(OPERATORS_UNREAD)
     if not body.dataset_ids:
         problems.append("Choose at least one dataset.")
-    models = {m["id"]: m for m in await _models(state)}
-    model_id = body.model or DEFAULT_MODEL
-    info = state.llm.registry.get(model_id)
-    if model_id not in models or info is None:
-        problems.append(f"{model_id} can't run: no enabled Key for it. Add one in LLM Integration.")
+    models = {m["ref"]: m for m in await _models(state)}
+    ref = body.model or next(iter(models), "")
+    info = state.llm.registry.get(ref)
+    if not ref:
+        problems.append("No model is set up. Set one up under LLM Integration › Models.")
+    elif info is None:
+        problems.append(f"{ref} is not set up. Set it up under LLM Integration › Models.")
+    elif info.ref not in models:
+        problems.append(f"{info.id} can't run: no enabled Key for it. Add one in LLM Integration.")
 
     schema = await state.metadata.cached_settings_schema()
     legal = legal_choices(schema, body.region, body.delay)
@@ -158,7 +157,7 @@ async def _plan(body: PowerPoolRequest, state: Any) -> dict[str, Any]:
             fields += len(ctx.fields)
             if prompt is None and info is not None and operators:
                 user, shown = power_pool.user_prompt(
-                    ctx, operators, run, "None yet.", 0, power_pool.budget_for(info)
+                    ctx, operators, run, "None yet.", 0, info.prompt_tokens
                 )
                 prompt = {
                     "system": POWER_POOL_LAB,
@@ -167,15 +166,16 @@ async def _plan(body: PowerPoolRequest, state: Any) -> dict[str, Any]:
                 }
                 if ctx.fields and shown < min(10, len(ctx.fields)):
                     problems.append(
-                        f"The prompt does not fit {info.label}'s tokens per minute. "
-                        "Choose another model."
+                        f"Only {shown} of {dataset}'s fields fit in {info.id}'s "
+                        f"{info.prompt_tokens:,} prompt tokens, too few to work with. Raise its "
+                        "Max Prompt Tokens, or choose another dataset."
                     )
     calls = -(-body.simulations // power_pool.PER_CALL)
-    if model_id in models and calls > models[model_id]["remainingToday"]:
+    left = models[info.ref]["remainingToday"] if info and info.ref in models else None
+    if info is not None and left is not None and calls > left:
         warnings.append(
-            f"About {calls:,} LLM calls; {model_id} has "
-            f"{models[model_id]['remainingToday']:,} left today, "
-            "so the task waits for the reset at midnight Pacific."
+            f"About {calls:,} LLM calls; {info.id} has {left:,} left today, "
+            f"so the task waits for its day to reset at midnight, {info.reset_timezone}."
         )
     return {
         "fields": fields,
@@ -185,7 +185,7 @@ async def _plan(body: PowerPoolRequest, state: Any) -> dict[str, Any]:
         "prompt": prompt,
         "problems": problems,
         "warnings": warnings,
-        "model": model_id,
+        "model": info.ref if info else ref,
     }
 
 

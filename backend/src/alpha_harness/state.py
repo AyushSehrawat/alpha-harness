@@ -102,7 +102,7 @@ class AppState:
         )
         self.queries = CatalogQueries(self.catalog)
 
-        self.models = ModelRegistry()
+        self.models = ModelRegistry(self.db)
         self.llm = LLMService(self.db, self.sealer, self.models)
         self.chat = ChatService(self.db, self.llm, self.queries)
         self.optimizer = Optimizer(
@@ -129,6 +129,7 @@ class AppState:
         await asyncio.to_thread(snapshot, self.settings.sqlite_path, updates.current())
         await self.db.create_all()
         preferences.apply(self, await preferences.load(self.db))
+        await self.models.load()
         # A catalog downloaded before the search index existed still has none; building it
         # costs a couple of seconds and nothing else depends on it, so it must not block.
         if not await search.ready(self.catalog):

@@ -1,11 +1,13 @@
 /** LLM Power Pool Lab: an LLM writes Power Pool Alphas for your datasets while the task runs in Tasks. */
 
 import { useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { fmt } from '@/lib/format'
 import { useCores } from '@/lib/preferences'
 import { DEFAULT_SCOPE, useScopeOptions } from '@/lib/scope'
+import { useProviderLabel } from '@/screens/ai/shared'
 import { AddTaskButtons, useAddTask } from '@/screens/research-labs/add-task'
 import {
   MAX_SIMULATIONS,
@@ -21,6 +23,7 @@ import {
   SimulationsSetting,
 } from '@/screens/research-labs/task-settings'
 import {
+  Button,
   Disclosure,
   ErrorNotice,
   Fieldset,
@@ -78,8 +81,9 @@ export function PowerPoolLabScreen() {
     queryFn: powerPoolLab.options,
   })
   const models = options.data?.models ?? []
+  const providerLabel = useProviderLabel()
   const model =
-    draft.model && models.some((m) => m.id === draft.model)
+    draft.model && models.some((m) => m.ref === draft.model)
       ? draft.model
       : (options.data?.defaultModel ?? null)
 
@@ -120,7 +124,18 @@ export function PowerPoolLabScreen() {
       />
       {options.isError && <ErrorNotice error={options.error} title="Could not load the models" />}
       {options.isSuccess && models.length === 0 && (
-        <Notice tone="warn" title="Add a Key in LLM Integration to use this lab." />
+        <Notice
+          tone="warn"
+          title="This lab needs a model"
+          action={
+            <Button size="sm" render={<Link to="/ai/$tab" params={{ tab: 'models' }} />}>
+              Set up a model
+            </Button>
+          }
+        >
+          Add a Key in LLM Integration and set up a model for it, with the limits your provider
+          shows you.
+        </Notice>
       )}
       <DatasetsPanel
         ids={draft.datasetIds}
@@ -135,8 +150,8 @@ export function PowerPoolLabScreen() {
               <Select
                 label="Model"
                 items={models.map((m) => ({
-                  value: m.id,
-                  label: `${m.label} · ${fmt.int(m.remainingToday)} left today`,
+                  value: m.ref,
+                  label: `${m.id} · ${providerLabel(m.provider)} · ${fmt.int(m.remainingToday)} left today`,
                 }))}
                 value={model}
                 onChange={(v) => set({ model: v })}

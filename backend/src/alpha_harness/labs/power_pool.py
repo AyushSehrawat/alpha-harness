@@ -41,7 +41,6 @@ if TYPE_CHECKING:  # pragma: no cover
     import asyncio
 
     from ..db.duck import Catalog
-    from ..llm.registry import ModelInfo
     from .study import Optimizer
 
 log = structlog.get_logger(__name__)
@@ -287,10 +286,6 @@ def memory_text(done: list[Any], waiting: list[Any], thrown: list[Any]) -> str:
     return "\n".join(parts) or "None yet."
 
 
-def budget_for(model: ModelInfo) -> int:
-    return min(40_000, int(model.tpm * 0.6))
-
-
 #: What a model cannot infer from the market line when the region is ALL. The warning about
 #: cross-sectional comparison is BRAIN's own: one expression is translated into four
 #: markets whose currencies, market caps and face values are not on one scale.
@@ -418,7 +413,8 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
             return await _pause(
                 optimizer,
                 study_id,
-                f"{run.model} is no longer offered. Add a new task with another model.",
+                f"{run.model} is no longer set up. Set it up again under LLM Integration › "
+                "Models, then resume.",
             )
         if not operators:
             return await _pause(
@@ -435,7 +431,7 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
 
         memory = await memory_of(optimizer, study_id, dataset)
         offset = int(by.get(dataset, {}).get("offset", 0))
-        user, shown = user_prompt(ctx, operators, run, memory, offset, budget_for(model))
+        user, shown = user_prompt(ctx, operators, run, memory, offset, model.prompt_tokens)
         entry: dict[str, Any] = {
             "at": utcnow().isoformat(),
             "dataset": dataset,
@@ -448,7 +444,7 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
             answer = await optimizer.llm.generate(
                 system=POWER_POOL_LAB,
                 user=user,
-                model_id=model.id,
+                model_ref=model.ref,
                 response_schema=SCHEMA,
                 temperature=1.0,
             )
