@@ -3,7 +3,7 @@
 Two behaviours in here are the reason this file exists, and both break naive clients:
 
 1. **A response carrying ``Retry-After`` means "not ready yet".** The header's presence —
-   not the status code — is the signal (``docs/wqb-api/03-conventions.md``).
+   not the status code — is the signal.
    :meth:`BrainClient.poll` re-issues the request until it is gone; recordsets,
    correlations and checks are read that way.
 2. **``POST /simulations`` answers in headers.** The id is in ``Location``; the caller
@@ -122,8 +122,8 @@ class BrainResponse:
 def _parse_retry_after(headers: httpx2.Headers) -> float | None:
     """Seconds to wait, or ``None`` when the header is absent and the result is ready.
 
-    Exactly the documented parser (``docs/wqb-api/endpoints/osmosis.md``): numeric seconds,
-    or an HTTP-date; zero, negative, a past date or anything unreadable means poll now.
+    Exactly the documented parser: numeric seconds, or an HTTP-date; zero, negative, a past
+    date or anything unreadable means poll now.
     """
     raw = headers.get("retry-after")
     if raw is None:
@@ -357,7 +357,7 @@ class BrainClient:
         return None, None
 
     def to_error(self, method: str, path: str, r: BrainResponse) -> BrainError:
-        """Map a failed response to a typed error (``docs/wqb-api/04-error-handling.md``)."""
+        """Map a failed response to a typed error."""
         where = f"{method} {path}"
         body = r.body
         detail = body.get("detail") if isinstance(body, dict) else None

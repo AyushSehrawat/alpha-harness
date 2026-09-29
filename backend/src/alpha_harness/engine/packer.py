@@ -2,8 +2,7 @@
 
 ``POST /simulations`` accepts an array of 2-10 simulation objects, but every child of one
 batch must agree on ``type``, ``instrumentType``, ``region``, ``delay`` and ``language``;
-universe, neutralization, decay, truncation and expression may differ (see
-``docs/wqb-documentation/consultant-information/multi-alpha-simulation.md``).
+universe, neutralization, decay, truncation and expression may differ.
 
 That constraint is the whole reason this module exists: throughput is not "80 at a time"
 but "8 batches of up to 10 that happen to share a 5-tuple", so a sweep varying region or
@@ -52,8 +51,8 @@ class BatchKey:
         """Concurrent cores one simulation with this key can occupy, at most.
 
         GLB counts two: BRAIN gives that region 2 of the 8 slots per simulation, so four
-        run at once (``docs/ANNOUNCEMENTS.md``, 2025-09-23). A batch is one simulation to
-        BRAIN, so its children do not multiply this.
+        run at once (BRAIN announcement, 2025-09-23). A batch is one simulation to BRAIN,
+        so its children do not multiply this.
 
         A region-agnostic one costs the sum of its own children's quota, which varies with
         the regions its fields reach; :data:`RA_SLOTS` reserves the usual three, so two run

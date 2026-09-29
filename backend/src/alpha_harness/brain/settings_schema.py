@@ -9,9 +9,8 @@ or a dependency node keyed by the field it depends on::
 
     {"choices": {"instrumentType": {"EQUITY": {"region": {"USA": [ ...universes... ]}}}}}
 
-So the legal universes depend on the region, which depends on the instrument type
-(``docs/wqb-api/endpoints/simulations.md``). Hardcoding any of it would show users options
-their account cannot run.
+So the legal universes depend on the region, which depends on the instrument type.
+Hardcoding any of it would show users options their account cannot run.
 """
 
 from typing import Any

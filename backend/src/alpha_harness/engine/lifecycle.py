@@ -8,8 +8,7 @@ platform id, how a finished body maps to a local outcome, the write that ends a 
 the dedup memory.
 
 Re-running an identical alpha consumes quota for nothing — the platform counts it even
-though the alpha already exists — so the full request is hashed to recognise a repeat
-(``docs/wqb-documentation/brain-api/how-can-you-avoid-duplicate-simulations.md``).
+though the alpha already exists — so the full request is hashed to recognise a repeat.
 """
 
 import hashlib
@@ -29,8 +28,8 @@ if TYPE_CHECKING:
     from datetime import datetime
 
 #: Most regions a region-agnostic simulation is translated into, and so the most cores and
-#: daily simulations one can cost (``docs/learn/advanced-topics/region-agnostic-alpha``:
-#: "Concurrent simulation quota: counts the sum of RA Child Alphas' concurrent quota").
+#: daily simulations one can cost ("Concurrent simulation quota: counts the sum of RA Child
+#: Alphas' concurrent quota").
 #:
 #: A ceiling rather than the figure: the expression runs on the *intersection* of the regions
 #: its fields cover, and one measured here made two children, not four. Nothing says which
@@ -39,9 +38,8 @@ if TYPE_CHECKING:
 RA_CHILDREN = 4
 
 #: What one row costs off the day's allowance. BRAIN charges a region-agnostic row per
-#: region it is translated into rather than per request
-#: (``docs/learn/advanced-topics/region-agnostic-alpha``, "Quota Management"). GLB is *not*
-#: doubled here: its rule is about concurrency, not the allowance — see :data:`SLOT_COST`.
+#: region it is translated into rather than per request. GLB is *not* doubled here: its
+#: rule is about concurrency, not the allowance — see :data:`SLOT_COST`.
 SIMULATION_COST = case(
     (SimulationRecord.sim_type == SimulationType.REGION_AGNOSTIC, RA_CHILDREN), else_=1
 )
@@ -49,14 +47,13 @@ SIMULATION_COST = case(
 #: The region BRAIN meters at double rate.
 GLB_REGION = "GLB"
 #: Concurrent slots one GLB simulation holds. "4 concurrent simulations for GLB Alphas (each
-#: simulation now takes 2 slots out of the available 8 slots)" — ``docs/ANNOUNCEMENTS.md``,
+#: simulation now takes 2 slots out of the available 8 slots)" — BRAIN announcement,
 #: 2025-09-23. A multi-simulation is one simulation to BRAIN, so a GLB batch holds two slots
 #: however many children it carries.
 GLB_SLOTS = 2
 
 #: Concurrent cores a region-agnostic simulation holds: "the sum of RA Child Alphas'
-#: concurrent quota" (``docs/learn/advanced-topics/region-agnostic-alpha``, "Quota
-#: Management"). So it is not one number — it is however many regions the expression's
+#: concurrent quota". So it is not one number — it is however many regions the expression's
 #: fields intersect, with GLB counting twice. Measured over this account's own RA Alphas:
 #: ten cost three (USA, EUR, ASI), two cost two, one cost five because it reached GLB.
 #:
@@ -313,7 +310,7 @@ class Outcome:
 def read_outcome(status_code: int, body: Any, retry_after: float | None) -> Outcome:
     """Classify a simulation read, in the order BRAIN's own client checks it.
 
-    The order is the point (``docs/wqb-api/endpoints/simulations.md``): ``{progress}``,
+    The order is the point: ``{progress}``,
     ``{children}`` and ``{detail}`` bodies carry no ``status``, and nothing here may finish
     as COMPLETE without the platform saying so or an alpha to show for it.
     """

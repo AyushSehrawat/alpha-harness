@@ -6,8 +6,8 @@ may simply not exist in EUR/delay-0. Storing one row per field *per tuple* is wh
 "which fields are in both delays" a single query later.
 
 ``GET /data-fields`` at ``version=3.0`` with all four scope parameters returns a whole
-scope in one response (``docs/wqb-api/endpoints/data.md``). Datasets are paged;
-categories are one request and do not depend on the scope.
+scope in one response. Datasets are paged; categories are one request and do not depend
+on the scope.
 """
 
 import asyncio

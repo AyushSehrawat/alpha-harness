@@ -215,8 +215,7 @@ class SimulationRecord(Base):
 class DedupEntry(Base):
     """Hash of a canonical simulation payload -> the alpha it produced.
 
-    Guards the daily quota against re-simulating something already run, as recommended
-    in ``docs/wqb-documentation/brain-api/how-can-you-avoid-duplicate-simulations.md``.
+    Guards the daily quota against re-simulating something already run, as BRAIN recommends.
     """
 
     __tablename__ = "dedup_entry"

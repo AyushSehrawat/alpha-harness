@@ -13,11 +13,11 @@ DAILY_LIMIT_DETAIL = "DAILY_SIMULATION_LIMIT_EXCEEDED"
 #: never replace it.
 INQUIRY_INCOMPLETE_DETAIL = "INQUIRY_INCOMPLETE"
 
-#: Where an inquiry is completed and closed (``docs/wqb-api/02-authentication.md``).
+#: Where an inquiry is completed and closed.
 PERSONA_PATH = "/authentication/persona"
 
 #: Fallback only, for a 401 that carried no inquiry location: it cannot resume a specific
-#: inquiry (``docs/wqb-api/02-authentication.md``, ``endpoints/misc.md``).
+#: inquiry.
 PLATFORM_SIGN_IN = "https://platform.worldquantbrain.com/sign-in"
 
 

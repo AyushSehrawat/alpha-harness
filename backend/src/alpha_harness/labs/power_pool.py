@@ -292,9 +292,8 @@ def budget_for(model: ModelInfo) -> int:
 
 
 #: What a model cannot infer from the market line when the region is ALL. The warning about
-#: cross-sectional comparison is BRAIN's own ("Tips for Success",
-#: ``docs/learn/advanced-topics/region-agnostic-alpha``): one expression is translated into
-#: four markets whose currencies, market caps and face values are not on one scale.
+#: cross-sectional comparison is BRAIN's own: one expression is translated into four
+#: markets whose currencies, market caps and face values are not on one scale.
 REGION_AGNOSTIC_BRIEF = """
 This expression runs in USA, Europe, Asia and Global at once, and the alpha is submittable
 where two or more of them hold up. Two fields combine only where their regions overlap, so

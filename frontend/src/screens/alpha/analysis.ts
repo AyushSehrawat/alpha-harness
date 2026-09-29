@@ -1,7 +1,7 @@
 /**
  * What the Alpha page works out for itself, from what BRAIN already sent: the verdict on
  * submission, Power Pool eligibility, and the PnL analysis BRAIN's page does not show.
- * Pure functions; the rules are BRAIN's own, from docs/wqb-documentation.
+ * Pure functions; the rules are BRAIN's own.
  */
 
 import type { AlphaCheck, CheckResult } from '@/api/types'
