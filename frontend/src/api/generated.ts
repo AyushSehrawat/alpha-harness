@@ -2159,6 +2159,8 @@ export interface components {
             sharpe: number | null;
             /** Shortcount */
             shortCount?: number | null;
+            /** Standingregion */
+            standingRegion?: string | null;
             /** Status */
             status: string | null;
             /** Testsharpe */

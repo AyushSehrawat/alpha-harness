@@ -138,6 +138,8 @@ class AlphaRow(Out):
     pyramids: list[str] = Field(default_factory=list)
     train_sharpe: float | None = None
     test_sharpe: float | None = None
+    #: Picking seeds only: the region a region-agnostic Alpha's figures come from.
+    standing_region: str | None = None
 
 
 class AlphaPage(Out):

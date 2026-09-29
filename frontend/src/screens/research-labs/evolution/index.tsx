@@ -11,7 +11,7 @@ import { useEffect, useMemo } from 'react'
 import { ApiError } from '@/api/http'
 import { DASH, fmt } from '@/lib/format'
 import { useCores } from '@/lib/preferences'
-import { marketKey, useScopeOptions } from '@/lib/scope'
+import { marketKey, regionLabel, useScopeOptions } from '@/lib/scope'
 import { AddTaskButtons, useAddTask } from '@/screens/research-labs/add-task'
 import {
   type EvolutionRequest,
@@ -153,14 +153,14 @@ export function EvolutionLabScreen() {
   const markets = useMemo(() => {
     const items = (options.data?.markets ?? []).map((m) => ({
       value: marketKey(m),
-      label: `${m.region} · D${m.delay} · ${m.universe} (${fmt.int(m.alphas)})`,
+      label: `${regionLabel(m.region)} · D${m.delay} · ${m.universe} (${fmt.int(m.alphas)})`,
     }))
     return items.some((m) => m.value === current)
       ? items
       : [
           {
             value: current,
-            label: `${draft.region} · D${draft.delay} · ${draft.universe}`,
+            label: `${regionLabel(draft.region)} · D${draft.delay} · ${draft.universe}`,
           },
           ...items,
         ]

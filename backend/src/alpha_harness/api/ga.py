@@ -179,7 +179,8 @@ async def _plan(body: EvolutionRequest, state: Any) -> dict[str, Any]:
         state, body.region, body.delay, body.universe, body.neutralizations
     )
     ids = list(dict.fromkeys(body.alpha_ids))
-    rows = await state.alphas.by_ids(ids)
+    # A region-agnostic parent stands as its family: the region it would be scored on.
+    rows = await state.alphas.with_families(await state.alphas.by_ids(ids))
     seeds: list[dict[str, Any]] = []
     skipped: list[dict[str, str]] = []
     for alpha_id in ids:

@@ -232,7 +232,8 @@ async def submittable(
     picks = await asyncio.to_thread(
         independent,
         order,
-        {a: series_of(days[a]) for a in order if a in days},
+        # One market here, so one region: the profile holds a single series.
+        {a: {"": pnl} for a in order if a in days and (pnl := series_of(days[a]))},
         SHORTLIST,
         SHORTLIST_MAX_CORRELATION,
     )
