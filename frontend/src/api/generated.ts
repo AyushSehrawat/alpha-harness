@@ -4301,6 +4301,19 @@ export interface components {
             /** Turnover */
             turnover: number | null;
         };
+        /** SubmittableMarket */
+        SubmittableMarket: {
+            /** Count */
+            count: number;
+            /** Delay */
+            delay: number;
+            /** Instrumenttype */
+            instrumentType: string;
+            /** Region */
+            region: string;
+            /** Universe */
+            universe: string;
+        };
         /** SubmittableResponse */
         SubmittableResponse: {
             /** Alphas */
@@ -4309,6 +4322,8 @@ export interface components {
             correlatedPruned: number;
             /** Heldoutfailed */
             heldOutFailed: number;
+            /** Markets */
+            markets: components["schemas"]["SubmittableMarket"][];
             /** Nearmisses */
             nearMisses: number;
             /** Pending */

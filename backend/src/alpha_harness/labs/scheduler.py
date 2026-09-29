@@ -10,7 +10,7 @@ import json
 from typing import TYPE_CHECKING, Any
 
 import structlog
-from sqlalchemy import String, func, or_, select, type_coerce
+from sqlalchemy import String, func, or_, select, type_coerce, update
 
 from ..brain.schemas import SimulationRequest, SimulationSettings
 from ..brain.settings_schema import validate_settings
@@ -126,10 +126,31 @@ async def start_waiting(optimizer: Optimizer) -> int:
         )
         by_id = {r.id: r for r in waiting}
         started = to_start([(r.id, cores_of(r)) for r in waiting], used, optimizer.engine.slots)
-        for task_id in started:
+        for task_id in list(started):
+            # Compare-and-set from QUEUED, so a pause or stop since the read above wins. That
+            # press holds the task's lock, which cannot be taken here: `resize_task` takes it
+            # before `scheduling`.
+            async with optimizer.db.session() as session:
+                moved = await session.scalar(
+                    update(Study)
+                    .where(Study.id == task_id, Study.status == StudyStatus.QUEUED)
+                    .values(status=StudyStatus.RUNNING)
+                    .returning(Study.id)
+                )
+                if moved is not None:
+                    # Only the first start: resuming a paused task continues the same run.
+                    await session.execute(
+                        update(Study)
+                        .where(Study.id == task_id, Study.started_at.is_(None))
+                        .values(started_at=utcnow())
+                    )
+            if moved is None:
+                started.remove(task_id)
+                continue
             await optimizer.engine.set_quota(by_id[task_id].task, cores_of(by_id[task_id]))
-            await optimizer.set_status(task_id, StudyStatus.RUNNING)
             used += cores_of(by_id[task_id])
+        if started:
+            await optimizer.notify()
         optimizer.lendable_cores = (
             max(0, optimizer.engine.slots - used) if optimizer.engine.lend_idle_cores else 0
         )

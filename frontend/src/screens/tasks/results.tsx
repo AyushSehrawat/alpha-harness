@@ -25,6 +25,7 @@ import {
   metricHeader,
   SETTING_COLUMNS,
   setting,
+  taskStatus,
 } from '@/screens/tasks/columns'
 import { Button, Empty, ErrorNotice, KV, Metric, Page, PageHeader, Panel, Skeleton } from '@/ui/kit'
 import { type Column, DataTable, type Sort } from '@/ui/table'
@@ -233,7 +234,7 @@ export function TaskResultsScreen() {
         // where this task got to.
         description={
           task
-            ? `${task.status}${task.alphaId ? ` · ${task.alphaId}` : ''}`
+            ? `${taskStatus(task).label}${task.alphaId ? ` · ${task.alphaId}` : ''}`
             : 'Every Alpha this task produced'
         }
         actions={

@@ -82,11 +82,20 @@ class SubmittableAlpha(Out):
     brain_url: str
 
 
+class SubmittableMarket(Out):
+    instrument_type: str
+    region: str
+    delay: int
+    universe: str
+    count: int
+
+
 class SubmittableResponse(Out):
     #: At most five distinct Alphas that held up in the test years, most stable first.
     shortlist: list[SubmittableAlpha]
     alphas: list[SubmittableAlpha]
     total: int
+    markets: list[SubmittableMarket]
     #: Still being judged by the platform.
     pending: int
     #: Failing one or two fixable checks.

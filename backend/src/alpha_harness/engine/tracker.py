@@ -274,13 +274,18 @@ class SimulationTracker:
             return False
         if not record.platform_id:
             # Queued or mid-submit. The send's own id write loses to this mark and then
-            # cancels the simulation on BRAIN itself.
-            await self._mark(
+            # cancels the simulation on BRAIN itself. Never from RUNNING: that means the id
+            # landed after the read above, the send already won, and only BRAIN can stop it.
+            if await self._mark(
                 record_id,
                 SimStatus.CANCELLED,
                 message="Cancelled before BRAIN returned an id.",
-            )
-            return False
+                from_=[s for s in ACTIVE if s != SimStatus.RUNNING],
+            ):
+                return False
+            record = await self.get(record_id)
+            if record is None or not record.platform_id or SimStatus(record.status).terminal:
+                return False
 
         platform_id = record.platform_id
         ok = await self.endpoints.cancel_simulation(platform_id)
@@ -620,15 +625,17 @@ class SimulationTracker:
         message: str | None = None,
         finished: bool = True,
         from_: Iterable[SimStatus] = ACTIVE,
-    ) -> None:
+    ) -> bool:
+        """Whether the row moved: the compare-and-set loses to anything that got there first."""
         values: dict[str, Any] = {"status": status}
         if message is not None:
             values["message"] = message
         if finished:
             values["finished_at"] = utcnow()
         async with self.db.session() as session:
-            await transition(session, record_id, from_=from_, **values)
+            moved = await transition(session, record_id, from_=from_, **values)
         await self.notify()
+        return bool(moved)
 
     async def notify(self) -> None:
         """Push what is pending or running now; the batch engine announces through this too."""

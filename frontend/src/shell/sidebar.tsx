@@ -16,10 +16,10 @@ import { Fragment, useEffect } from 'react'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { auth } from '@/api/core'
-import { http } from '@/api/http'
 import type { Today } from '@/api/types'
 import { cn } from '@/lib/cn'
 import { useRefetchOn } from '@/lib/ws'
+import { pool } from '@/screens/pool/api'
 import { Button, Kbd } from '@/ui/kit'
 import { Menu, Tooltip } from '@/ui/overlay'
 import { NAV } from './nav'
@@ -143,11 +143,8 @@ export function Sidebar({
   useEffect(() => {
     if (ONBOARDING.includes(area)) visit(area)
   }, [area, visit])
-  const submittable = useQuery({
-    queryKey: ['pool', 'submittable-count'],
-    queryFn: () => http.get<{ total: number }>('/api/vault/submittable?limit=1'),
-  })
-  useRefetchOn('simulations', ['pool', 'submittable-count'], 5000)
+  const submittable = useQuery(pool.everywhere)
+  useRefetchOn('simulations', pool.everywhere.queryKey, 5000)
   const total = submittable.data?.total ?? 0
 
   const signOut = useMutation({

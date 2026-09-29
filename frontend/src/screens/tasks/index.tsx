@@ -13,7 +13,7 @@ import {
   StarIcon,
   Trash2Icon,
 } from 'lucide-react'
-import { type ComponentProps, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { errorMessage } from '@/api/http'
 import { cn } from '@/lib/cn'
@@ -22,8 +22,14 @@ import { useNow } from '@/lib/now'
 import { useRefetchOn } from '@/lib/ws'
 import { DetailSheet } from '@/screens/pool/detail'
 import { MAX_SIMULATIONS } from '@/screens/research-labs/lab-task'
-import { type LabTask, labTasks, type RankedAlpha, type TaskStatus } from '@/screens/tasks/api'
-import { AFTER_COST_HEADER, DELAY, INVESTABILITY, SharpeCell } from '@/screens/tasks/columns'
+import { type LabTask, labTasks, type RankedAlpha } from '@/screens/tasks/api'
+import {
+  AFTER_COST_HEADER,
+  DELAY,
+  INVESTABILITY,
+  SharpeCell,
+  taskStatus,
+} from '@/screens/tasks/columns'
 import { resultsMarkdown } from '@/screens/tasks/copy'
 import { SubmittableAlphas } from '@/screens/tasks/submittable'
 import {
@@ -51,15 +57,6 @@ import { type Column, DataTable } from '@/ui/table'
 
 /** Matches `labs.params.SETTINGS_SAMPLER`. */
 const SETTINGS_SAMPLER = 'settings-sampler'
-
-const STATUS: Record<TaskStatus, { label: string; tone: ComponentProps<typeof Badge>['tone'] }> = {
-  IDLE: { label: 'Not Started', tone: 'outline' },
-  QUEUED: { label: 'Waiting', tone: 'warn' },
-  RUNNING: { label: 'Running', tone: 'profit' },
-  PAUSED: { label: 'Paused', tone: 'muted' },
-  COMPLETE: { label: 'Complete', tone: 'neutral' },
-  FAILED: { label: 'Failed', tone: 'loss' },
-}
 
 const TOP_COLUMNS: Column<RankedAlpha>[] = [
   {
@@ -258,8 +255,13 @@ export function TasksScreen() {
             {/* A sweep spans many markets, so naming the source Alpha's one would mislead. */}
             {t.lab === SETTINGS_SAMPLER ? (
               <>
-                {' · '}
-                <span className="num">{t.alphaId ?? DASH}</span>
+                {/* A sweep started from a typed expression has no source Alpha: "" not null. */}
+                {t.alphaId && (
+                  <>
+                    {' · '}
+                    <span className="num">{t.alphaId}</span>
+                  </>
+                )}
                 {' · '}
                 <span className="num">{fmt.int(t.markets)}</span>
                 {t.markets === 1 ? ' Market' : ' Markets'}
@@ -493,10 +495,7 @@ function confirmCopy(a: Act, fresh: number): { title: string; label: string; bod
 }
 
 function TaskBadge({ task }: { task: LabTask }) {
-  const { label, tone } =
-    task.stopping && task.status === 'RUNNING'
-      ? { label: 'Stopping', tone: 'warn' as const }
-      : (STATUS[task.status] ?? STATUS.IDLE)
+  const { label, tone } = taskStatus(task)
   return <Badge tone={tone}>{label}</Badge>
 }
 
