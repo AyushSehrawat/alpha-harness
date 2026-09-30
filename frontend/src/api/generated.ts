@@ -1543,6 +1543,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/template-lab/parse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Parse Template
+         * @description A typed template as blocks, written the way the Expression under the blocks reads.
+         */
+        post: operations["parse_template_api_template_lab_parse_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/template-lab/preview": {
         parameters: {
             query?: never;
@@ -4859,6 +4879,18 @@ export interface components {
             /** Vector Operators */
             vector_operators?: string[];
         };
+        /** TemplateText */
+        TemplateText: {
+            /** Text */
+            text: string;
+        };
+        /** TemplateTree */
+        TemplateTree: {
+            /** Tree */
+            tree: {
+                [key: string]: unknown;
+            };
+        };
         /** ThreadScope */
         ThreadScope: {
             /** Delay */
@@ -7335,6 +7367,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TemplateLabOptions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    parse_template_api_template_lab_parse_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateText"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateTree"];
                 };
             };
             /** @description Validation Error */

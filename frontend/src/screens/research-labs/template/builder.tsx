@@ -5,6 +5,7 @@
  */
 
 import { Popover } from '@base-ui/react/popover'
+import { useMutation } from '@tanstack/react-query'
 import { Command } from 'cmdk'
 import { CheckIcon, EraserIcon, RefreshCwIcon, SearchIcon, Undo2Icon, XIcon } from 'lucide-react'
 import {
@@ -17,7 +18,7 @@ import {
   useState,
 } from 'react'
 import { cn } from '@/lib/cn'
-import type { TemplateLabOptions } from '@/screens/research-labs/template/api'
+import { type TemplateLabOptions, templateLab } from '@/screens/research-labs/template/api'
 import {
   accepts,
   argumentRows,
@@ -45,7 +46,18 @@ import {
   unwrap,
   type VariableNode,
 } from '@/screens/research-labs/template/tree'
-import { Button, Checkbox, Chips, Disclosure, Fieldset, Input, Notice, Panel } from '@/ui/kit'
+import {
+  Button,
+  Checkbox,
+  Chips,
+  Disclosure,
+  ErrorNotice,
+  Fieldset,
+  Input,
+  Notice,
+  Panel,
+  Textarea,
+} from '@/ui/kit'
 import { SplitPane } from '@/ui/panels'
 
 const SOCKET_LABEL: Record<Socket, string> = {
@@ -284,14 +296,77 @@ export function Builder({
           {problems.map((problem) => (
             <Notice key={problem} tone="error" title={problem} />
           ))}
-          {skeleton && root !== null && (
-            <Disclosure summary="Expression">
-              <code className="num text-body-compact break-all text-ink">{skeleton}</code>
-            </Disclosure>
-          )}
+          <Disclosure summary="Expression">
+            <ExpressionEditor skeleton={root === null ? '' : (skeleton ?? '')} onApply={onChange} />
+          </Disclosure>
         </div>
       </Panel>
     </BuilderContext>
+  )
+}
+
+/** The template as text, editable: typing is often quicker than dragging, and pastes work. */
+function ExpressionEditor({
+  skeleton,
+  onApply,
+}: {
+  skeleton: string
+  onApply: (doc: TemplateDoc) => void
+}) {
+  // Null until typed in, so the blocks' own text shows and follows every block change.
+  const [text, setText] = useState<string | null>(null)
+  const apply = useMutation({
+    meta: { inline: true },
+    mutationFn: (value: string) => templateLab.parse(value),
+    onSuccess: ({ tree }) => {
+      onApply(tree)
+      setText(null)
+    },
+  })
+  const discard = () => {
+    setText(null)
+    apply.reset()
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Textarea
+        className="num text-body-compact"
+        aria-label="Expression"
+        spellCheck={false}
+        placeholder="group_rank(ts_rank(FIELD A, LOOKBACK A), GROUP A)"
+        value={text ?? skeleton}
+        onChange={(e) => {
+          apply.reset()
+          setText(e.target.value)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') discard()
+        }}
+      />
+      <p className="text-body-compact text-ink-subtle">
+        <span className="num">FIELD A</span> is a field the search chooses;{' '}
+        <span className="num">LOOKBACK A</span> and <span className="num">GROUP A</span> are values
+        it tries. <span className="num">{'{ts_rank OR ts_zscore}'}</span> lets it pick the operator.
+        Options go in as BRAIN writes them, e.g.{' '}
+        <span className="num">quantile(FIELD A, driver = "cauchy")</span>.
+      </p>
+      {apply.isError && <ErrorNotice error={apply.error} title="Could not read the expression" />}
+      <div className="flex justify-end gap-2">
+        <Button size="sm" variant="ghost" disabled={text === null} onClick={discard}>
+          Discard
+        </Button>
+        <Button
+          size="sm"
+          variant="primary"
+          disabled={!text?.trim()}
+          loading={apply.isPending}
+          onClick={() => text && apply.mutate(text)}
+        >
+          Apply
+        </Button>
+      </div>
+    </div>
   )
 }
 

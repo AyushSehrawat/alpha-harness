@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 from ..brain.schemas import SimulationRequest, SimulationSettings
 from . import search
 from .fastexpr import Node, OperatorInfo, operator_table
+from .fastexpr import parse as parse_expression
 from .fastexpr import render as write
 
 if TYPE_CHECKING:
@@ -513,6 +514,84 @@ def _shaped(slot: dict[str, Any] | None) -> Node:
     if kind == "data":
         return Node("name", slot["name"])
     return _literal(slot["value"])
+
+
+#: Stand-ins the Fast Expression tokenizer reads as one name: ``{a OR b}``, ``FIELD A``, ``?``.
+_OR, _TAG, _HOLE = "__OR__", "__TAG__", "__HOLE__"
+_CHOICE = re.compile(r"\{\s*([a-z][a-z0-9_]*(?:\s+OR\s+[a-z][a-z0-9_]*)+)\s*\}")
+_VARIABLE = re.compile(
+    rf"\b({'|'.join(sorted(VARIABLE_NAMES, key=len, reverse=True))})(?:[ \t]+([A-D]))?\b"
+)
+_EMPTY = re.compile(r"(?<=[(,])\s*\?\s*(?=[,)])")
+_SYMBOL_NAMES = {symbol: name for name, symbol in SYMBOLS.items()}
+
+
+def parse(text: str) -> dict[str, Any]:
+    """A typed template, written the way :func:`skeleton` writes one. Raises ValueError."""
+    if text.strip() == "?":
+        return {"version": VERSION, "root": None}
+    marked = _CHOICE.sub(lambda m: _OR.join(re.split(r"\s+OR\s+", m.group(1))), text)
+    marked = _VARIABLE.sub(lambda m: f"{m.group(1)}{_TAG}{m.group(2) or 'A'}", marked)
+    marked = _EMPTY.sub(_HOLE, marked)
+    try:
+        return load({"version": VERSION, "root": _block(parse_expression(marked))})
+    except ValueError as exc:
+        # Positions count the stand-ins, so they would point at the wrong character.
+        message = re.sub(r" at \d+", "", str(exc))
+        for stand_in, typed in ((_OR, " OR "), (_TAG, " "), (_HOLE, "?")):
+            message = message.replace(stand_in, typed)
+        raise ValueError(message) from exc
+
+
+def _block(node: Node) -> dict[str, Any] | None:
+    if node.kind == "num":
+        return _num(_number(node.value))
+    if node.kind == "unary" and node.value == "-":
+        inner = node.args[0]
+        return _num(-_number(inner.value)) if inner.kind == "num" else _op("reverse", _block(inner))
+    if node.kind == "binary" and node.value in _SYMBOL_NAMES:
+        return _op(_SYMBOL_NAMES[node.value], *(_block(arg) for arg in node.args))
+    if node.kind == "call":
+        block: dict[str, Any] = {
+            "kind": "op",
+            "ops": node.value.split(_OR),
+            "args": [_block(arg) for arg in node.args],
+        }
+        if node.kwargs:
+            block["options"] = {key: _option(value) for key, value in node.kwargs}
+        return block
+    if node.kind == "name":
+        if node.value == _HOLE:
+            return None
+        name, _, tag = node.value.partition(_TAG)
+        if tag:
+            return _var(name, tag)
+        if name in DATA_FIELDS or name in GROUP_FIELDS:
+            return _data(name)
+        raise ValueError(
+            f"{name} is not something a template can read. Write FIELD A for a field the "
+            f"search chooses, or use one of {', '.join(DATA_FIELDS)} or a group field."
+        )
+    raise ValueError(
+        f"A template cannot hold {write(node)}. Write it with its operator's name instead."
+    )
+
+
+def _option(node: Node) -> float | bool | str:
+    if node.kind == "num":
+        return _number(node.value)
+    if node.kind == "unary" and node.value == "-" and node.args[0].kind == "num":
+        return -_number(node.args[0].value)
+    if node.kind == "str":
+        return node.value[1:-1]
+    if node.kind == "name" and _TAG not in node.value:
+        return {"true": True, "false": False}.get(node.value, node.value)
+    raise ValueError(f"An option takes a number, a word or true/false, not {write(node)}.")
+
+
+def _number(text: str) -> float:
+    number = float(text)
+    return int(number) if number.is_integer() else number
 
 
 def request_for(params: dict[str, Any], run: TemplateParams) -> SimulationRequest:
