@@ -4143,7 +4143,8 @@ export interface components {
         };
         /**
          * SampleRequest
-         * @description What to queue. An empty list means "everything the plan offers".
+         * @description What to queue. An empty market or pair list means "everything the plan offers"; an
+         *     empty neutralization list is refused, since nobody chose what to run.
          */
         SampleRequest: {
             /**

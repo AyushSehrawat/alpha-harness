@@ -76,8 +76,8 @@ const byName = (a: string, b: string) => a.localeCompare(b, undefined, { numeric
 
 const allMarkets = (plan: SettingsPlan) => plan.regions.flatMap((r) => r.markets)
 
-/** Everything on but All Regions, which costs four a simulation and so is only swept on
- *  purpose: the sweep starts as the rest of the space and is narrowed by unticking. */
+/** Every market but All Regions, which costs four a simulation and so is only swept on
+ *  purpose, and every pair; no neutralization, which the reader ticks before anything runs. */
 function defaults(plan: SettingsPlan) {
   return {
     chosen: new Set(
@@ -85,7 +85,7 @@ function defaults(plan: SettingsPlan) {
         .filter((m) => m.region !== REGION_AGNOSTIC)
         .map(marketKey),
     ),
-    neutralizations: [...new Set(plan.regions.flatMap((r) => r.neutralizations))].sort(),
+    neutralizations: [] as string[],
     pairs: [...new Set(plan.regions.flatMap((r) => r.pairs.map(pairKey)))],
   }
 }
@@ -897,6 +897,9 @@ export function SettingsSamplerScreen() {
                 available={allNeutralizations}
                 value={neutralizations}
                 onChange={setNeutralizations}
+                hint={
+                  neutralizations.length === 0 ? 'Choose at least one Neutralization.' : undefined
+                }
               />
               {/* A chip, like every other choice in this column, rather than a checkbox
                   that would be the only one of its kind here. It sits between the two pickers

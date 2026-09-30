@@ -176,7 +176,6 @@ export function PowerPoolLabScreen() {
               available={scopeOptions.neutralizations}
               value={draft.neutralizations}
               onChange={(next) => set({ neutralizations: next })}
-              hint="None chosen draws from every one BRAIN offers here."
             />
           )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">

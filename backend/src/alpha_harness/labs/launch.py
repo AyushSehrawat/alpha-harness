@@ -40,6 +40,8 @@ if TYPE_CHECKING:
 
 OPERATORS_UNREAD = "Your BRAIN operators could not be read. Sign in again, then reload."
 NO_SIMULATIONS = "Assign the simulations for this task."
+#: Nothing is searched on a neutralization nobody chose, so an empty choice is refused.
+NO_NEUTRALIZATION = "Choose at least one Neutralization."
 #: Alphas a preview shows.
 SAMPLE_SIZE = 5
 #: What each lab's task names start with, and the objective its trials are scored on.
@@ -124,8 +126,8 @@ async def neutralizations_for(
     with it would drop ``STATISTICAL`` or ``CROWDING`` from a sweep that asked for them —
     a task that never ran what it was told to.
 
-    Choosing nothing keeps the default, so every lab behaves exactly as before until a reader
-    says otherwise.
+    Nothing chosen falls back to that default, which only Auto Select relies on: every lab
+    refuses a task with no neutralization chosen (:data:`NO_NEUTRALIZATION`).
     """
     schema = await state.metadata.cached_settings_schema()
     if not schema:
@@ -159,7 +161,7 @@ class SearchRequest(BaseModel):
     universe: str | None = None
     dataset_ids: list[str] = Field(default_factory=list, max_length=200)
     vector_operators: list[str] = Field(default_factory=list)
-    #: Empty keeps the lab's default four; anything here is searched instead.
+    #: What the lab searches. Empty is refused: see :data:`NO_NEUTRALIZATION`.
     neutralizations: list[str] = Field(default_factory=list, max_length=20)
     decay: int = 0
     cores: int = Field(default=search.MAX_CORES, ge=1, le=search.MAX_CORES)
@@ -196,7 +198,9 @@ async def market_for(body: SearchRequest, state: Any, need: tuple[str, ...] = ()
     neutralizations = await neutralizations_for(
         state, body.region, body.delay, body.neutralizations
     )
-    if schema and not neutralizations:
+    if not body.neutralizations:
+        problems.append(NO_NEUTRALIZATION)
+    elif schema and not neutralizations:
         problems.append(f"BRAIN offers no neutralization for {region_label(body.region)}.")
 
     lacking: set[str] = set()

@@ -207,7 +207,6 @@ export function SettingsPanel({
             available={neutralizations}
             value={draft.neutralizations}
             onChange={(next) => set({ neutralizations: next })}
-            hint="None chosen searches Market, Sector, Industry and Subindustry."
           />
         )}
         <div className="grid gap-3 sm:grid-cols-3">
