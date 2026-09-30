@@ -4102,6 +4102,8 @@ export interface components {
         };
         /** RegionPlan */
         RegionPlan: {
+            /** Cost */
+            cost: number;
             /** Delays */
             delays: number[];
             /** Markets */

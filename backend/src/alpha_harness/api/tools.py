@@ -16,6 +16,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import delete, select
 
+from ..brain.schemas import REGION_AGNOSTIC_REGION
 from ..db.models import Submission, Trial, TrialState, utcnow
 from ..engine.packer import MAX_BATCH
 from ..engine.slots import DEFAULT_SLOTS
@@ -54,11 +55,14 @@ class RegionPlan(Out):
     pairs: list[Pair]
     #: Whether BRAIN accepts Max Position here, measured rather than assumed.
     position_available: bool
+    #: Simulations of the day's allowance one run here uses: 4 in All Regions, else 1.
+    cost: int
     markets: list[MarketRow]
     total: int
 
 
 class PlanTotals(Out):
+    #: Of the day's allowance, All Regions counted at its own cost.
     total: int
     batches: int
 
@@ -186,7 +190,14 @@ async def add_task(body: SampleRequest, state: State) -> AddedTask:
     if found["problems"]:
         raise refuse(422, "settings_sampler_blocked", found["problems"][0])
 
-    chosen = {(m.region, m.delay, m.universe) for m in body.markets}
+    # Nothing chosen means every market, except All Regions: at four simulations a run it is
+    # only swept when asked for by name.
+    chosen = {(m.region, m.delay, m.universe) for m in body.markets} or {
+        (str(m["region"]), int(m["delay"]), str(m["universe"]))
+        for r in found["regions"]
+        if r["region"] != REGION_AGNOSTIC_REGION
+        for m in r["markets"]
+    }
     source: dict[str, Any] = {**found["settings"], "expression": found["expression"]}
     requests = settings_sampler.expand(
         found["regions"],
@@ -204,7 +215,7 @@ async def add_task(body: SampleRequest, state: State) -> AddedTask:
             "Max Trade / Max Position pair.",
         )
 
-    markets = len(chosen) or sum(len(r["markets"]) for r in found["regions"])
+    markets = len(chosen)
     return await add_study(
         state,
         now=utcnow(),
