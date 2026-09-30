@@ -14,7 +14,7 @@ variable tag, an operator for each choice block, and the neutralization.
 
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
 from ..brain.schemas import SimulationRequest, SimulationSettings
@@ -122,7 +122,8 @@ def blocks(operators: list[dict[str, Any]]) -> dict[str, Block]:
 
     Inputs come from each definition's parameters without a default: ``d`` or ``lookback``
     takes a lookback, ``group`` takes a group, anything else a signal. Options are the
-    parameters whose default is a number or true/false. Comparisons have no call form in
+    parameters whose default is a number, true/false, a word or a list of numbers, from
+    every signature the definition gives. Comparisons have no call form in
     their definitions (``input1 > input2``), so they are recognised by that shape.
     """
     found: dict[str, Block] = {}
@@ -151,7 +152,22 @@ def blocks(operators: list[dict[str, Any]]) -> dict[str, Block]:
         if match and SYMBOLS.get(name) == match.group(1):
             category = str(operator.get("category") or "Logical")
             found[name] = Block(name, category, ("signal", "signal"), {}, match.group(1))
+        elif (block := found.get(name)) is not None:
+            found[name] = replace(block, options=_later_options(name, definition, block.options))
     return dict(sorted(found.items()))
+
+
+def _later_options(
+    name: str, definition: str, options: dict[str, float | bool | str]
+) -> dict[str, float | bool | str]:
+    """Options only a later signature names: ``bucket`` takes ``buckets`` in its second."""
+    merged = dict(options)
+    for later in list(re.finditer(rf"\b{re.escape(name)}\s*\(", definition))[1:]:
+        info = operator_table([{"name": name, "definition": definition[later.start() :]}])
+        shape = _shape(info[name]) if name in info else None
+        for key, value in (shape[1] if shape else {}).items():
+            merged.setdefault(key, value)
+    return merged
 
 
 def _shape(info: OperatorInfo) -> tuple[tuple[str, ...], dict[str, float | bool | str]] | None:
