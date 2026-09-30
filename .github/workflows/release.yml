@@ -269,21 +269,12 @@ jobs:
           prerelease: ${{ needs.wheel.outputs.prerelease == 'true' }}
           files: release/*
           body: |
-            **New here?** Download the one for your computer and open it. It installs everything
-            on first start, which takes a couple of minutes, then opens in your browser.
+            **New here?** Download the one for your computer and open it. It installs everything on first start, which takes a couple of minutes, then opens in your browser.
 
-            - **Windows:** `AlphaHarness.exe`. Windows warns that it does not recognise the
-              app — it is unsigned. Choose **More info**, then **Run anyway**.
-            - **Mac:** `AlphaHarness-macOS-arm64.zip` for Apple Silicon (M1 or later), or
-              `AlphaHarness-macOS-x86_64.zip` for Intel. Open the zip and drag **AlphaHarness**
-              into Applications. The first time, macOS will not open it because it is unsigned:
-              open **System Settings › Privacy & Security**, scroll down, and choose
-              **Open Anyway**.
-            - **Linux:** `AlphaHarness-linux-x86_64`. Right-click it › **Properties** ›
-              **Allow executing file as program** (or `chmod +x` it), then open it. It adds
-              Alpha Harness to your applications menu.
+            - **Windows:** `AlphaHarness.exe`. Windows warns that it does not recognise the app — it is unsigned. Choose **More info**, then **Run anyway**.
+            - **Mac:** `AlphaHarness-macOS-arm64.zip` for Apple Silicon (M1 or later), or `AlphaHarness-macOS-x86_64.zip` for Intel. Open the zip and drag **AlphaHarness** into Applications. The first time, macOS will not open it because it is unsigned: open **System Settings › Privacy & Security**, scroll down, and choose **Open Anyway**.
+            - **Linux:** `AlphaHarness-linux-x86_64`. Right-click it › **Properties** › **Allow executing file as program** (or `chmod +x` it), then open it. It adds Alpha Harness to your applications menu.
 
-            To close it: the tray icon on Windows, or **Quit Alpha Harness** in the account menu
-            at the bottom of the sidebar.
+            To close it: the tray icon on Windows, or **Quit Alpha Harness** in the account menu at the bottom of the sidebar.
 
             **Already have it?** Do nothing. Alpha Harness offers this version in the app.
