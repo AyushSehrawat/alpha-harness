@@ -10,6 +10,7 @@ import { catalog, type DatasetRow } from '@/api/catalog'
 import type { Scope } from '@/api/types'
 import { cn } from '@/lib/cn'
 import { fmt } from '@/lib/format'
+import { Skeleton } from '@/ui/kit'
 import {
   buildTree,
   datasetNames,
@@ -55,11 +56,14 @@ export function useDatasetTree(scope: Scope | null) {
     queryFn: () => (scope ? catalog.datasets(scope) : Promise.resolve([])),
     enabled: scope !== null,
   })
+  // Until the rows arrive every choice would read as loose datasets, and a whole category
+  // flashes open into hundreds of pills before it folds back into one chip.
+  const ready = scope === null || !rows.isPending
   return useMemo(() => {
     const data = rows.data ?? []
     const names = datasetNames(data)
-    return { tree: buildTree(sourceOf(data)), nameOf: (id: string) => names.get(id) ?? id }
-  }, [rows.data])
+    return { tree: buildTree(sourceOf(data)), nameOf: (id: string) => names.get(id) ?? id, ready }
+  }, [rows.data, ready])
 }
 
 /** Removable when given `onRemove`; read-only otherwise. */
@@ -68,12 +72,16 @@ export function DatasetChips({
   value,
   nameOf,
   onRemove,
+  ready = true,
 }: {
   tree: Trunk[]
   value: string[]
   nameOf: (id: string) => string
   onRemove?: (ids: string[]) => void
+  /** False while the tree loads: one chip's worth of placeholder, not a pill per dataset. */
+  ready?: boolean
 }) {
+  if (!ready) return value.length > 0 ? <Skeleton className="h-9 w-40" /> : null
   const summary = summarize(tree, value, nameOf)
   if (summary.length === 0) return null
   return (

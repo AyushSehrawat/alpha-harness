@@ -767,9 +767,9 @@ function TaskDatasets({ task }: { task: LabTask }) {
     region && delay !== null && universe && datasetIds.length > 0
       ? { instrumentType: 'EQUITY', region, delay, universe }
       : null
-  const { tree, nameOf } = useDatasetTree(scope)
+  const { tree, nameOf, ready } = useDatasetTree(scope)
   if (datasetIds.length === 0) return null
-  return <DatasetChips tree={tree} value={datasetIds} nameOf={nameOf} />
+  return <DatasetChips tree={tree} value={datasetIds} nameOf={nameOf} ready={ready} />
 }
 
 function Elapsed({ task, done }: { task: LabTask; done: boolean }) {

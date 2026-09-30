@@ -403,11 +403,11 @@ export function Assistant({ threadId }: { threadId: number | null }) {
 
 /** The datasets a reply drew its fields from, placed in the chat's market. */
 function ReplyDatasets({ scope, ids }: { scope: Scope; ids: string[] }) {
-  const { tree, nameOf } = useDatasetTree(scope)
+  const { tree, nameOf, ready } = useDatasetTree(scope)
   return (
     <div className="flex flex-col gap-1.5">
       <span className="text-body-compact text-ink-subtle">Datasets</span>
-      <DatasetChips tree={tree} value={ids} nameOf={nameOf} />
+      <DatasetChips tree={tree} value={ids} nameOf={nameOf} ready={ready} />
     </div>
   )
 }

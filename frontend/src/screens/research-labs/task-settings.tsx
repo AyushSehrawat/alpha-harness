@@ -102,7 +102,7 @@ export function DatasetsPanel({
   onClearFilter: () => void
 }) {
   const chosen = ids.length > 0
-  const { tree, nameOf } = useDatasetTree(chosen ? scope : null)
+  const { tree, nameOf, ready } = useDatasetTree(chosen ? scope : null)
   return (
     <Panel
       title="Datasets"
@@ -117,7 +117,7 @@ export function DatasetsPanel({
     >
       {chosen ? (
         <div className="flex flex-col gap-3">
-          <DatasetChips tree={tree} value={ids} nameOf={nameOf} onRemove={onRemove} />
+          <DatasetChips tree={tree} value={ids} nameOf={nameOf} onRemove={onRemove} ready={ready} />
           {filter && (
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body-compact text-ink-subtle">
               <FilterIcon className="size-3.5 shrink-0" aria-hidden />
