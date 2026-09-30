@@ -425,8 +425,8 @@ export function YearlyPanel({ years, cutoff }: { years: AlphaYear[]; cutoff: num
 // ── Eligibility ────────────────────────────────────────────────────────────────────────────
 
 const RULE_ICON: Record<Rule, ReactNode> = {
-  pass: <CheckIcon className="size-3.5 text-pnl-positive" aria-label="Passes" />,
-  fail: <XIcon className="size-3.5 text-pnl-negative" aria-label="Fails" />,
+  pass: <CheckIcon className="size-3.5 text-pnl-positive-text" aria-label="Passes" />,
+  fail: <XIcon className="size-3.5 text-pnl-negative-text" aria-label="Fails" />,
   unknown: <CircleDashedIcon className="size-3.5 text-ink-subtle" aria-label="Not known yet" />,
 }
 
@@ -543,7 +543,9 @@ function CorrelationRow({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="text-body text-ink">{label}</span>
         {isNum(max) && (
-          <span className={cn('num text-body', max >= limit ? 'text-pnl-negative' : 'text-ink')}>
+          <span
+            className={cn('num text-body', max >= limit ? 'text-pnl-negative-text' : 'text-ink')}
+          >
             max {fmt.ratio(max)}
             <span className="text-ink-subtle"> of {fmt.ratio(limit, 1)}</span>
           </span>
@@ -709,8 +711,8 @@ export function ComparisonPanel({ alphaId }: { alphaId: string }) {
                         better === null
                           ? 'text-ink'
                           : better
-                            ? 'text-pnl-positive'
-                            : 'text-pnl-negative',
+                            ? 'text-pnl-positive-text'
+                            : 'text-pnl-negative-text',
                       )}
                     >
                       {format(a)}

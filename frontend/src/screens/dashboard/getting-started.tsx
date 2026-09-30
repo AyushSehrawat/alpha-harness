@@ -85,7 +85,7 @@ export function GettingStarted({ today }: { today: Today | undefined }) {
                 className={cn(
                   'flex size-7 shrink-0 items-center justify-center rounded-xs border text-body-compact',
                   step.done
-                    ? 'border-pnl-positive-edge bg-pnl-positive-tint text-pnl-positive'
+                    ? 'border-pnl-positive-edge bg-pnl-positive-tint text-pnl-positive-text'
                     : isNext
                       ? 'border-ink-subtle text-ink'
                       : 'border-hairline-strong text-ink-subtle',

@@ -80,7 +80,7 @@ export const FAILED_CHECKS: Column<RankedAlpha> = {
             key={name}
             // A check that failed without refusing the Alpha is shown, because it did fail,
             // but not in the colour that means "this is why you cannot submit".
-            className={r.refusedBy.includes(name) ? 'text-pnl-negative' : 'text-ink-subtle'}
+            className={r.refusedBy.includes(name) ? 'text-pnl-negative-text' : 'text-ink-subtle'}
           >
             {i > 0 && ', '}
             {name}

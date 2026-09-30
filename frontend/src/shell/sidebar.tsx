@@ -206,7 +206,7 @@ export function Sidebar({
               {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
               {!collapsed && item.to === '/pool' && total > 0 && (
                 <span
-                  className="num rounded-pill border border-pnl-positive-edge bg-pnl-positive-tint px-1.5 py-0.5 text-caption font-medium text-pnl-positive"
+                  className="num rounded-pill border border-pnl-positive-edge bg-pnl-positive-tint px-1.5 py-0.5 text-caption font-medium text-pnl-positive-text"
                   title="Submittable Alphas"
                 >
                   {total}

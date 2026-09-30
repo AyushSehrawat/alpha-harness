@@ -257,7 +257,7 @@ function MenuItems({ items }: { items: MenuItem[] }) {
       onClick={item.onClick}
       className={cn(
         ITEM,
-        item.danger && 'text-pnl-negative data-[highlighted]:text-pnl-negative',
+        item.danger && 'text-pnl-negative-text data-[highlighted]:text-pnl-negative-text',
         '[&_svg]:size-3.5 [&_svg]:shrink-0',
       )}
     >

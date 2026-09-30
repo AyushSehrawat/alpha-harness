@@ -293,8 +293,10 @@ function CheckBadge({ check }: { check: AlphaCheck }) {
         <span
           className={cn(
             'mono-metric inline-flex items-center gap-1 rounded-xs border px-1.5 py-0.5 text-caption',
-            tone === 'profit' && 'border-pnl-positive-edge bg-pnl-positive-tint text-pnl-positive',
-            tone === 'loss' && 'border-pnl-negative-edge bg-pnl-negative-tint text-pnl-negative',
+            tone === 'profit' &&
+              'border-pnl-positive-edge bg-pnl-positive-tint text-pnl-positive-text',
+            tone === 'loss' &&
+              'border-pnl-negative-edge bg-pnl-negative-tint text-pnl-negative-text',
             tone === 'warn' &&
               'border-status-warning-edge bg-status-warning-tint text-status-warning',
             (tone === 'neutral' || tone === 'muted') &&

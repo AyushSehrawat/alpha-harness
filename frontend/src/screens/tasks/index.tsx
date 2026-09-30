@@ -748,9 +748,9 @@ function TaskDetail({
           // A two-column grid rather than padded text: the equals signs line up whatever the
           // labels are and whatever the font does.
           <p className="num grid w-fit grid-cols-[auto_auto] gap-x-2 gap-y-0.5 text-body-compact text-ink-subtle">
-            <span className="text-pnl-positive">GREEN</span>
+            <span className="text-pnl-positive-text">GREEN</span>
             <span>= PASS or WARNING or PENDING</span>
-            <span className="text-pnl-negative">RED</span>
+            <span className="text-pnl-negative-text">RED</span>
             <span>= FAIL or ERROR</span>
           </p>
         )}
