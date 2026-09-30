@@ -75,7 +75,7 @@ const PRE =
 export function PowerPoolLabScreen() {
   const draft = useDraft()
   const set = useDraft.setState
-  const { names, choose } = useLabMarket(draft, set, '/labs/power-pool')
+  const { scope, choose } = useLabMarket(draft, set, '/labs/power-pool')
   const options = useQuery({
     queryKey: ['power-pool-lab', 'options'],
     queryFn: powerPoolLab.options,
@@ -139,9 +139,9 @@ export function PowerPoolLabScreen() {
       )}
       <DatasetsPanel
         ids={draft.datasetIds}
-        names={names}
+        scope={scope}
         onChoose={choose}
-        onRemove={(id) => set({ datasetIds: draft.datasetIds.filter((x) => x !== id) })}
+        onRemove={(ids) => set({ datasetIds: draft.datasetIds.filter((x) => !ids.includes(x)) })}
       />
       <Panel title="Settings">
         <div className="flex flex-col gap-4">

@@ -1,6 +1,6 @@
 /**
- * Data Explorer (spec §4.2): a synced market's fields, narrowed in More filters down to whole
- * categories, whole subcategories or single datasets. Syncing lives in Sync with BRAIN.
+ * Data Explorer (spec §4.2): a synced market's fields, narrowed in More Filters down to whole
+ * categories, whole subcategories or single datasets. Syncing lives in BRAIN › Sync.
  */
 
 import { useNavigate } from '@tanstack/react-router'
@@ -50,7 +50,7 @@ function PickBar() {
     <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 rounded-lg border border-hairline bg-surface-1 p-3">
       <Metric boxed size="sm" label="Datasets Selected" value={fmt.int(count)} />
       <span className="min-w-0 flex-1 text-body-compact text-pretty text-ink-subtle">
-        Tick whole categories, whole subcategories or single datasets in More filters.
+        Tick whole categories, whole subcategories or single datasets in More Filters.
       </span>
       <Button variant="ghost" onClick={() => back(false)}>
         Cancel

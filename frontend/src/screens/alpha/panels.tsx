@@ -191,8 +191,8 @@ export function VerdictPanel({
       </div>
       {shown.length > 0 && (
         <ul className="divide-y divide-hairline-subtle border-t border-hairline-subtle">
-          {shown.map((c) => (
-            <CheckRow key={c.name} check={c} />
+          {shown.map((c, i) => (
+            <CheckRow key={`${c.name}-${i}`} check={c} />
           ))}
         </ul>
       )}
@@ -211,15 +211,15 @@ export function ChecksPanel({ groups }: { groups: CheckGroups }) {
       bodyClassName="flex flex-col gap-3 py-2"
     >
       <ul className="divide-y divide-hairline-subtle">
-        {[...groups.failing, ...groups.pending, ...groups.passing].map((c) => (
-          <CheckRow key={c.name} check={c} />
+        {[...groups.failing, ...groups.pending, ...groups.passing].map((c, i) => (
+          <CheckRow key={`${c.name}-${i}`} check={c} />
         ))}
       </ul>
       {groups.notes.length > 0 && (
         <Disclosure summary={`${groups.notes.length} notes that do not block submission`}>
           <ul className="divide-y divide-hairline-subtle">
-            {groups.notes.map((c) => (
-              <CheckRow key={c.name} check={c} />
+            {groups.notes.map((c, i) => (
+              <CheckRow key={`${c.name}-${i}`} check={c} />
             ))}
           </ul>
         </Disclosure>
@@ -254,7 +254,7 @@ export function AggregatesPanel({ alpha }: { alpha: AlphaInfo }) {
     <Panel
       title="In-sample aggregates"
       description="Beside the same Alpha under BRAIN's investability constraint"
-      bodyClassName="p-0"
+      bodyClassName="overflow-x-auto p-0"
     >
       <table className="w-full text-body">
         <thead>

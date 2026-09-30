@@ -63,7 +63,7 @@ export function TemplateLabScreen() {
   const draft = useTemplateLab()
   const set = useTemplateLab.setState
   const queryClient = useQueryClient()
-  const { chosen, names, choose } = useLabMarket(draft, set, '/labs/template')
+  const { chosen, scope, choose } = useLabMarket(draft, set, '/labs/template')
   const [naming, setNaming] = useState<'save-as' | 'rename' | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [opening, setOpening] = useState<Openable | null>(null)
@@ -310,9 +310,9 @@ export function TemplateLabScreen() {
 
       <DatasetsPanel
         ids={draft.datasetIds}
-        names={names}
+        scope={scope}
         onChoose={choose}
-        onRemove={(id) => set({ datasetIds: draft.datasetIds.filter((x) => x !== id) })}
+        onRemove={(ids) => set({ datasetIds: draft.datasetIds.filter((x) => !ids.includes(x)) })}
       />
       <SettingsPanel
         draft={draft}

@@ -29,7 +29,7 @@ export function GettingStarted({ today }: { today: Today | undefined }) {
       title: 'Sync BRAIN Datasets',
       done: today.catalog.anySynced,
       action: (variant) => (
-        <Button size="sm" variant={variant} render={<Link to="/pyramids" />}>
+        <Button size="sm" variant={variant} render={<Link to="/sync" />}>
           Sync
         </Button>
       ),

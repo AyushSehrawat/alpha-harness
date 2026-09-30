@@ -20,6 +20,7 @@ import { cn } from '@/lib/cn'
 import { DASH, fmt } from '@/lib/format'
 import { useNow } from '@/lib/now'
 import { useRefetchOn } from '@/lib/ws'
+import { DatasetChips, useDatasetTree } from '@/screens/data/dataset-chips'
 import { DetailSheet } from '@/screens/pool/detail'
 import { MAX_SIMULATIONS } from '@/screens/research-labs/lab-task'
 import { type LabTask, labTasks, type RankedAlpha } from '@/screens/tasks/api'
@@ -649,7 +650,7 @@ function TaskDetail({
         `${fmt.int(task.markets)} Markets · Decay ${task.decay ?? DASH} · Truncation ${task.truncation ?? DASH} · NaN Handling ${task.nanHandling ?? DASH}`
       : task.seeds > 0
         ? `${task.universe ?? DASH} · ${fmt.int(task.seeds)} seeds · Population ${fmt.int(task.population)} · Mutation ${fmt.pct(task.mutationRate, 0)}`
-        : `Decay ${task.decay ?? DASH} · ${fmt.int(task.fields)} fields · ${task.datasetIds.join(', ')}`
+        : `Decay ${task.decay ?? DASH} · ${fmt.int(task.fields)} fields`
   const copyResults = () =>
     navigator.clipboard.writeText(resultsMarkdown(task, rows)).then(
       () => toast.success(`Copied ${fmt.int(rows.length)} results`),
@@ -671,6 +672,7 @@ function TaskDetail({
       }
     >
       <div className="flex flex-col gap-4">
+        <TaskDatasets task={task} />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Metric
             boxed
@@ -758,6 +760,18 @@ function TaskDetail({
 }
 
 /** Its own component so the clock re-renders one box a second, not the task and its table. */
+/** The datasets a task searches, placed in its market's catalog. */
+function TaskDatasets({ task }: { task: LabTask }) {
+  const { region, delay, universe, datasetIds } = task
+  const scope =
+    region && delay !== null && universe && datasetIds.length > 0
+      ? { instrumentType: 'EQUITY', region, delay, universe }
+      : null
+  const { tree, nameOf } = useDatasetTree(scope)
+  if (datasetIds.length === 0) return null
+  return <DatasetChips tree={tree} value={datasetIds} nameOf={nameOf} />
+}
+
 function Elapsed({ task, done }: { task: LabTask; done: boolean }) {
   // Ticking while there is something to tick: a finished task's elapsed time is fixed, and a
   // timer behind it would wake the page every second to redraw the same string.

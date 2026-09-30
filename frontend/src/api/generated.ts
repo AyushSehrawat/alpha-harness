@@ -342,6 +342,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/catalog/fields/outline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Field Outline
+         * @description The chosen fields as compact text for an LLM, grouped as the catalog is.
+         */
+        post: operations["field_outline_api_catalog_fields_outline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/catalog/fields/{field_id}": {
         parameters: {
             query?: never;
@@ -622,6 +642,23 @@ export interface paths {
         post?: never;
         /** Delete Thread */
         delete: operations["delete_thread_api_chat_threads__thread_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/competitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Competitions */
+        get: operations["competitions_api_competitions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1831,9 +1868,30 @@ export interface paths {
         };
         /**
          * Alpha Detail
-         * @description One alpha with its checks and PnL curve. Downloads the daily PnL the first time.
+         * @description One stored alpha: its expression, settings and checks. Local only, so it answers at once;
+         *     the PnL comes from :func:`alpha_pnl`, which may have to download it.
          */
         get: operations["alpha_detail_api_vault_alphas__alpha_id__detail_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vault/alphas/{alpha_id}/pnl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Alpha Pnl
+         * @description One alpha's cumulative PnL. Downloads the daily PnL from BRAIN the first time.
+         */
+        get: operations["alpha_pnl_api_vault_alphas__alpha_id__pnl_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1942,16 +2000,8 @@ export interface components {
             checks: {
                 [key: string]: unknown;
             }[];
-            /** Dates */
-            dates: string[];
-            /** Days */
-            days: number;
             /** Expression */
             expression: string | null;
-            /** Pnl */
-            pnl: number[];
-            /** Problem */
-            problem: string | null;
             settings: components["schemas"]["AlphaSettings"];
         };
         /**
@@ -2097,6 +2147,17 @@ export interface components {
             submitted: boolean;
             /** Universes */
             universes?: string[] | null;
+        };
+        /** AlphaPnl */
+        AlphaPnl: {
+            /** Dates */
+            dates: string[];
+            /** Days */
+            days: number;
+            /** Pnl */
+            pnl: number[];
+            /** Problem */
+            problem: string | null;
         };
         /** AlphaProperties */
         AlphaProperties: {
@@ -2322,6 +2383,16 @@ export interface components {
             /** Jobid */
             jobId: string;
         };
+        /**
+         * AvailabilityCounts
+         * @description Fields each availability toggle would show if pressed, under the other filters.
+         */
+        AvailabilityCounts: {
+            /** Region Agnostic */
+            region_agnostic: number;
+            /** Region Exclusive */
+            region_exclusive: number;
+        };
         /** BackgroundTask */
         BackgroundTask: {
             /** Detail */
@@ -2459,10 +2530,13 @@ export interface components {
         };
         /** CatalogFacets */
         CatalogFacets: {
+            availability: components["schemas"]["AvailabilityCounts"];
             /** Categories */
             categories: components["schemas"]["CategoryFacet"][];
             /** Datasets */
             datasets: components["schemas"]["DatasetFacet"][];
+            /** Date Added */
+            date_added: components["schemas"]["MonthCount"][];
             /** Subcategories */
             subcategories: components["schemas"]["SubcategoryFacet"][];
             /** Types */
@@ -2507,16 +2581,31 @@ export interface components {
         CatalogStats: {
             /** Alpha Count Max */
             alpha_count_max?: number | null;
+            /** Alpha Count Min */
+            alpha_count_min?: number | null;
             /** Coverage Max */
             coverage_max?: number | null;
             /** Coverage Median */
             coverage_median?: number | null;
             /** Coverage Min */
             coverage_min?: number | null;
+            /**
+             * Date Added
+             * @default []
+             */
+            date_added: components["schemas"]["MonthCount"][];
+            /** Date Coverage Max */
+            date_coverage_max?: number | null;
+            /** Date Coverage Min */
+            date_coverage_min?: number | null;
             /** Pyramid Multiplier Max */
             pyramid_multiplier_max?: number | null;
+            /** Pyramid Multiplier Min */
+            pyramid_multiplier_min?: number | null;
             /** User Count Max */
             user_count_max?: number | null;
+            /** User Count Min */
+            user_count_min?: number | null;
         };
         /** CategoryFacet */
         CategoryFacet: {
@@ -2601,6 +2690,42 @@ export interface components {
          * @enum {string}
          */
         CheckResult: "PASS" | "FAIL" | "PENDING" | "WARNING" | "ERROR";
+        /** Competition */
+        Competition: {
+            /** Enddate */
+            endDate: string | null;
+            /** Enrolled */
+            enrolled: boolean;
+            /** Faq */
+            faq: string | null;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Ongoing */
+            ongoing: boolean;
+            /** Scoring */
+            scoring: string | null;
+            /** Signupenddate */
+            signUpEndDate: string | null;
+            standing: components["schemas"]["CompetitionStanding"] | null;
+            /** Startdate */
+            startDate: string | null;
+            /** Status */
+            status: string;
+        };
+        /** CompetitionStanding */
+        CompetitionStanding: {
+            /** Alphas */
+            alphas: number | null;
+            /** Rank */
+            rank: number | null;
+        };
+        /** Competitions */
+        Competitions: {
+            /** Competitions */
+            competitions: components["schemas"]["Competition"][];
+        };
         /** CorrelatedPair */
         CorrelatedPair: {
             /** A */
@@ -2896,6 +3021,14 @@ export interface components {
             coverage_min?: number | null;
             /** Dataset Ids */
             dataset_ids?: string[];
+            /** Date Coverage Max */
+            date_coverage_max?: number | null;
+            /** Date Coverage Min */
+            date_coverage_min?: number | null;
+            /** Date Created From */
+            date_created_from?: string | null;
+            /** Date Created To */
+            date_created_to?: string | null;
             /** Field Types */
             field_types?: string[];
             /**
@@ -2908,6 +3041,8 @@ export interface components {
              * @default 0
              */
             offset: number;
+            /** Pyramid Multiplier Max */
+            pyramid_multiplier_max?: number | null;
             /** Pyramid Multiplier Min */
             pyramid_multiplier_min?: number | null;
             /**
@@ -2941,6 +3076,15 @@ export interface components {
             user_count_max?: number | null;
             /** User Count Min */
             user_count_min?: number | null;
+        };
+        /** FieldOutline */
+        FieldOutline: {
+            /** Fields */
+            fields: number;
+            /** Missing */
+            missing: string[];
+            /** Text */
+            text: string;
         };
         /** FieldPage */
         FieldPage: {
@@ -3304,6 +3448,16 @@ export interface components {
             /** Rpm */
             rpm: number;
         };
+        /** MonthCount */
+        MonthCount: {
+            /** Fields */
+            fields: number;
+            /**
+             * Month
+             * Format: date
+             */
+            month: string;
+        };
         /** OfferedModels */
         OfferedModels: {
             /** Error */
@@ -3326,6 +3480,16 @@ export interface components {
             maxSimulations: number;
             /** Vector */
             vector: string[];
+        };
+        /**
+         * OutlineRequest
+         * @description Fields picked one by one, or whole datasets: a category or subcategory is its datasets.
+         */
+        OutlineRequest: {
+            /** Dataset Ids */
+            dataset_ids?: string[];
+            /** Field Ids */
+            field_ids?: string[];
         };
         /** Pair */
         Pair: {
@@ -5423,6 +5587,46 @@ export interface operations {
             };
         };
     };
+    field_outline_api_catalog_fields_outline_post: {
+        parameters: {
+            query: {
+                /** @description e.g. USA, EUR, GLB */
+                region: string;
+                delay: number;
+                /** @description e.g. TOP3000 */
+                universe: string;
+                instrumentType?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutlineRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FieldOutline"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     field_detail_api_catalog_fields__field_id__get: {
         parameters: {
             query: {
@@ -5819,6 +6023,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    competitions_api_competitions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Competitions"];
                 };
             };
         };
@@ -7681,6 +7905,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AlphaDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    alpha_pnl_api_vault_alphas__alpha_id__pnl_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                alpha_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlphaPnl"];
                 };
             };
             /** @description Validation Error */

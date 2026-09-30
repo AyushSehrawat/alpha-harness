@@ -38,7 +38,7 @@ export function SearchLabScreen() {
   const stored = useSearchLab()
   const set = useSearchLab.setState
   const day = useQuery({ queryKey: ['today'], queryFn: () => today.get() })
-  const { chosen, names, choose } = useLabMarket(stored, set, '/labs/search')
+  const { chosen, scope, choose } = useLabMarket(stored, set, '/labs/search')
 
   const options = useQuery({
     queryKey: ['search-lab', 'options'],
@@ -97,9 +97,9 @@ export function SearchLabScreen() {
       )}
       <DatasetsPanel
         ids={draft.datasetIds}
-        names={names}
+        scope={scope}
         onChoose={choose}
-        onRemove={(id) => set({ datasetIds: stored.datasetIds.filter((x) => x !== id) })}
+        onRemove={(ids) => set({ datasetIds: stored.datasetIds.filter((x) => !ids.includes(x)) })}
       />
       <SettingsPanel
         draft={draft}

@@ -255,8 +255,8 @@ function Card({
       )}
       {passed.length > 0 && (
         <div className="flex flex-wrap gap-1">
-          {passed.map((c) => (
-            <CheckBadge key={c.name} check={c} />
+          {passed.map((c, i) => (
+            <CheckBadge key={`${c.name}-${i}`} check={c} />
           ))}
         </div>
       )}

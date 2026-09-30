@@ -35,6 +35,13 @@ export const preferences = {
   put: (body: Preferences) => http.put<Preferences>('/api/preferences', body),
 }
 
+export type Competition = Schemas['Competition']
+
+export const competitions = {
+  /** Ongoing first, soonest to end. One BRAIN read, plus one per ongoing competition. */
+  list: () => http.get<Schemas['Competitions']>('/api/competitions'),
+}
+
 export const today = {
   /** The first screen in one call. Scope defaults to USA / D1 / TOP3000. */
   get: (scope?: Partial<Scope>) => http.get<Today>(`/api/today${scopeQs(scope)}`),

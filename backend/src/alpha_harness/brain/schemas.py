@@ -409,7 +409,9 @@ class BulkField(msgspec.Struct, rename="camel"):
     user_count: int | None = None
     alpha_count: int | None = None
     pyramid_multiplier: float | None = None
-    themes: list[str] | None = None
+    #: Untyped: plain names once, ``{id, name, multiplier}`` objects since. Stored as JSON
+    #: and read by name, so either shape works and a third cannot fail a market's sync.
+    themes: list[Any] | None = None
     #: When BRAIN first offered the field here. New fields are uncrowded by construction.
     date_created: date | None = None
     #: How many regions hold this field. Only region ``ALL`` sends it, and it is the one

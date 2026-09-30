@@ -2,8 +2,7 @@
 
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { useEffect, useMemo } from 'react'
-import { catalog } from '@/api/catalog'
+import { useEffect } from 'react'
 import type { Scope } from '@/api/types'
 import { DEFAULT_SCOPE, useScope } from '@/lib/scope'
 import { useDebounced } from '@/lib/use-debounced'
@@ -39,7 +38,7 @@ export const LAB_DEFAULTS: LabDraft = {
 
 export const MAX_SIMULATIONS = 100_000
 
-/** A draft's market and datasets: dataset names, and the round trip to the Data Explorer to choose them. */
+/** A draft's market and datasets, and the round trip to the Data Explorer to choose them. */
 type LabMarket = Pick<LabDraft, 'region' | 'delay' | 'universe' | 'datasetIds'>
 
 export function useLabMarket(
@@ -69,22 +68,12 @@ export function useLabMarket(
       })
   }, [from, set])
 
-  const datasets = useQuery({
-    queryKey: ['catalog', 'datasets', scope, ''],
-    queryFn: () => catalog.datasets(scope),
-    enabled: chosen,
-  })
-  const names = useMemo(
-    () => new Map((datasets.data ?? []).map((d) => [d.dataset_id, d.name ?? d.dataset_id])),
-    [datasets.data],
-  )
-
   const choose = () => {
     useDatasetPick.getState().start(scope, draft.datasetIds, from)
     setDataScope(scope)
     void navigate({ to: '/data' })
   }
-  return { chosen, names, choose }
+  return { chosen, scope, choose }
 }
 
 /**
