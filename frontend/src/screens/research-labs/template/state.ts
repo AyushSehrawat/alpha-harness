@@ -60,6 +60,7 @@ export const useTemplateLab = create<TemplateDraft & Actions>()(
         delay: s.delay,
         universe: s.universe,
         datasetIds: s.datasetIds,
+        fieldFilter: s.fieldFilter,
         cores: s.cores,
         simulations: s.simulations,
         decay: s.decay,

@@ -99,6 +99,8 @@ export function SearchLabScreen() {
         ids={draft.datasetIds}
         scope={scope}
         onChoose={choose}
+        filter={draft.fieldFilter}
+        onClearFilter={() => set({ fieldFilter: null })}
         onRemove={(ids) => set({ datasetIds: stored.datasetIds.filter((x) => !ids.includes(x)) })}
       />
       <SettingsPanel

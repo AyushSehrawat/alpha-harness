@@ -8,6 +8,7 @@ import { fmt } from '@/lib/format'
 import { useCores } from '@/lib/preferences'
 import { DEFAULT_SCOPE, useScopeOptions } from '@/lib/scope'
 import { useProviderLabel } from '@/screens/ai/shared'
+import type { FieldFilterState } from '@/screens/data/state'
 import { AddTaskButtons, useAddTask } from '@/screens/research-labs/add-task'
 import {
   MAX_SIMULATIONS,
@@ -40,6 +41,7 @@ interface PowerPoolDraft {
   delay: number
   universe: string
   datasetIds: string[]
+  fieldFilter: FieldFilterState | null
   /** `null` until chosen in the form: until then Settings' default applies. */
   cores: number | null
   simulations: number | null
@@ -55,6 +57,7 @@ const useDraft = create<PowerPoolDraft>()(
       delay: DEFAULT_SCOPE.delay,
       universe: DEFAULT_SCOPE.universe,
       datasetIds: [],
+      fieldFilter: null,
       cores: null,
       simulations: null,
       model: null,
@@ -101,6 +104,7 @@ export function PowerPoolLabScreen() {
     delay: draft.delay,
     universe: draft.universe,
     dataset_ids: draft.datasetIds,
+    field_filter: draft.fieldFilter ?? null,
     model,
     neutralizations: draft.neutralizations,
     cores,
@@ -141,6 +145,8 @@ export function PowerPoolLabScreen() {
         ids={draft.datasetIds}
         scope={scope}
         onChoose={choose}
+        filter={draft.fieldFilter}
+        onClearFilter={() => set({ fieldFilter: null })}
         onRemove={(ids) => set({ datasetIds: draft.datasetIds.filter((x) => !ids.includes(x)) })}
       />
       <Panel title="Settings">

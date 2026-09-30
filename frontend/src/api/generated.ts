@@ -3803,6 +3803,7 @@ export interface components {
             dataset_ids?: string[];
             /** Delay */
             delay: number;
+            field_filter?: components["schemas"]["FieldFilter"] | null;
             /** Model */
             model?: string | null;
             /** Neutralizations */
@@ -4219,6 +4220,7 @@ export interface components {
             decay: number;
             /** Delay */
             delay: number;
+            field_filter?: components["schemas"]["FieldFilter"] | null;
             /** Neutralizations */
             neutralizations?: string[];
             /** Region */
@@ -4858,6 +4860,7 @@ export interface components {
             decay: number;
             /** Delay */
             delay: number;
+            field_filter?: components["schemas"]["FieldFilter"] | null;
             /** Neutralizations */
             neutralizations?: string[];
             /** Region */

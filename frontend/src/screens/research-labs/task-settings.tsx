@@ -1,11 +1,12 @@
 /** The Datasets and Settings panels of a lab task, and the task settings every lab asks for. */
 
-import { DatabaseIcon } from 'lucide-react'
+import { DatabaseIcon, FilterIcon } from 'lucide-react'
 import type { Scope } from '@/api/types'
 import { DASH, fmt } from '@/lib/format'
 import { useCores } from '@/lib/preferences'
 import { isRegionAgnostic, regionLabel, useScopeOptions } from '@/lib/scope'
 import { DatasetChips, useDatasetTree } from '@/screens/data/dataset-chips'
+import { describeFilter, type FieldFilterState } from '@/screens/data/state'
 import { NeutralizationPicker } from '@/screens/research-labs/neutralization'
 import {
   Button,
@@ -88,12 +89,17 @@ export function DatasetsPanel({
   scope,
   onChoose,
   onRemove,
+  filter,
+  onClearFilter,
 }: {
   ids: string[]
   /** The market the datasets belong to, which places each under its category. */
   scope: Scope
   onChoose: () => void
   onRemove: (ids: string[]) => void
+  /** The Data Explorer's filter the datasets were chosen under, which narrows their fields. */
+  filter: FieldFilterState | null | undefined
+  onClearFilter: () => void
 }) {
   const chosen = ids.length > 0
   const { tree, nameOf } = useDatasetTree(chosen ? scope : null)
@@ -110,7 +116,20 @@ export function DatasetsPanel({
       }
     >
       {chosen ? (
-        <DatasetChips tree={tree} value={ids} nameOf={nameOf} onRemove={onRemove} />
+        <div className="flex flex-col gap-3">
+          <DatasetChips tree={tree} value={ids} nameOf={nameOf} onRemove={onRemove} />
+          {filter && (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body-compact text-ink-subtle">
+              <FilterIcon className="size-3.5 shrink-0" aria-hidden />
+              <span className="min-w-0">
+                Only fields matching {describeFilter(filter, scope.region).join(' \u00b7 ')}
+              </span>
+              <Button size="sm" variant="ghost" onClick={onClearFilter}>
+                Use All Fields
+              </Button>
+            </div>
+          )}
+        </div>
       ) : (
         <Empty title="No datasets chosen" icon={<DatabaseIcon />}>
           <Button className="mt-2" onClick={onChoose}>

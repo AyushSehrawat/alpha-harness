@@ -5,12 +5,15 @@
 
 import type { components } from '@/api/generated'
 import { http } from '@/api/http'
+import type { FieldFilterState } from '@/screens/data/state'
 
 export interface SearchLabRequest {
   region: string
   delay: number
   universe?: string | null
   dataset_ids: string[]
+  /** The Data Explorer's filter the datasets were chosen under; `null` uses every field. */
+  field_filter?: FieldFilterState | null
   vector_operators: string[]
   decay: number
   cores: number

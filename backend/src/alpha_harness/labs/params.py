@@ -81,6 +81,8 @@ class PowerPoolParams(TaskParams):
     neutralizations: list[str]
     universe: str | None = None
     dataset_ids: list[str] = Field(default_factory=list)
+    #: The Data Explorer's filter the datasets were chosen under, applied on every call.
+    field_filter: dict[str, Any] | None = None
     model: str = ""
     #: Running LLM tallies: ``calls``, ``empty``, ``failed`` and ``byDataset``.
     llm: dict[str, Any] = Field(default_factory=dict)

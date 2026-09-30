@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, ValidationError
 from ..brain.errors import BrainError
 from ..brain.schemas import region_label
 from ..brain.settings_schema import resolve_options
+from ..catalog.queries import FieldFilter
 from ..db.models import Study, StudyStatus
 from ..schemas import Out
 from . import scheduler, search
@@ -164,6 +165,9 @@ class SearchRequest(BaseModel):
     cores: int = Field(default=search.MAX_CORES, ge=1, le=search.MAX_CORES)
     #: Needed to add a task; a preview ignores it.
     simulations: int = Field(default=0, ge=0, le=search.MAX_SIMULATIONS)
+    #: The Data Explorer's filter the datasets were chosen under: only the fields it shows are
+    #: searched. Its ordering and paging are the lab's own.
+    field_filter: FieldFilter | None = None
 
 
 async def market_for(body: SearchRequest, state: Any, need: tuple[str, ...] = ()) -> dict[str, Any]:
@@ -236,10 +240,15 @@ async def market_for(body: SearchRequest, state: Any, need: tuple[str, ...] = ()
             universes=universes,
             dataset_ids=body.dataset_ids,
             allow_vector=bool(vector_ops),
+            narrow=body.field_filter,
         )
         if not pool.fields:
             problems.append(
-                "The chosen datasets have no usable fields in this market."
+                (
+                    "No field in the chosen datasets matches the Data Explorer filter."
+                    if body.field_filter
+                    else "The chosen datasets have no usable fields in this market."
+                )
                 + (
                     " Allow a vector operator to use their vector fields."
                     if pool.vector_skipped

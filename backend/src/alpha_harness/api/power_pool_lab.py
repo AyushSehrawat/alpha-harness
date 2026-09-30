@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from ..catalog.queries import FieldFilter
 from ..db.models import utcnow
 from ..labs import power_pool, search
 from ..labs.launch import (
@@ -39,6 +40,8 @@ class PowerPoolRequest(BaseModel):
     neutralizations: list[str] = Field(default_factory=list, max_length=20)
     cores: int = Field(default=search.MAX_CORES, ge=1, le=search.MAX_CORES)
     simulations: int = Field(default=0, ge=0, le=search.MAX_SIMULATIONS)
+    #: The Data Explorer's filter the datasets were chosen under: only fields it shows are used.
+    field_filter: FieldFilter | None = None
 
 
 class PowerPoolModel(Out):
@@ -147,13 +150,18 @@ async def _plan(body: PowerPoolRequest, state: Any) -> dict[str, Any]:
     if universes:
         for dataset in body.dataset_ids:
             ctx = await power_pool.context_for(
-                state.catalog, body.region, body.delay, universes, dataset
+                state.catalog, body.region, body.delay, universes, dataset, body.field_filter
             )
             if ctx is None:
                 problems.append(
                     f"{dataset} is not in the downloaded {body.region} delay {body.delay} catalog."
                 )
                 continue
+            if body.field_filter and not ctx.fields:
+                problems.append(
+                    f"No field in {dataset} matches the Data Explorer filter. "
+                    "Untick it, or loosen the filter."
+                )
             fields += len(ctx.fields)
             if prompt is None and info is not None and operators:
                 user, shown = power_pool.user_prompt(
@@ -213,6 +221,11 @@ async def add_task(body: PowerPoolRequest, state: State) -> AddedTask:
             universes=plan["universes"],
             neutralizations=plan["neutralizations"],
             dataset_ids=body.dataset_ids,
+            field_filter=(
+                body.field_filter.model_dump(mode="json", exclude_defaults=True)
+                if body.field_filter
+                else None
+            ),
             model=plan["model"],
             cores=body.cores,
             llm={"calls": 0},

@@ -312,6 +312,8 @@ export function TemplateLabScreen() {
         ids={draft.datasetIds}
         scope={scope}
         onChoose={choose}
+        filter={draft.fieldFilter}
+        onClearFilter={() => set({ fieldFilter: null })}
         onRemove={(ids) => set({ datasetIds: draft.datasetIds.filter((x) => !ids.includes(x)) })}
       />
       <SettingsPanel
