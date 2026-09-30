@@ -93,4 +93,6 @@ export const update = {
     http.get<UpdateStatus>(`/api/update${qs({ refresh: refresh || null })}`),
   /** Hands the install to the launcher and closes the app so it can run. */
   apply: () => http.post<UpdateStarted>('/api/update'),
+  /** Closes the app for good: the launcher exits with it rather than starting it again. */
+  quit: () => http.post<Schemas['Quitting']>('/api/quit'),
 }

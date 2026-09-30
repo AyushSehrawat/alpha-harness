@@ -4989,6 +4989,8 @@ export interface components {
             latest: string | null;
             /** Launcher */
             launcher: string | null;
+            /** Launcherfile */
+            launcherFile: string;
             /** Launcheroutdated */
             launcherOutdated: boolean;
             /** Notes */

@@ -125,6 +125,11 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Set by the first request a page of ours makes, so a start straight after an update can
+    # tell whether the page that asked for it came back (see ``__main__``).
+    page_seen = asyncio.Event()
+    app.state.page_seen = page_seen
+
     # DNS rebinding: a page whose hostname resolves to 127.0.0.1 is "same-origin" to the
     # browser, so the header checks below pass. Its Host header still names that hostname.
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1"])
@@ -150,6 +155,7 @@ def create_app() -> FastAPI:
                 {"detail": {"code": "forbidden", "message": "Writes must come from the app."}},
                 status_code=403,
             )
+        page_seen.set()
         return await call_next(request)
 
     install_exception_handlers(app)
