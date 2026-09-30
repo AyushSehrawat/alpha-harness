@@ -127,6 +127,9 @@ jobs:
     # canonical check rather than whatever the tag happened to say.
     needs: wheel
     strategy:
+      # One platform failing must not cancel the others: a run should report every build.
+      # Publishing still needs all four, so a partial release can never go out.
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -159,8 +162,11 @@ jobs:
         shell: pwsh
         env:
           UV_PATH: ${{ steps.uv.outputs.uv-path }}
+        # setup-uv reports the binary without its extension on Windows (measured: `...\uv`),
+        # while the file on disk is uv.exe.
         run: |
-          Copy-Item $env:UV_PATH launcher/uv.exe
+          $uv = if (Test-Path -LiteralPath $env:UV_PATH -PathType Leaf) { $env:UV_PATH } else { "$env:UV_PATH.exe" }
+          Copy-Item -LiteralPath $uv launcher/uv.exe
           ./launcher/uv.exe --version
       - name: Bundle uv
         if: runner.os != 'Windows'
