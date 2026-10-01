@@ -25,8 +25,8 @@ const columns = (): Column<RankedAlpha>[] => [
 
 export function SubmittableAlphas() {
   const query = useQuery({ queryKey: ['submittable-alphas'], queryFn: labTasks.submittable })
-  // Its own key, refreshed at most every 30s: reading every task's Alphas takes about a second,
-  // too long to redo on each of the Tasks screen's two-second updates.
+  // Its own key, refreshed at most every 30s: reading every task's Alphas takes seconds on a
+  // large account, too long to redo on each of the Tasks screen's two-second updates.
   useRefetchOn('studies', ['submittable-alphas'], 30_000)
   const [sort, setSort] = useState<Sort>({ key: 'sharpe', desc: true })
   const rows = useMemo<RankedAlpha[]>(() => query.data ?? [], [query.data])

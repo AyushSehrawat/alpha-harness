@@ -7,6 +7,8 @@ stopped, changed or removed. Search Lab, Template Lab and Evolution Lab add sche
 
 import asyncio
 import contextlib
+import itertools
+import json
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query
@@ -694,6 +696,38 @@ class TaskAlpha(RankedAlpha):
     task_name: str
 
 
+#: Ids per ``IN`` list, under SQLite's cap on bound variables.
+TRIAL_CHUNK = 900
+
+#: (Trial id, its Alpha) -> refused when it was simulated. A finished trial's own checks never
+#: change, and judging every one again on each refresh decoded tens of thousands of check
+#: lists. The Alpha is in the key because SQLite can give a deleted trial's id to a new one.
+_REFUSED: dict[tuple[int, str | None], bool] = {}
+
+
+async def _not_refused(session: Any, ids: list[tuple[int, str | None]]) -> list[int]:
+    """The trials of ``ids`` BRAIN did not refuse when they ran, judged once per trial."""
+    unknown = [i for i, alpha_id in ids if (i, alpha_id) not in _REFUSED]
+    raw: list[tuple[int, str | None, str | None]] = []
+    for chunk in itertools.batched(unknown, TRIAL_CHUNK, strict=False):
+        raw += (
+            await session.execute(
+                select(Trial.id, Trial.alpha_id, func.json_extract(Trial.result, "$.checks")).where(
+                    Trial.id.in_(chunk)
+                )
+            )
+        ).tuples()
+
+    def judge() -> None:
+        for trial_id, alpha_id, checks in raw:
+            refused = verdict(json.loads(checks) if checks else []) == "refused"
+            _REFUSED[trial_id, alpha_id] = refused
+
+    # Off the event loop: the first refresh after a start judges every finished trial.
+    await asyncio.to_thread(judge)
+    return [i for i, alpha_id in ids if not _REFUSED.get((i, alpha_id), False)]
+
+
 @router.get("/submittable")
 async def submittable_alphas(state: State) -> list[TaskAlpha]:
     """Every Alpha from every task that nothing BRAIN reports refuses: each check PASS, WARNING
@@ -704,10 +738,10 @@ async def submittable_alphas(state: State) -> list[TaskAlpha]:
     """
     tasks = {row.id: row for row in await _rows(state)}
     async with state.db.session() as session:
-        trials = list(
+        ids = list(
             (
-                await session.scalars(
-                    select(Trial)
+                await session.execute(
+                    select(Trial.id, Trial.alpha_id)
                     .where(
                         Trial.study_id.in_(list(tasks)),
                         Trial.state == TrialState.COMPLETE,
@@ -716,11 +750,15 @@ async def submittable_alphas(state: State) -> list[TaskAlpha]:
                     )
                     .order_by(Trial.study_id, Trial.number)
                 )
-            ).all()
+            ).tuples()
         )
-    # A check that FAILed at simulation time stays failed: BRAIN's later checks only settle
-    # what was PENDING. Dropping those first spares looking most Alphas up in the vault.
-    trials = [t for t in trials if verdict((t.result or {}).get("checks") or []) != "refused"]
+        # A check that FAILed at simulation time stays failed: BRAIN's later checks only
+        # settle what was PENDING. Only the rest are read whole, about one in ten measured.
+        kept = await _not_refused(session, ids)
+        trials: list[Trial] = []
+        for chunk in itertools.batched(kept, TRIAL_CHUNK, strict=False):
+            trials += (await session.scalars(select(Trial).where(Trial.id.in_(chunk)))).all()
+    trials.sort(key=lambda t: (t.study_id, t.number))
     stored = await state.alphas.by_ids(list({str(t.alpha_id) for t in trials}))
     current = {a: checks_of(r.get("checks")) for a, r in stored.items() if r.get("checks")}
     by_trial = {t.id: t.study_id for t in trials}

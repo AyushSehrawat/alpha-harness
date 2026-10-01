@@ -615,10 +615,13 @@ function TaskDetail({
   onOpenAlpha: (alphaId: string) => void
 }) {
   const top = useQuery({
-    queryKey: ['lab-tasks', 'top', task.id],
+    // Its own key, refreshed at most every 10s: the whole sweep is a megabyte or more on a
+    // big task, too much to redo on each of the task list's two-second updates.
+    queryKey: ['lab-task-top', task.id],
     // The whole sweep is worth scrolling; the table virtualises, so the rows are cheap.
     queryFn: () => labTasks.top(task.id, Math.min(Math.max(task.target, 50), 5000)),
   })
+  useRefetchOn('studies', ['lab-task-top', task.id], 10_000)
   // The Alpha the sweep came from leads and is never ranked: it is the reference, not a
   // result. Everything else arrives sorted on the objective already.
   const found = top.data ?? []
