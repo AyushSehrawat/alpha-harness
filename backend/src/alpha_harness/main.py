@@ -99,9 +99,15 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-        state = AppState()
-        app.state.harness = state
-        await state.startup()
+        try:
+            state = AppState()
+            app.state.harness = state
+            await state.startup()
+        except Exception as exc:
+            # uvicorn reports this and then exits through a traceback of its own, whose last
+            # lines are all the launcher shows; ``__main__`` says this instead.
+            app.state.startup_failure = exc
+            raise
 
         async def install(release: updates.Release) -> None:
             updates.request(release.version, wheel_url=release.wheel_url)
