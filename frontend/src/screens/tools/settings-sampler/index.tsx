@@ -26,6 +26,7 @@ import {
 import { AstInspector } from '@/screens/pool/shared'
 import { AddTaskButtons, useAddTask } from '@/screens/research-labs/add-task'
 import { NeutralizationPicker } from '@/screens/research-labs/neutralization'
+import { SimulationSettingsFields, testPeriodOf } from '@/screens/research-labs/simulation-settings'
 import {
   Button,
   Chips,
@@ -43,7 +44,6 @@ import {
   Skeleton,
   Textarea,
 } from '@/ui/kit'
-import { Select } from '@/ui/overlay'
 import {
   type Holding,
   type MarketPick,
@@ -359,103 +359,6 @@ function Tree({
   )
 }
 
-/** A typed number held inside BRAIN's own bounds. */
-const clamp = (text: string, max: number) =>
-  Math.min(max, Math.max(0, Math.round(Number(text) || 0)))
-
-/**
- * How every simulation in the sweep is held: BRAIN's own four, laid out as BRAIN lays them
- * out — Test Period is years *and* months, not a number of whole years.
- */
-function SettingsFields({
-  decay,
-  setDecay,
-  truncation,
-  setTruncation,
-  nanHandling,
-  setNanHandling,
-  testYears,
-  setTestYears,
-  testMonths,
-  setTestMonths,
-}: {
-  decay: string
-  setDecay: (v: string) => void
-  truncation: string
-  setTruncation: (v: string) => void
-  nanHandling: 'ON' | 'OFF'
-  setNanHandling: (v: 'ON' | 'OFF') => void
-  testYears: string
-  setTestYears: (v: string) => void
-  testMonths: string
-  setTestMonths: (v: string) => void
-}) {
-  return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <Field label="Decay">
-        <Input
-          type="number"
-          min={0}
-          max={512}
-          step={1}
-          value={decay}
-          onChange={(e) => setDecay(e.target.value)}
-        />
-      </Field>
-      <Field label="Truncation">
-        <Input
-          type="number"
-          min={0}
-          max={1}
-          step={0.01}
-          value={truncation}
-          onChange={(e) => setTruncation(e.target.value)}
-        />
-      </Field>
-      <Field label="NaN Handling">
-        <Select
-          label="NaN Handling"
-          value={nanHandling}
-          onChange={(v) => setNanHandling(v as 'ON' | 'OFF')}
-          items={[
-            { value: 'ON', label: 'On' },
-            { value: 'OFF', label: 'Off' },
-          ]}
-        />
-      </Field>
-      {/* BRAIN takes P0Y0M0D up to P6Y0M0D, and its own form splits the two. The units sit
-          beside the boxes rather than above them, so this reads as one control on one line
-          and its inputs share a baseline with Decay and Truncation. */}
-      <Fieldset legend="Test Period">
-        <div className="flex items-center gap-2">
-          <Input
-            type="number"
-            min={0}
-            max={6}
-            step={1}
-            aria-label="Test period, years"
-            className="w-16"
-            value={testYears}
-            onChange={(e) => setTestYears(e.target.value)}
-          />
-          <span className="text-body-compact text-ink-subtle">Years</span>
-          <Input
-            type="number"
-            min={0}
-            max={11}
-            step={1}
-            aria-label="Test period, months"
-            className="w-16"
-            value={testMonths}
-            onChange={(e) => setTestMonths(e.target.value)}
-          />
-          <span className="text-body-compact text-ink-subtle">Months</span>
-        </div>
-      </Fieldset>
-    </div>
-  )
-}
-
 export function SettingsSamplerScreen() {
   const search = useSearch({ from: '/tools/settings-sampler' })
   const navigate = useNavigate()
@@ -492,7 +395,7 @@ export function SettingsSamplerScreen() {
     decay: Math.max(0, Math.round(Number(decay) || 0)),
     truncation: Number(truncation) || 0.08,
     nanHandling,
-    testPeriod: `P${clamp(testYears, 6)}Y${clamp(testMonths, 11)}M0D`,
+    testPeriod: testPeriodOf(testYears, testMonths),
   }
   const source: Source | null = mode === 'alpha' ? (alphaId ? { alphaId } : null) : typed
   const query = useQuery({
@@ -751,7 +654,7 @@ export function SettingsSamplerScreen() {
               : 'Every market in the sweep runs at these.'
           }
         >
-          <SettingsFields
+          <SimulationSettingsFields
             decay={decay}
             setDecay={setDecay}
             truncation={truncation}

@@ -278,6 +278,17 @@ async def _progress(state: Any, ids: list[int]) -> dict[int, dict[str, Any]]:
     return out
 
 
+def _fields(space: Any) -> int:
+    """Fields a task searches: its pool, or each variable's for a typed Template Lab template."""
+    if not isinstance(space, dict):
+        return 0
+    pooled = len(space.get("fields") or {})
+    variables = space.get("variables")
+    if pooled or not isinstance(variables, list):
+        return pooled
+    return sum(len(v.get("fields") or {}) for v in variables if isinstance(v, dict))
+
+
 def _task(row: Study, progress: dict[str, Any]) -> LabTask:
     # Read raw on purpose: this only displays, and one malformed old row must not take the
     # whole Tasks list down with a validation error.
@@ -311,7 +322,7 @@ def _task(row: Study, progress: dict[str, Any]) -> LabTask:
             "expression": row.template_source if row.sampler in ONE_EXPRESSION else None,
             "cores": scheduler.cores_of(row),
             "datasetIds": params.get("datasetIds") or [],
-            "fields": len((params.get("space") or {}).get("fields") or {}),
+            "fields": _fields(params.get("space")),
             "target": row.max_trials,
             # What spent quota, as the scheduler counts toward the target.
             "simulated": told - progress["free"],

@@ -16,7 +16,7 @@ from ..brain.schemas import SimulationRequest, SimulationSettings
 from ..brain.settings_schema import validate_settings
 from ..db.models import SimStatus, SimulationRecord, Study, StudyStatus, Trial, TrialState, utcnow
 from ..engine.packer import MAX_BATCH
-from . import ga, search, template
+from . import ga, search, template, template_v1
 from .objectives import StudyNotFoundError
 from .params import (
     CORRELATION_BREAKER,
@@ -179,9 +179,9 @@ def ask_points(
     space = run.space
     if cover and not study.get_trials(deepcopy=False, states=(OptunaState.WAITING,)):
         for field_id in cover:
-            study.enqueue_trial(search.first_pass(space, field_id))
+            study.enqueue_trial(lab.first_pass(space, field_id))
 
-    choices = search.field_choices(space)
+    choices = lab.field_choices(space)
     picked: list[tuple[Any, dict[str, Any], SimulationRequest]] = []
     keys: set[tuple[str, str]] = set()
     for _ in range(want * 5):
@@ -299,13 +299,15 @@ async def advance(optimizer: Optimizer, study_id: int) -> int:
         return 0
 
     if row.sampler == TEMPLATE_SAMPLER:
-        lab = template
-        run: SearchParams = params_of(row, TemplateParams)
+        typed = params_of(row, TemplateParams)
+        lab = template_v1 if typed.tree else template
+        run: SearchParams = typed
     else:
         lab = search
         run = params_of(row, SearchParams)
 
     space = run.space
+    key, coverable = lab.coverage(space)
     async with optimizer.db.session() as session:
         counted = (
             await session.execute(
@@ -318,11 +320,11 @@ async def advance(optimizer: Optimizer, study_id: int) -> int:
                 ).where(Trial.study_id == study_id, Trial.state != TrialState.PRUNED)
             )
         ).all()
-    tried, seen = await asyncio.to_thread(_search_memory, counted)
+    tried, seen = await asyncio.to_thread(_search_memory, counted, key)
     limit = row.max_trials // 2
     cover: list[str] = []
     if len(tried) < limit:
-        untried = [f for f in space["fields"] if f not in tried]
+        untried = [f for f in coverable if f not in tried]
         cover = untried[: min(want, limit - len(tried))]
 
     study = await optimizer.optuna_study(study_id, row)
@@ -348,9 +350,9 @@ def _not_free() -> Any:
 
 
 def _search_memory(
-    rows: Sequence[Any],
+    rows: Sequence[Any], covers: str
 ) -> tuple[set[Any], dict[tuple[str, str], float | bool]]:
-    """The fields tried and every point already scored, from unpruned trial rows.
+    """The fields tried as ``covers`` and every point already scored, from unpruned trials.
 
     Runs in a worker thread: identity keys validate each trial's settings, which costs
     seconds at the largest task sizes.
@@ -358,7 +360,7 @@ def _search_memory(
     tried: set[Any] = set()
     seen: dict[tuple[str, str], float | bool] = {}
     for state, params, expression, settings, values in rows:
-        tried.add((json.loads(params or "null") or {}).get("field"))
+        tried.add((json.loads(params or "null") or {}).get(covers))
         key = search.identity_of(expression, json.loads(settings or "null"))
         scores = json.loads(values or "null")
         if state == TrialState.COMPLETE and scores:

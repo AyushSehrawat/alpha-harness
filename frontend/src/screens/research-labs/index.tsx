@@ -3,7 +3,7 @@
 import { Link } from '@tanstack/react-router'
 import {
   ArrowUpRightIcon,
-  BlocksIcon,
+  BracesIcon,
   DnaIcon,
   type LucideIcon,
   SearchIcon,
@@ -14,7 +14,7 @@ import { Page, PageHeader } from '@/ui/kit'
 
 const ICONS: Record<(typeof LAB_TABS)[number]['tab'], LucideIcon> = {
   search: SearchIcon,
-  template: BlocksIcon,
+  template: BracesIcon,
   evolution: DnaIcon,
   'power-pool': ZapIcon,
 }
@@ -22,7 +22,7 @@ const ICONS: Record<(typeof LAB_TABS)[number]['tab'], LucideIcon> = {
 /** What each one searches, since a name alone does not say which to start with. */
 const ABOUT: Record<(typeof LAB_TABS)[number]['tab'], string> = {
   search: 'Writes one- and two-operator Alphas from the datasets you pick, steering to Sharpe.',
-  template: 'Tries every choice and value a template allows, and keeps the best Sharpe.',
+  template: 'Searches a template you type, with $variables for fields, values and operators.',
   evolution: 'Breeds new Alphas from seeds you pick, holding the last two years back as a test.',
   'power-pool': 'An LLM writes Power Pool Alphas for the datasets you pick.',
 }

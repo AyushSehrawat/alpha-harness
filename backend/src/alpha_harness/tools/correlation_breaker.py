@@ -27,6 +27,8 @@ from ..brain.schemas import SimulationRequest, SimulationSettings
 from ..catalog.queries import FieldFilter, Tuple4
 from ..labs.fastexpr import (
     GROUPING,
+    MAX_FIELDS,
+    MAX_OPERATORS,
     Node,
     ParseError,
     data_fields,
@@ -35,7 +37,6 @@ from ..labs.fastexpr import (
     render,
 )
 from ..labs.launch import OPERATORS_UNREAD, account_operators
-from ..labs.power_pool import MAX_FIELDS, MAX_OPERATORS
 from ..vault.yields import is_power_pool
 
 if TYPE_CHECKING:

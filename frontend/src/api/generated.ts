@@ -1532,31 +1532,11 @@ export interface paths {
         };
         /**
          * Options
-         * @description The blocks this account can build with, and what a task can be set to.
+         * @description What a template can use on this account.
          */
         get: operations["options_api_template_lab_options_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/template-lab/parse": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Parse Template
-         * @description A typed template as blocks, written the way the Expression under the blocks reads.
-         */
-        post: operations["parse_template_api_template_lab_parse_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1577,6 +1557,27 @@ export interface paths {
          * @description What a task would search. Free; queues nothing.
          */
         post: operations["preview_api_template_lab_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/template-lab/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stats
+         * @description Each template's operators and fields, and whether its Alphas are Power Pool or single
+         *     dataset ones. Free; reads only the catalog.
+         */
+        post: operations["stats_api_template_lab_stats_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1612,7 +1613,7 @@ export interface paths {
         };
         /**
          * Templates
-         * @description The presets, then the user's saved templates, newest first.
+         * @description The user's saved templates, newest first.
          */
         get: operations["templates_api_template_lab_templates_get"];
         put?: never;
@@ -3117,6 +3118,22 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * FieldsVariable
+         * @description A variable whose values are data fields: the chosen datasets', narrowed by a filter.
+         */
+        FieldsVariable: {
+            /** Dataset Ids */
+            dataset_ids?: string[];
+            filter?: components["schemas"]["FieldFilter"] | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "fields";
+            /** Vector Operators */
+            vector_operators?: string[];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -3484,6 +3501,17 @@ export interface components {
             error: string | null;
             /** Models */
             models: string[];
+        };
+        /** OperatorDoc */
+        OperatorDoc: {
+            /** Category */
+            category: string;
+            /** Definition */
+            definition: string;
+            /** Description */
+            description: string;
+            /** Name */
+            name: string;
         };
         /** OperatorsRead */
         OperatorsRead: {
@@ -4463,6 +4491,27 @@ export interface components {
             /** Universe */
             universe: string | null;
         };
+        /** StatsItem */
+        StatsItem: {
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+            /** Variables */
+            variables?: {
+                [key: string]: components["schemas"]["FieldsVariable"] | components["schemas"]["ValuesVariable"];
+            };
+        };
+        /** StatsRequest */
+        StatsRequest: {
+            /** Delay */
+            delay: number;
+            /** Region */
+            region: string;
+            /** Templates */
+            templates?: components["schemas"]["StatsItem"][];
+        };
         /**
          * StudyStatus
          * @enum {string}
@@ -4768,47 +4817,49 @@ export interface components {
             description?: string | null;
             /** Name */
             name: string;
-            /** Tree */
-            tree: {
-                [key: string]: unknown;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+            /** Variables */
+            variables?: {
+                [key: string]: components["schemas"]["FieldsVariable"] | components["schemas"]["ValuesVariable"];
             };
         };
         /** TemplateLabOptions */
         TemplateLabOptions: {
-            /** Blocks */
-            blocks: {
-                [key: string]: unknown;
-            }[];
-            /** Datafields */
-            dataFields: string[];
-            /** Decays */
-            decays: number[];
-            /** Groupfields */
-            groupFields: string[];
             /** Maxsimulations */
             maxSimulations: number;
             operators: components["schemas"]["OperatorsRead"];
-            /** Variables */
-            variables: {
-                [key: string]: (number | string)[];
+            /** Presets */
+            presets: {
+                [key: string]: string;
             };
+            /** Reference */
+            reference: components["schemas"]["OperatorDoc"][];
             /** Vector */
             vector: string[];
         };
         /** TemplateLabPreview */
         TemplateLabPreview: {
-            fields: components["schemas"]["FieldCounts"];
-            leftOut: components["schemas"]["LeftOut"];
+            /** Combinations */
+            combinations: number;
+            /** Investability */
+            investability: string[];
             /** Problems */
             problems: string[];
             /** Sample */
             sample: components["schemas"]["SampleAlpha"][];
-            /** Skeleton */
-            skeleton: string;
+            /** Settingsproblems */
+            settingsProblems: string[];
+            stats: components["schemas"]["TemplateStats"] | null;
             /** Templateproblems */
             templateProblems: string[];
             /** Universes */
             universes: string[];
+            /** Variables */
+            variables: components["schemas"]["VariableInfo"][];
             /** Warnings */
             warnings: string[];
         };
@@ -4822,28 +4873,49 @@ export interface components {
             /** Removed */
             removed: number;
         };
+        /**
+         * TemplateStats
+         * @description How large a template's Alphas are, and which kinds of Alpha it makes.
+         */
+        TemplateStats: {
+            /** Fields */
+            fields: number[];
+            /** Holes */
+            holes: number;
+            /** Limits */
+            limits: number[];
+            /** Missing */
+            missing: string[];
+            /** Operators */
+            operators: number[];
+            /** Powerpool */
+            powerPool: number[] | null;
+            /** Problem */
+            problem: string | null;
+            /** Singledataset */
+            singleDataset: boolean;
+        };
+        /** TemplateStatsList */
+        TemplateStatsList: {
+            /** Stats */
+            stats: components["schemas"]["TemplateStats"][];
+        };
         /** TemplateSummary */
         TemplateSummary: {
             /** Description */
             description: string | null;
             /** Id */
-            id: string | number;
-            /** Missing */
-            missing: string[];
+            id: number;
             /** Name */
             name: string;
-            /** Preset */
-            preset: boolean;
-            /** Skeleton */
-            skeleton: string;
-            /** Source */
-            source: string | null;
-            /** Tree */
-            tree: {
-                [key: string]: unknown;
-            };
+            /** Text */
+            text: string;
             /** Updatedat */
             updatedAt: string | null;
+            /** Variables */
+            variables: {
+                [key: string]: unknown;
+            };
         };
         /** TemplateTask */
         TemplateTask: {
@@ -4852,8 +4924,6 @@ export interface components {
              * @default 8
              */
             cores: number;
-            /** Dataset Ids */
-            dataset_ids?: string[];
             /**
              * Decay
              * @default 0
@@ -4861,9 +4931,22 @@ export interface components {
             decay: number;
             /** Delay */
             delay: number;
-            field_filter?: components["schemas"]["FieldFilter"] | null;
+            /** Investability */
+            investability?: ("none" | "max_trade" | "max_position")[];
+            /**
+             * Nan Handling
+             * @default ON
+             * @enum {string}
+             */
+            nan_handling: "ON" | "OFF";
             /** Neutralizations */
             neutralizations?: string[];
+            /**
+             * Pasteurization
+             * @default ON
+             * @enum {string}
+             */
+            pasteurization: "ON" | "OFF";
             /** Region */
             region: string;
             /**
@@ -4872,29 +4955,30 @@ export interface components {
              */
             simulations: number;
             /**
+             * Template
+             * @default
+             */
+            template: string;
+            /**
              * Template Name
              * @default Template
              */
             template_name: string;
-            /** Tree */
-            tree: {
-                [key: string]: unknown;
-            };
-            /** Universe */
-            universe?: string | null;
-            /** Vector Operators */
-            vector_operators?: string[];
-        };
-        /** TemplateText */
-        TemplateText: {
-            /** Text */
-            text: string;
-        };
-        /** TemplateTree */
-        TemplateTree: {
-            /** Tree */
-            tree: {
-                [key: string]: unknown;
+            /**
+             * Test Period
+             * @default P2Y0M0D
+             */
+            test_period: string;
+            /**
+             * Truncation
+             * @default 0.08
+             */
+            truncation: number;
+            /** Universes */
+            universes?: string[];
+            /** Variables */
+            variables?: {
+                [key: string]: components["schemas"]["FieldsVariable"] | components["schemas"]["ValuesVariable"];
             };
         };
         /** ThreadScope */
@@ -5018,6 +5102,38 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * ValuesVariable
+         * @description A variable whose values are typed: numbers, groups, operator names or expressions.
+         */
+        ValuesVariable: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "values";
+            /**
+             * Values
+             * @default
+             */
+            values: string;
+        };
+        /** VariableInfo */
+        VariableInfo: {
+            /** Fieldtypes */
+            fieldTypes: string[];
+            fields: components["schemas"]["FieldCounts"] | null;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Operator */
+            operator: boolean;
+            /** Problems */
+            problems: string[];
+            /** Values */
+            values: number;
         };
         /** VaultCounts */
         VaultCounts: {
@@ -7388,39 +7504,6 @@ export interface operations {
             };
         };
     };
-    parse_template_api_template_lab_parse_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TemplateText"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TemplateTree"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     preview_api_template_lab_preview_post: {
         parameters: {
             query?: never;
@@ -7441,6 +7524,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TemplateLabPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stats_api_template_lab_stats_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StatsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateStatsList"];
                 };
             };
             /** @description Validation Error */

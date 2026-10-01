@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ConfigDict, Field
 
+from ..brain.schemas import TEST_PERIOD
 from ..schemas import Out
 
 if TYPE_CHECKING:
@@ -64,7 +65,14 @@ class SearchParams(TaskParams):
 
 
 class TemplateParams(SearchParams):
-    tree: dict[str, Any]
+    #: The template as typed, ``$variables`` and all (``labs.template``).
+    template: str = ""
+    #: A task added while templates were built from blocks: run by ``labs.template_v1``.
+    tree: dict[str, Any] | None = None
+    truncation: float = 0.08
+    pasteurization: str = "ON"
+    nan_handling: str = "ON"
+    test_period: str = TEST_PERIOD
 
 
 class EvolutionParams(TaskParams):

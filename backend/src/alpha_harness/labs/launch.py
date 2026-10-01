@@ -311,13 +311,16 @@ async def add_study(
     template_name: str | None = None,
     run: bool = False,
     seeds: Callable[[int], list[Trial]] | None = None,
+    objective: str | None = None,
 ) -> AddedTask:
     """Store a task: not started, or queued for the scheduler when ``run``.
 
     ``seeds`` are trials the task starts with, written in the same transaction.
+    ``objective`` replaces the lab's own, e.g. Sharpe where no test period splits off a train.
     """
     lab = TASK_SAMPLERS[sampler]
-    prefix, objective = _TASKS[sampler]
+    prefix, own = _TASKS[sampler]
+    objective = objective or own
     task = f"{prefix}-{now:%y%m%d%H%M%S%f}"
     row = Study(
         name=f"{lab} · {task}",

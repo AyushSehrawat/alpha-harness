@@ -365,6 +365,25 @@ class CatalogQueries:
             [field_id],
         )
 
+    async def universes_holding(
+        self, region: str, delay: int, field_ids: list[str]
+    ) -> list[dict[str, Any]]:
+        """Which universes of one equity market hold each of these fields, in one read.
+
+        One query rather than one per field: each is a scan of the whole table, and the
+        Template Lab asks on every preview.
+        """
+        if not field_ids:
+            return []
+        return await self.catalog.query(
+            f"""
+            SELECT field_id, universe FROM data_field
+            WHERE instrument_type = 'EQUITY' AND region = ? AND delay = ?
+              AND field_id IN ({", ".join("?" for _ in field_ids)})
+            """,  # noqa: S608 - placeholders only
+            [region, delay, *field_ids],
+        )
+
     # -- datasets & facets -----------------------------------------------
 
     async def datasets(self, scope: Tuple4) -> list[dict[str, Any]]:

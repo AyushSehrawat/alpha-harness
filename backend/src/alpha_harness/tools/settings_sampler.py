@@ -10,6 +10,7 @@ import asyncio
 import contextlib
 import math
 import random
+import time
 from datetime import timedelta
 from itertools import batched, product
 from typing import TYPE_CHECKING, Any
@@ -49,6 +50,10 @@ PROBE_CONCURRENCY = 4
 #: One probing sweep at a time. Two previews opened together would otherwise each fan a probe
 #: at every market, and a rate-limited probe is an unusable reading rather than a slow one.
 _PROBE_LOCK = asyncio.Lock()
+#: An incomplete sweep is not kept for the day, but neither is it repeated on every preview:
+#: the Template Lab previews as its form is typed in.
+PROBE_RETRY_SECONDS = 600.0
+_last_probe: list[tuple[float, set[str]]] = []
 
 
 def pairs_for(position_ok: bool) -> list[tuple[str, str]]:
@@ -77,7 +82,11 @@ async def position_regions(state: Any) -> set[str]:
         # answer is as good as a fresh sweep.
         if (cached := await _cached_regions(state)) is not None:
             return cached
-        return await _probe_regions(state)
+        if _last_probe and time.monotonic() - _last_probe[0][0] < PROBE_RETRY_SECONDS:
+            return set(_last_probe[0][1])
+        found = await _probe_regions(state)
+        _last_probe[:] = [(time.monotonic(), found)]
+        return found
 
 
 async def _cached_regions(state: Any) -> set[str] | None:
