@@ -26,6 +26,7 @@ from .params import (
     POWER_POOL_SAMPLER,
     SEARCH_SAMPLER,
     SETTINGS_SAMPLER,
+    SUPER_LAB,
     TASK_SAMPLERS,
     TEMPLATE_SAMPLER,
 )
@@ -52,6 +53,7 @@ _TASKS: dict[str, tuple[str, str]] = {
     POWER_POOL_SAMPLER: ("power-pool", "sharpe"),
     SETTINGS_SAMPLER: ("settings-sampler", "sharpe"),
     CORRELATION_BREAKER: ("correlation-breaker", "sharpe"),
+    SUPER_LAB: ("super-alpha", "sharpe"),
 }
 
 

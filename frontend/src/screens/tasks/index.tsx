@@ -659,9 +659,11 @@ function TaskDetail({
     task.lab === SETTINGS_SAMPLER
       ? // Held at the source Alpha's values for every simulation in the sweep.
         `${fmt.int(task.markets)} Markets · Decay ${task.decay ?? DASH} · Truncation ${task.truncation ?? DASH} · NaN Handling ${task.nanHandling ?? DASH}`
-      : task.seeds > 0
-        ? `${task.universe ?? DASH} · ${fmt.int(task.seeds)} seeds · Population ${fmt.int(task.population)} · Mutation ${fmt.pct(task.mutationRate, 0)}`
-        : `Decay ${task.decay ?? DASH} · ${fmt.int(task.fields)} fields`
+      : task.lab === 'super-alpha'
+        ? `${task.universe ?? DASH} · SuperAlphas from your submitted Alphas`
+        : task.seeds > 0
+          ? `${task.universe ?? DASH} · ${fmt.int(task.seeds)} seeds · Population ${fmt.int(task.population)} · Mutation ${fmt.pct(task.mutationRate, 0)}`
+          : `Decay ${task.decay ?? DASH} · ${fmt.int(task.fields)} fields`
   const copyResults = () =>
     navigator.clipboard.writeText(resultsMarkdown(task, rows)).then(
       () => toast.success(`Copied ${fmt.int(rows.length)} results`),

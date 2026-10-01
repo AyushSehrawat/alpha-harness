@@ -1499,6 +1499,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/super-lab/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan
+         * @description What a task with these settings would run, without running anything.
+         */
+        post: operations["plan_api_super_lab_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/super-lab/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Task
+         * @description Write every pairing as a SuperAlpha simulation, and queue the task when ``run``.
+         */
+        post: operations["add_task_api_super_lab_tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks": {
         parameters: {
             query?: never;
@@ -4143,6 +4183,13 @@ export interface components {
             level: "MINIMAL" | "LOW" | "MEDIUM" | "HIGH";
             value: components["schemas"]["Reasoning"];
         };
+        /** Recipe */
+        Recipe: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
         /** RegionPlan */
         RegionPlan: {
             /** Cost */
@@ -4618,6 +4665,51 @@ export interface components {
             alphaId: string;
             /** Submitted */
             submitted: boolean;
+        };
+        /** SuperPlan */
+        SuperPlan: {
+            /** Combos */
+            combos: components["schemas"]["Recipe"][];
+            /** Decays */
+            decays: number[];
+            /** Selections */
+            selections: components["schemas"]["Recipe"][];
+            /** Simulations */
+            simulations: number;
+            /** Truncation */
+            truncation: number;
+        };
+        /** SuperTask */
+        SuperTask: {
+            /**
+             * Activation
+             * @default BOTH
+             * @enum {string}
+             */
+            activation: "IS" | "OS" | "BOTH";
+            /**
+             * Cores
+             * @default 3
+             */
+            cores: number;
+            /** Delay */
+            delay: number;
+            /** Neutralization */
+            neutralization: string;
+            /** Region */
+            region: string;
+            /**
+             * Run
+             * @default false
+             */
+            run: boolean;
+            /**
+             * Selectionlimit
+             * @default 30
+             */
+            selectionLimit: number;
+            /** Universe */
+            universe: string;
         };
         /**
          * SyncAllRun
@@ -7459,6 +7551,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CancelResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_api_super_lab_plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SuperTask"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuperPlan"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_task_api_super_lab_tasks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SuperTask"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddedTask"];
                 };
             };
             /** @description Validation Error */

@@ -5,6 +5,7 @@ import {
   ArrowUpRightIcon,
   BracesIcon,
   DnaIcon,
+  LayersIcon,
   type LucideIcon,
   SearchIcon,
   ZapIcon,
@@ -17,6 +18,7 @@ const ICONS: Record<(typeof LAB_TABS)[number]['tab'], LucideIcon> = {
   template: BracesIcon,
   evolution: DnaIcon,
   'power-pool': ZapIcon,
+  'super-alpha': LayersIcon,
 }
 
 /** What each one searches, since a name alone does not say which to start with. */
@@ -25,6 +27,7 @@ const ABOUT: Record<(typeof LAB_TABS)[number]['tab'], string> = {
   template: 'Searches a template you type, with $variables for fields, values and operators.',
   evolution: 'Breeds new Alphas from seeds you pick, holding the last two years back as a test.',
   'power-pool': 'An LLM writes Power Pool Alphas for the datasets you pick.',
+  'super-alpha': "Combines your submitted Alphas into SuperAlphas that pass BRAIN's checks.",
 }
 
 /** The card a hub screen links each of its entries with; the `Link` carries it. */

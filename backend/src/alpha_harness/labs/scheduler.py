@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 from sqlalchemy import String, func, not_, or_, select, type_coerce, update
 
-from ..brain.schemas import SimulationRequest, SimulationSettings
+from ..brain.schemas import SimulationRequest, SimulationSettings, SimulationType
 from ..brain.settings_schema import validate_settings
 from ..db.models import SimStatus, SimulationRecord, Study, StudyStatus, Trial, TrialState, utcnow
 from ..engine.packer import MAX_BATCH
@@ -24,6 +24,7 @@ from .params import (
     POWER_POOL_SAMPLER,
     SEARCH_SAMPLER,
     SETTINGS_SAMPLER,
+    SUPER_LAB,
     TASK_SAMPLERS,
     TEMPLATE_SAMPLER,
     SearchParams,
@@ -61,18 +62,27 @@ def queued(outcome: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def request_of(trial: Trial) -> SimulationRequest:
+    """The simulation a written trial stands for: a SuperAlpha keeps its selection in params."""
+    settings = SimulationSettings.model_validate(trial.settings)
+    params = trial.params or {}
+    if params.get("selection"):
+        return SimulationRequest(
+            type=SimulationType.SUPER,
+            settings=settings,
+            selection=str(params["selection"]),
+            combo=str(params.get("combo") or trial.expression or "1"),
+        )
+    return SimulationRequest(settings=settings, regular=trial.expression)
+
+
 async def send_parked(optimizer: Optimizer, row: Study, batch: Sequence[Trial]) -> int:
     """Send trials written up front and parked until cores were free.
 
     ``batch`` must still be attached to the caller's session: the outcome is written by
     assigning to those rows, which is what saves a round trip per trial.
     """
-    requests = [
-        SimulationRequest(
-            settings=SimulationSettings.model_validate(t.settings), regular=t.expression
-        )
-        for t in batch
-    ]
+    requests = [request_of(t) for t in batch]
     outcomes = (await optimizer.engine.enqueue(requests, task=row.task)).get("outcomes", [])
     for index, trial in enumerate(batch):
         for field, value in queued(outcomes[index] if index < len(outcomes) else {}).items():
@@ -316,7 +326,7 @@ async def advance(optimizer: Optimizer, study_id: int) -> int:
 
         return await power_pool.refill(optimizer, row, want, waiting)
     # Both write every simulation up front, so both are drained the same way.
-    if row.sampler in (SETTINGS_SAMPLER, CORRELATION_BREAKER):
+    if row.sampler in (SETTINGS_SAMPLER, CORRELATION_BREAKER, SUPER_LAB):
         from ..tools import settings_sampler  # same cycle: it builds on this module
 
         return await settings_sampler.refill(optimizer, row, want, waiting)

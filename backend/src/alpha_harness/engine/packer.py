@@ -75,7 +75,11 @@ class BatchKey:
         Measured: BRAIN answers ``201`` to an array of region-agnostic simulations and then
         fails the parent and cancels every child, so they go one at a time.
         """
-        return 1 if self.region_agnostic else MAX_BATCH
+        # SUPER: BRAIN allows three concurrent SuperAlpha simulations, so each one stands alone
+        # and the task's cores (at most three) are what bounds them.
+        if self.region_agnostic or self.sim_type == SimulationType.SUPER:
+            return 1
+        return MAX_BATCH
 
 
 @dataclass(frozen=True, slots=True)

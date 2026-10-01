@@ -156,6 +156,12 @@ class SimulationSettings(BrainModel):
     #: ``FULL`` or ``QUICK``; BRAIN defaults it to ``FULL``. Left unset, the engine sends
     #: ``QUICK`` in the regions Settings name (see :data:`QUICK_MODE`).
     simulation_mode: str | None = None
+    #: SUPER only. Which selection weights count (``POSITIVE`` is BRAIN's default), how many
+    #: of the top-ranked Alphas are kept (at least 10), and whether each component counts
+    #: from its in-sample start (``IS``) or only from its out-of-sample start (``OS``).
+    selection_handling: str | None = None
+    selection_limit: int | None = None
+    component_activation: str | None = None
 
 
 #: BRAIN's test period: the last two of the ten years are held out.
