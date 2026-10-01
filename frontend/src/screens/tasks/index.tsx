@@ -28,6 +28,7 @@ import {
   AFTER_COST_HEADER,
   DELAY,
   INVESTABILITY,
+  QuickBadge,
   SharpeCell,
   taskStatus,
 } from '@/screens/tasks/columns'
@@ -65,8 +66,11 @@ const TOP_COLUMNS: Column<RankedAlpha>[] = [
     header: 'Expression',
     width: 'minmax(280px,3fr)',
     cell: (r) => (
-      <span className="num block truncate text-ink" title={r.expression ?? undefined}>
-        {r.expression ?? DASH}
+      <span className="flex min-w-0 items-center gap-1.5">
+        <QuickBadge alpha={r} />
+        <span className="num block truncate text-ink" title={r.expression ?? undefined}>
+          {r.expression ?? DASH}
+        </span>
       </span>
     ),
   },
@@ -143,11 +147,12 @@ const SAMPLER_COLUMNS: Column<RankedAlpha>[] = [
   {
     key: 'number',
     header: 'Trial',
-    width: '84px',
+    width: '120px',
     cell: (r) => (
       <span className="num flex items-center gap-1.5 text-ink-subtle">
         {r.source && <StarIcon className="size-3 shrink-0 fill-primary text-primary" />}
         {r.number}
+        <QuickBadge alpha={r} />
       </span>
     ),
   },
@@ -622,8 +627,14 @@ function TaskDetail({
   // Red only where a check refuses the Alpha. A row still waiting on BRAIN is green like a
   // passing one: nothing has said no, which is the question this pane answers. Whether it is
   // submittable *yet* is the Submittable count's job, and that one does hold pending back.
+  // A Quick Alpha nothing refused is neither: its Full run decides, and replaces it once back.
+  const awaitingFull = (r: RankedAlpha) => r.quick && r.refusedBy.length === 0
   const verdict = (r: RankedAlpha) =>
-    r.submittable || r.pending ? 'bg-pnl-positive-tint' : 'bg-pnl-negative-tint'
+    r.submittable || r.pending
+      ? 'bg-pnl-positive-tint'
+      : awaitingFull(r)
+        ? ''
+        : 'bg-pnl-negative-tint'
   const rowClass = (r: RankedAlpha) =>
     // The source keeps its verdict, and a heavier rule under it so the ranking below reads
     // as its own block.
@@ -635,7 +646,7 @@ function TaskDetail({
   // the figure an estimate — a check BRAIN has not run yet can still come back FAIL.
   const pending = found.filter((r) => r.pending).length
   const green = found.filter((r) => r.submittable || r.pending).length
-  const red = found.length - green
+  const red = found.length - green - found.filter(awaitingFull).length
 
   const title = [
     task.labName,
@@ -678,7 +689,13 @@ function TaskDetail({
             boxed
             label="Simulated"
             value={`${fmt.int(task.simulated)} / ${fmt.int(task.target)}`}
-            hint={task.cached > 0 ? `${fmt.int(task.cached)} from cache, no quota spent` : ''}
+            hint={[
+              task.cached > 0 && `${fmt.int(task.cached)} from cache, no quota spent`,
+              task.fullRuns > 0 &&
+                `plus ${fmt.int(task.fullRuns)} Quick ${task.fullRuns === 1 ? 'Alpha' : 'Alphas'} run again in full`,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
           />
           {/* Nothing is in flight once a task is over, so the box would only ever read 0. */}
           {!done && <Metric boxed label="In Flight" value={fmt.int(task.queued + task.running)} />}

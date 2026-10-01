@@ -2904,6 +2904,8 @@ export interface components {
             };
             /** Queuedtotal */
             queuedTotal: number;
+            /** Quickallowed */
+            quickAllowed: boolean;
             /** Quotas */
             quotas: {
                 [key: string]: number;
@@ -3336,6 +3338,11 @@ export interface components {
             fields: number;
             /** Finishedat */
             finishedAt: string | null;
+            /**
+             * Fullruns
+             * @default 0
+             */
+            fullRuns: number;
             /** Id */
             id: number;
             /** Lab */
@@ -3918,6 +3925,8 @@ export interface components {
              * @default true
              */
             pnlDownload: boolean;
+            /** Quickregions */
+            quickRegions?: string[];
             /**
              * Updatecheckhours
              * @default 1
@@ -4083,6 +4092,11 @@ export interface components {
              * @default false
              */
             pending: boolean;
+            /**
+             * Quick
+             * @default false
+             */
+            quick: boolean;
             /** Refusedby */
             refusedBy: string[];
             /** Returns */
@@ -4751,6 +4765,11 @@ export interface components {
              * @default false
              */
             pending: boolean;
+            /**
+             * Quick
+             * @default false
+             */
+            quick: boolean;
             /** Refusedby */
             refusedBy: string[];
             /** Returns */

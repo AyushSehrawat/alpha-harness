@@ -23,7 +23,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from ..brain.schemas import SimulationRequest, SimulationSettings
+from ..brain.schemas import FULL_MODE, SimulationRequest, SimulationSettings
 from ..catalog.queries import FieldFilter, Tuple4
 from ..labs.fastexpr import (
     GROUPING,
@@ -429,9 +429,10 @@ def requests(
     """One simulation per recipe, every one at the source Alpha's own settings.
 
     The settings are copied whole and never edited: the whole point is to hold everything
-    the Alpha was judged on and vary only what it is exposed to.
+    the Alpha was judged on and vary only what it is exposed to. Always in Full mode, the
+    only one that runs the production-correlation check this tool is here to pass.
     """
-    held = SimulationSettings.model_validate(settings)
+    held = SimulationSettings.model_validate(settings | {"simulationMode": FULL_MODE})
     return [
         SimulationRequest(settings=held.model_copy(), regular=compressed.program(r.tail, r.setup))
         for r in recipes

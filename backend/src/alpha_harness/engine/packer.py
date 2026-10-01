@@ -15,7 +15,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from ..brain.schemas import SimulationType
+from ..brain.schemas import FULL_MODE, SimulationType
 from .lifecycle import GLB_REGION, GLB_SLOTS, RA_SLOTS
 from .reconcile import same_value, squash
 
@@ -28,18 +28,24 @@ MAX_BATCH = 10
 
 @dataclass(frozen=True, slots=True)
 class BatchKey:
-    """The five fields every child of one batch must share."""
+    """The fields every child of one batch must share: BRAIN's five, and the mode.
+
+    BRAIN names only the five. The mode is kept apart too: a batch is back only when its
+    slowest child is, so one Full child would hold nine Quick ones to Full time.
+    """
 
     sim_type: str
     instrument_type: str
     region: str
     delay: int
     language: str
+    mode: str = FULL_MODE
 
     def describe(self) -> str:
         return (
             f"{self.sim_type} {self.instrument_type} {self.region} "
             f"delay {self.delay} {self.language}"
+            + (f" {self.mode.lower()}" if self.mode != FULL_MODE else "")
         )
 
     @property
@@ -104,6 +110,7 @@ def key_of(payload: dict[str, Any]) -> BatchKey:
         region=str(settings.get("region", "")),
         delay=int(settings.get("delay", 1)),
         language=str(settings.get("language", "FASTEXPR")),
+        mode=str(settings.get("simulationMode") or FULL_MODE),
     )
 
 

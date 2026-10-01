@@ -10,7 +10,7 @@ import json
 from typing import TYPE_CHECKING, Any
 
 import structlog
-from sqlalchemy import String, func, or_, select, type_coerce, update
+from sqlalchemy import String, func, not_, or_, select, type_coerce, update
 
 from ..brain.schemas import SimulationRequest, SimulationSettings
 from ..brain.settings_schema import validate_settings
@@ -46,6 +46,9 @@ FREE = "Matched an Alpha already simulated; no quota spent."
 
 #: Parks a written simulation outside every count until it is sent.
 PENDING_SEND = "Waiting for cores."
+
+#: Parks the Full re-run a Quick Alpha that passed is owed, until there is room to send it.
+PENDING_FULL = "Waiting to run in Full mode."
 
 
 def queued(outcome: dict[str, Any]) -> dict[str, Any]:
@@ -238,8 +241,11 @@ async def advance(optimizer: Optimizer, study_id: int) -> int:
                 select(
                     func.count().filter(Trial.state.in_([TrialState.QUEUED, TrialState.RUNNING])),
                     # Every trial not pruned or answered for free has spent, or is spending,
-                    # a simulation.
-                    func.count().filter(Trial.state != TrialState.PRUNED, _not_free()),
+                    # a simulation. A Full run is spent on top of the target, so a tool that
+                    # wrote its simulations up front still sends every one.
+                    func.count().filter(
+                        Trial.state != TrialState.PRUNED, _not_free(), not_(full_run())
+                    ),
                     func.max(Trial.number),
                 ).where(Trial.study_id == study_id)
             )
@@ -259,13 +265,32 @@ async def advance(optimizer: Optimizer, study_id: int) -> int:
     stopping = task_params(row).stopping
     waiting = bool(open_count)
     last_number = -1 if last is None else int(last)
+    # Borrowed cores only run what is queued, so a task queues for them too; the engine then
+    # hands them to whichever tasks have work beyond their own cores.
+    room = row.batch_size + optimizer.lendable_cores * MAX_BATCH
+    space = room - int(in_flight or 0)
+    if not stopping and space > 0:
+        # Ahead of the task's own budget: a passing Quick Alpha is only submittable once it is
+        # run in Full, and a task that had spent its simulations would otherwise strand it.
+        async with optimizer.db.session() as session:
+            owed = (
+                await session.scalars(
+                    select(Trial)
+                    .where(
+                        Trial.study_id == row.id,
+                        Trial.state == TrialState.PRUNED,
+                        Trial.message == PENDING_FULL,
+                    )
+                    .order_by(Trial.number)
+                    .limit(space)
+                )
+            ).all()
+            if owed:
+                return await send_parked(optimizer, row, owed)
     if stopping or committed >= row.max_trials:
         if not waiting:
             await optimizer.set_status(study_id, StudyStatus.COMPLETE)
         return 0
-    # Borrowed cores only run what is queued, so a task queues for them too; the engine then
-    # hands them to whichever tasks have work beyond their own cores.
-    room = row.batch_size + optimizer.lendable_cores * MAX_BATCH
     want = to_ask(room, int(in_flight or 0), row.max_trials - committed)
     if row.sampler in (GA_SAMPLER, SEARCH_SAMPLER, TEMPLATE_SAMPLER) and want > 0:
         # Only after a crash between writing a round's trials and sending them (`_queue`).
@@ -347,6 +372,11 @@ def raw_json(column: Any) -> Any:
 def _not_free() -> Any:
     """SQL for ``message != FREE`` as Python means it: a trial with no message counts too."""
     return or_(Trial.message.is_(None), Trial.message != FREE)
+
+
+def full_run() -> Any:
+    """SQL for a trial that runs a passing Quick Alpha again in Full mode."""
+    return func.json_extract(Trial.params, "$.fullOf").is_not(None)
 
 
 def _search_memory(

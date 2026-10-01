@@ -51,12 +51,15 @@ REGION_AGNOSTIC_REGION = "ALL"
 #: The simulation mode whose Alphas BRAIN refuses to submit — and refuses even to check:
 #: ``GET /alphas/{id}/check`` answers ``400 Cannot check submission for QUICK mode alphas``.
 #:
-#: Measured against the same expression run both ways: every figure is identical to the last
-#: decimal, daily PnL series included. What a quick Alpha does *not* get is the
-#: investability-constrained and risk-neutralized blocks, the yearly-stats recordset, and
-#: every submission check. It costs one simulation and one concurrent core, exactly like a
-#: full one, and finishes in the same time — so there is nothing to spend it on.
+#: Measured against the same expressions run both ways: every figure is identical, train and
+#: test years included. What a quick Alpha does *not* get is the investability-constrained and
+#: risk-neutralized blocks, the yearly-stats recordset, and twelve of the nineteen checks: it
+#: keeps the seven that score it and loses correlation, Theme and Competition. It costs one
+#: simulation and one concurrent core, like a full one, but can finish sooner: a GLB batch of
+#: ten took 334 s against 478 s, sent side by side.
 QUICK_MODE = "QUICK"
+#: BRAIN's default mode: a request that names it is the same request as one that does not.
+FULL_MODE = "FULL"
 
 
 def produced_type(requested: str) -> str:
@@ -150,8 +153,8 @@ class SimulationSettings(BrainModel):
     test_period: str | None = None
     max_trade: str | None = None
     max_position: str | None = None
-    #: ``FULL`` or ``QUICK``; BRAIN defaults it to ``FULL`` and this application never sends
-    #: ``QUICK`` (see :data:`QUICK_MODE`). Read back off an Alpha, where it matters.
+    #: ``FULL`` or ``QUICK``; BRAIN defaults it to ``FULL``. Left unset, the engine sends
+    #: ``QUICK`` in the regions Settings name (see :data:`QUICK_MODE`).
     simulation_mode: str | None = None
 
 
