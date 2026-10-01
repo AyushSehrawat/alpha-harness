@@ -410,7 +410,7 @@ export function TasksScreen() {
         }
       >
         {view === 'submittable' ? (
-          <SubmittableAlphas />
+          <SubmittableAlphas onOpenAlpha={setAlphaId} />
         ) : list.data && all.length === 0 ? (
           <Empty title="No tasks yet">
             <Link to="/labs" className={LINK}>

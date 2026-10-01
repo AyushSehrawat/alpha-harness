@@ -13,6 +13,7 @@ import { useMemo, useState } from 'react'
 import { cn } from '@/lib/cn'
 import { DASH, fmt } from '@/lib/format'
 import { useRefetchOn } from '@/lib/ws'
+import { DetailSheet } from '@/screens/pool/detail'
 import { AstInspector } from '@/screens/pool/shared'
 import { AlphaPane } from '@/screens/tasks/alpha-pane'
 import { labTasks, type RankedAlpha } from '@/screens/tasks/api'
@@ -160,6 +161,7 @@ export function TaskResultsScreen() {
   const { taskId } = useParams({ from: '/tasks/$taskId' })
   const id = Number(taskId)
   const [sort, setSort] = useState<Sort>({ key: 'sharpe', desc: true })
+  const [alphaId, setAlphaId] = useState<string | null>(null)
 
   const tasks = useQuery({ queryKey: ['lab-tasks'], queryFn: labTasks.list })
   const task = tasks.data?.tasks.find((t) => t.id === id)
@@ -357,9 +359,11 @@ export function TaskResultsScreen() {
         loading={top.isPending}
         error={top.error}
         onRefresh={() => top.refetch()}
+        onOpenAlpha={setAlphaId}
       />
 
       <CheckSets rows={rows} />
+      <DetailSheet alphaId={alphaId} onClose={() => setAlphaId(null)} />
     </Page>
   )
 }

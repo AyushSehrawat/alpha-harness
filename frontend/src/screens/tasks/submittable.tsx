@@ -23,7 +23,7 @@ const columns = (): Column<RankedAlpha>[] => [
   },
 ]
 
-export function SubmittableAlphas() {
+export function SubmittableAlphas({ onOpenAlpha }: { onOpenAlpha: (alphaId: string) => void }) {
   const query = useQuery({ queryKey: ['submittable-alphas'], queryFn: labTasks.submittable })
   // Its own key, refreshed at most every 30s: reading every task's Alphas takes seconds on a
   // large account, too long to redo on each of the Tasks screen's two-second updates.
@@ -43,6 +43,7 @@ export function SubmittableAlphas() {
       loading={query.isPending}
       error={query.error}
       onRefresh={() => query.refetch()}
+      onOpenAlpha={onOpenAlpha}
     />
   )
 }

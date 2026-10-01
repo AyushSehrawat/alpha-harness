@@ -101,16 +101,20 @@ function useWorkflowJob() {
 }
 
 /**
- * Ctrl-click (Cmd on a Mac) opens the row's Alpha on BRAIN, which is where the id is
- * actually useful — so the table spends no column printing one. A plain click does nothing:
- * leaving BRAIN is the kind of thing that should take a deliberate press, and the modifier
- * is the same one a browser already uses for "open this somewhere else".
+ * A click opens the row's Alpha in the detail sheet. Ctrl-click (Cmd on a Mac) opens it on
+ * BRAIN instead, which is where the id is actually useful — so the table spends no column
+ * printing one. Leaving for BRAIN takes the modifier a browser already uses for "open this
+ * somewhere else".
  */
-const openOnBrain = (r: RankedAlpha, event: React.MouseEvent | React.KeyboardEvent) => {
-  if (!r.alphaId || !(event.ctrlKey || event.metaKey)) return
-  event.preventDefault()
-  window.open(BRAIN_ALPHA_URL(r.alphaId), '_blank', 'noopener,noreferrer')
-}
+const openRow =
+  (onOpen: ((alphaId: string) => void) | undefined) =>
+  (r: RankedAlpha, event: React.MouseEvent | React.KeyboardEvent) => {
+    if (!r.alphaId) return
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault()
+      window.open(BRAIN_ALPHA_URL(r.alphaId), '_blank', 'noopener,noreferrer')
+    } else onOpen?.(r.alphaId)
+  }
 
 export function AlphaPane({
   title,
@@ -123,6 +127,7 @@ export function AlphaPane({
   error,
   poolColumnAfter,
   onRefresh,
+  onOpenAlpha,
 }: {
   title: string
   rows: RankedAlpha[]
@@ -137,6 +142,8 @@ export function AlphaPane({
   error?: unknown
   /** Re-read the rows themselves: submitting an Alpha changes a flag that lives on the row. */
   onRefresh?: () => Promise<unknown>
+  /** Show a row's Alpha in the detail sheet, as the task detail's own table does. */
+  onOpenAlpha?: (alphaId: string) => void
 }) {
   const [showAll, setShowAll] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
@@ -272,7 +279,7 @@ export function AlphaPane({
         rows={sorted}
         columns={columnsShown()}
         rowKey={(r) => String(r.trialId)}
-        onRowClick={openOnBrain}
+        onRowClick={openRow(onOpenAlpha)}
         sort={sort}
         onSort={onSort}
         loading={(loading ?? false) || (!showAll && cleanIds.length > 0 && pool.pending)}
