@@ -389,6 +389,50 @@ async def stats(body: StatsRequest, state: State) -> TemplateStatsList:
     return TemplateStatsList.model_validate({"stats": found})
 
 
+class TreeOption(Out):
+    name: str
+    value: TreeNode
+
+
+class TreeNode(Out):
+    """One step of a template, as the Blocks view draws it. ``...`` is a name: an empty input."""
+
+    kind: Literal["num", "str", "name", "call", "unary", "binary", "ternary", "assign", "seq"]
+    value: str
+    args: list[TreeNode]
+    kwargs: list[TreeOption]
+
+
+class TreeRequest(BaseModel):
+    text: str = Field(max_length=template.MAX_TEXT)
+
+
+class TemplateTree(Out):
+    tree: TreeNode | None = None
+    #: Why the text has no tree: the Code view is where to fix it.
+    problem: str | None = None
+
+
+def _tree(node: Node) -> TreeNode:
+    return TreeNode.model_validate(
+        {
+            "kind": node.kind,
+            "value": node.value,
+            "args": [_tree(a) for a in node.args],
+            "kwargs": [{"name": k, "value": _tree(v)} for k, v in node.kwargs],
+        }
+    )
+
+
+@router.post("/tree")
+async def tree(body: TreeRequest) -> TemplateTree:
+    """The template as blocks, read with the same grammar every task runs on."""
+    try:
+        return TemplateTree(tree=_tree(template.program(body.text)))
+    except ParseError as exc:
+        return TemplateTree(problem=str(exc))
+
+
 @router.get("/templates")
 async def templates(state: State) -> TemplateList:
     """The user's saved templates, newest first."""

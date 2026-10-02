@@ -1725,6 +1725,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/template-lab/tree": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tree
+         * @description The template as blocks, read with the same grammar every task runs on.
+         */
+        post: operations["tree_api_template_lab_tree_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/today": {
         parameters: {
             query?: never;
@@ -5158,6 +5178,12 @@ export interface components {
                 [key: string]: components["schemas"]["FieldsVariable"] | components["schemas"]["ValuesVariable"];
             };
         };
+        /** TemplateTree */
+        TemplateTree: {
+            /** Problem */
+            problem?: string | null;
+            tree?: components["schemas"]["TreeNode"] | null;
+        };
         /** ThreadScope */
         ThreadScope: {
             /** Delay */
@@ -5202,6 +5228,34 @@ export interface components {
             unspoken: number;
             /** Used */
             used: number;
+        };
+        /**
+         * TreeNode
+         * @description One step of a template, as the Blocks view draws it. ``...`` is a name: an empty input.
+         */
+        TreeNode: {
+            /** Args */
+            args: components["schemas"]["TreeNode"][];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "num" | "str" | "name" | "call" | "unary" | "binary" | "ternary" | "assign" | "seq";
+            /** Kwargs */
+            kwargs: components["schemas"]["TreeOption"][];
+            /** Value */
+            value: string;
+        };
+        /** TreeOption */
+        TreeOption: {
+            /** Name */
+            name: string;
+            value: components["schemas"]["TreeNode"];
+        };
+        /** TreeRequest */
+        TreeRequest: {
+            /** Text */
+            text: string;
         };
         /**
          * Tuple4
@@ -8003,6 +8057,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TemplateRemoved"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    tree_api_template_lab_tree_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TreeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateTree"];
                 };
             };
             /** @description Validation Error */

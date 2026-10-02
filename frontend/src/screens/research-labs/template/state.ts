@@ -37,6 +37,8 @@ export interface TemplateDraft {
   opened: { text: string; variables: Record<string, VariableDef> }
   /** The variable whose fields are being chosen in the Data Explorer, kept across a reload. */
   picking: string | null
+  /** The same template, typed or built from blocks. */
+  view: 'code' | 'blocks'
 }
 
 interface Actions {
@@ -73,6 +75,7 @@ const DRAFT: TemplateDraft = {
   dirty: false,
   opened: { text: '', variables: {} },
   picking: null,
+  view: 'code',
 }
 
 /** Every variable with its defaults filled in. */
