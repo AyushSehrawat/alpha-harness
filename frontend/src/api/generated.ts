@@ -3113,6 +3113,13 @@ export interface components {
             /** Universe */
             universe: string;
         };
+        /** Failure */
+        Failure: {
+            /** Count */
+            count: number;
+            /** Reason */
+            reason: string;
+        };
         /** Feature */
         Feature: {
             /** Code */
@@ -3458,6 +3465,8 @@ export interface components {
             expression?: string | null;
             /** Failed */
             failed: number;
+            /** Failures */
+            failures: components["schemas"]["Failure"][];
             /** Fields */
             fields: number;
             /** Finishedat */

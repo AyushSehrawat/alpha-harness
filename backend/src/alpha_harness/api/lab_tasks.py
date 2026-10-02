@@ -28,6 +28,7 @@ from ..db.models import (
     TrialState,
     utcnow,
 )
+from ..engine.slots import POSITIONAL_NOTE
 from ..labs import scheduler, search
 from ..labs.objectives import FAILURE, OBJECTIVES, StudyNotFoundError
 from ..labs.params import (
@@ -69,6 +70,19 @@ class TaskChange(BaseModel):
 class TaskName(BaseModel):
     #: Blank clears it, back to the lab and template.
     name: str | None = Field(default=None, max_length=128)
+
+
+class Failure(Out):
+    reason: str
+    count: int
+
+
+#: Reasons a task's detail lists for simulations that returned no Alpha, most frequent first.
+MAX_REASONS = 3
+
+
+def _reason(message: str | None) -> str:
+    return (message or "").replace(POSITIONAL_NOTE, "").strip() or "BRAIN gave no reason."
 
 
 class LabTask(Out):
@@ -116,6 +130,8 @@ class LabTask(Out):
     queued: int
     running: int
     failed: int
+    #: Why simulations returned no Alpha, as BRAIN said it.
+    failures: list[Failure]
     #: The best value of what the task searches for: Sharpe, or Train Fitness for Evolution Lab.
     best: float | None
     objective_label: str
@@ -279,7 +295,7 @@ async def _progress(state: Any, ids: list[int]) -> dict[int, dict[str, Any]]:
     slow the list down with every day the task runs.
     """
     out: dict[int, dict[str, Any]] = {
-        i: {"states": {}, "free": 0, "fullRuns": 0, "best": None} for i in ids
+        i: {"states": {}, "free": 0, "fullRuns": 0, "best": None, "failures": {}} for i in ids
     }
     if not ids:
         return out
@@ -303,6 +319,14 @@ async def _progress(state: Any, ids: list[int]) -> dict[int, dict[str, Any]]:
         )
         for study_id, n in free.all():
             out[study_id]["free"] = int(n)
+        failures = await session.execute(
+            select(Trial.study_id, Trial.message, func.count())
+            .where(Trial.study_id.in_(ids), Trial.state == TrialState.FAIL)
+            .group_by(Trial.study_id, Trial.message)
+        )
+        for study_id, message, n in failures.all():
+            found = out[study_id]["failures"]
+            found[_reason(message)] = found.get(_reason(message), 0) + int(n)
         full_runs = await session.execute(
             select(Trial.study_id, func.count())
             .where(
@@ -386,6 +410,12 @@ def _task(row: Study, progress: dict[str, Any]) -> LabTask:
             "queued": states.get(TrialState.QUEUED, 0),
             "running": states.get(TrialState.RUNNING, 0),
             "failed": states.get(TrialState.FAIL, 0),
+            "failures": [
+                {"reason": reason, "count": n}
+                for reason, n in sorted(progress["failures"].items(), key=lambda kv: -kv[1])[
+                    :MAX_REASONS
+                ]
+            ],
             "best": progress["best"],
             "objectiveLabel": objective.label,
             "createdAt": row.created_at.isoformat() if row.created_at else None,

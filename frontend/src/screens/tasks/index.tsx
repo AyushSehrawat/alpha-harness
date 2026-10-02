@@ -774,6 +774,20 @@ function TaskDetail({
         {task.message && (
           <Notice tone={task.status === 'FAILED' ? 'error' : 'info'} title={task.message} />
         )}
+        {task.failures.length > 0 && (
+          <Notice
+            tone="error"
+            title={`${fmt.int(task.failed)} simulation${task.failed === 1 ? '' : 's'} returned no Alpha. BRAIN said:`}
+          >
+            <ul className="flex flex-col gap-1">
+              {task.failures.map((f) => (
+                <li key={f.reason}>
+                  <span className="num">{fmt.int(f.count)}×</span> {f.reason}
+                </li>
+              ))}
+            </ul>
+          </Notice>
+        )}
         {task.template && (
           <Disclosure summary="Template">
             <code className="num text-body-compact break-all text-ink">{task.template}</code>
@@ -803,7 +817,11 @@ function TaskDetail({
           rowClass={rowClass}
           loading={top.isPending}
           error={top.error}
-          empty="No Alphas back yet."
+          empty={
+            task.failed > 0
+              ? 'No Alphas back yet: every simulation so far returned none, for the reasons above.'
+              : 'No Alphas back yet.'
+          }
         />
         {task.lab === SETTINGS_SAMPLER && (
           // A two-column grid rather than padded text: the equals signs line up whatever the
