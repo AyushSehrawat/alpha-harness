@@ -5025,7 +5025,7 @@ export interface components {
             updatedAt: string | null;
             /** Variables */
             variables: {
-                [key: string]: unknown;
+                [key: string]: components["schemas"]["FieldsVariable"] | components["schemas"]["ValuesVariable"];
             };
         };
         /** TemplateTask */

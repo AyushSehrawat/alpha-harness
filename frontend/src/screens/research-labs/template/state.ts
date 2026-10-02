@@ -75,6 +75,18 @@ const DRAFT: TemplateDraft = {
   picking: null,
 }
 
+/** Every variable with its defaults filled in. */
+function whole(variables: Record<string, VariableDef> | undefined): Record<string, VariableDef> {
+  return Object.fromEntries(
+    Object.entries(variables ?? {}).map(([name, v]) => [
+      name,
+      v.kind === 'fields'
+        ? { ...v, dataset_ids: v.dataset_ids ?? [] }
+        : { ...v, values: v.values ?? '' },
+    ]),
+  )
+}
+
 export const useTemplateLab = create<TemplateDraft & Actions>()(
   persist(
     (set) => ({
@@ -100,9 +112,18 @@ export const useTemplateLab = create<TemplateDraft & Actions>()(
     {
       name: 'alpha-harness-template-lab',
       // Version 3 types templates; a draft of blocks keeps only its market and its size.
-      version: 3,
-      migrate: (stored) => {
+      // Version 4 repairs a version 3 draft holding a variable opened from a saved template
+      // without its defaults: a fields variable with no `dataset_ids` failed the whole screen.
+      version: 4,
+      migrate: (stored, version) => {
         const old = (stored ?? {}) as Partial<TemplateDraft>
+        if (version === 3)
+          return {
+            ...DRAFT,
+            ...old,
+            variables: whole(old.variables),
+            opened: { text: old.opened?.text ?? '', variables: whole(old.opened?.variables) },
+          }
         return {
           ...DRAFT,
           region: old.region ?? DRAFT.region,

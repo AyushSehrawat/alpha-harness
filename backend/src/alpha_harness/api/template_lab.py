@@ -127,7 +127,9 @@ class TemplateSummary(Out):
     name: str
     description: str | None
     text: str
-    variables: dict[str, Any]
+    #: Typed, so every default is filled in: a saved document leaves defaults out, and a
+    #: fields variable without its ``dataset_ids`` broke every screen that read it.
+    variables: dict[str, Variable]
     updated_at: str | None
 
 
