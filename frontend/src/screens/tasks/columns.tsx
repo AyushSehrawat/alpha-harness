@@ -82,6 +82,16 @@ export function QuickBadge({ alpha }: { alpha: RankedAlpha }) {
   )
 }
 
+/** The Alpha's BRAIN id: what a consultant searches BRAIN by and quotes. A click on the row
+ *  opens its details; Ctrl-click opens it on BRAIN. */
+export const ALPHA_ID: Column<RankedAlpha> = {
+  key: 'alphaId',
+  header: 'Alpha',
+  width: '104px',
+  sortable: true,
+  cell: (r) => <span className="num text-ink">{r.alphaId ?? DASH}</span>,
+}
+
 export const FAILED_CHECKS: Column<RankedAlpha> = {
   key: 'failed',
   header: 'Checks Failed',

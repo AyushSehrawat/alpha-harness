@@ -18,6 +18,7 @@ import { AstInspector } from '@/screens/pool/shared'
 import { AlphaPane } from '@/screens/tasks/alpha-pane'
 import { labTasks, type RankedAlpha } from '@/screens/tasks/api'
 import {
+  ALPHA_ID,
   compareAlphas,
   FAILED_CHECKS,
   Figure,
@@ -36,7 +37,12 @@ const LIMIT = 2000
 
 const market = (r: RankedAlpha) => setting(r, 'region') || DASH
 
-const columns = (): Column<RankedAlpha>[] => [...SETTING_COLUMNS, FAILED_CHECKS, ...METRIC_COLUMNS]
+const columns = (): Column<RankedAlpha>[] => [
+  ALPHA_ID,
+  ...SETTING_COLUMNS,
+  FAILED_CHECKS,
+  ...METRIC_COLUMNS,
+]
 
 /**
  * What a reader can narrow the table by. Three independent questions, each answerable on its
