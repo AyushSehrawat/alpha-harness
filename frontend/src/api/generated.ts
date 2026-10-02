@@ -3892,6 +3892,8 @@ export interface components {
             simulations: number;
             /** Universe */
             universe: string;
+            /** Universes */
+            universes?: string[];
         };
         /**
          * PowerPoolRow
