@@ -13,6 +13,7 @@ MVCC lets run beside a write, so a long correlation read never stalls a sync.
 import asyncio
 import contextlib
 import re
+import time
 from typing import TYPE_CHECKING, Any
 
 import duckdb
@@ -372,6 +373,10 @@ class CatalogUnusableError(RuntimeError):
     """
 
 
+#: What DuckDB's error says, whatever its type, when the write-ahead log will not replay.
+WAL_UNREPLAYABLE = "Failure while replaying WAL"
+
+
 class CatalogLockedError(RuntimeError):
     """Another Alpha Harness backend already has the catalog open.
 
@@ -429,13 +434,18 @@ class Catalog:
 
     def _open_sync(self) -> None:
         try:
-            self._conn = duckdb.connect(str(self.path))
-        except duckdb.IOException as exc:
-            # DuckDB is single-writer, so a second backend is the likely cause. The raw
-            # exception is a wall of text ending in a URL; say the useful thing instead.
-            if "lock" not in str(exc).lower():
+            self._conn = self._connect()
+        except duckdb.Error as exc:
+            if WAL_UNREPLAYABLE not in str(exc):
                 raise
-            raise CatalogLockedError(self.path, str(exc)) from exc
+            # A write-ahead log DuckDB cannot replay keeps the catalog shut on every start.
+            # What it holds is all re-downloadable, so it is set aside, kept for a look, and
+            # the catalog opens as it was last checkpointed.
+            wal = self.path.with_name(f"{self.path.name}.wal")
+            aside = wal.with_name(f"{wal.name}.unreplayable-{time.strftime('%Y%m%d%H%M%S')}")
+            wal.rename(aside)
+            log.warning("catalog.wal_set_aside", path=str(aside), error=str(exc)[:500])
+            self._conn = self._connect()
         # DuckDB's zone otherwise defaults to the machine's, shifting every stored time by the
         # local offset. GLOBAL, so read cursors get it too. Never as a ``connect`` option: that
         # makes DuckDB download its time zone extension before loading the one built in, and
@@ -449,6 +459,16 @@ class Catalog:
             if kind in _ARROW:
                 self._types.setdefault(table, {})[column] = _ARROW[kind]
         self.fts = _load_fts(self._conn)
+
+    def _connect(self) -> duckdb.DuckDBPyConnection:
+        try:
+            return duckdb.connect(str(self.path))
+        except duckdb.IOException as exc:
+            # DuckDB is single-writer, so a second backend is the likely cause. The raw
+            # exception is a wall of text ending in a URL; say the useful thing instead.
+            if "lock" not in str(exc).lower():
+                raise
+            raise CatalogLockedError(self.path, str(exc)) from exc
 
     async def install_fts(self) -> bool:
         """Download ``fts`` from DuckDB's repository, then load it. Whether search can use it.
