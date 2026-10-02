@@ -375,6 +375,9 @@ class CatalogUnusableError(RuntimeError):
 
 #: What DuckDB's error says, whatever its type, when the write-ahead log will not replay.
 WAL_UNREPLAYABLE = "Failure while replaying WAL"
+#: What DuckDB's fatal error says when a table's key index has lost track of its rows. Every
+#: write to those rows then fails the same way, so the table is rebuilt (:meth:`Catalog.upsert`).
+INDEX_DESYNC = "Failed to delete all rows from index"
 
 
 class CatalogLockedError(RuntimeError):
@@ -521,7 +524,36 @@ class Catalog:
                     await work
                 raise
             except duckdb.FatalException as exc:
+                # DuckDB refuses everything after a fatal error until the database is opened
+                # again, so it is reopened here: one failed write must not fail every later one.
+                await asyncio.to_thread(self._reopen_sync)
                 raise CatalogUnusableError(str(exc)) from exc
+
+    def _reopen_sync(self) -> None:
+        conn, self._conn = self._conn, None
+        if conn is not None:
+            with contextlib.suppress(Exception):
+                conn.close()
+        self._open_sync()
+        log.warning("catalog.reopened_after_fatal")
+
+    def _rebuild_sync(self, table: str) -> None:
+        """``table`` copied out and back in, so its key index is built afresh from its rows.
+
+        One transaction, so a crash part-way leaves the table as it was.
+        """
+        conn = self._require()
+        kept = f"{table}__kept"
+        key = ", ".join(_KEYS[table])
+        with _transaction(conn):
+            # Every name is a module constant: a table in _KEYS and its key columns.
+            copy = f"CREATE OR REPLACE TABLE {kept} AS SELECT DISTINCT ON ({key}) * FROM {table}"  # noqa: S608
+            conn.execute(copy)
+            conn.execute(f"DROP TABLE {table}")
+            conn.execute(SCHEMA)
+            conn.execute(f"INSERT INTO {table} BY NAME SELECT * FROM {kept}")  # noqa: S608
+            conn.execute(f"DROP TABLE {kept}")
+        conn.execute("CHECKPOINT")
 
     def _require(self) -> duckdb.DuckDBPyConnection:
         if self._conn is None:
@@ -582,9 +614,18 @@ class Catalog:
             return 0
         # Built before the lock, as replace_fields does: no writer waits on the conversion.
         batch = await asyncio.to_thread(self._to_arrow, table, columns, rows)
-        await self._locked(
-            self._load, batch, (_upsert_sql(table, columns, overwrite=overwrite), [])
-        )
+        statement = (_upsert_sql(table, columns, overwrite=overwrite), [])
+        try:
+            await self._locked(self._load, batch, statement)
+        except CatalogUnusableError as exc:
+            if INDEX_DESYNC not in str(exc):
+                raise
+            # Reported on a live vault: DuckDB's index for the table no longer matched its
+            # rows, and every save of those Alphas failed the whole catalog. Rebuilt from its
+            # own rows, the index is whole again, and the write is tried once more.
+            log.warning("catalog.index_rebuilt", table=table, error=str(exc)[:300])
+            await self._locked(self._rebuild_sync, table)
+            await self._locked(self._load, batch, statement)
         return len(rows)
 
     def _to_arrow(
