@@ -157,6 +157,9 @@ class RankedAlpha(Out):
     #: simulated again in Full. The task does that for every one that passes, and the Full
     #: Alpha replaces it here once it is back.
     quick: bool = False
+    #: A check that decides submission came back ERROR: BRAIN could not judge it, which is
+    #: told apart from an Alpha a check refused.
+    errored: bool = False
 
 
 class WorkflowStarted(Out):

@@ -682,6 +682,7 @@ def ranked(
                 "pending": still_judging(result),
                 "source": bool((t.params or {}).get("source")),
                 "quick": bool(result.get("quick")),
+                "errored": "ERROR" in gating_results(result.get("checks") or []),
             }
         )
     return rows

@@ -643,13 +643,15 @@ function TaskDetail({
     // as its own block.
     r.source ? `${verdict(r)} border-b-2 border-b-hairline-strong` : verdict(r)
 
-  const sampler = task.lab === SETTINGS_SAMPLER
   const done = task.status === 'COMPLETE' || task.status === 'FAILED'
-  // The green rows: nothing has refused them. Pending ones are in here, which is what makes
-  // the figure an estimate — a check BRAIN has not run yet can still come back FAIL.
+  // Three outcomes and nothing else. Submittable: nothing has refused it, pending checks
+  // included, which is what makes the figure an estimate. Error: a check BRAIN could not run,
+  // or a simulation that returned no Alpha at all. Unsubmittable: every other refusal.
   const pending = found.filter((r) => r.pending).length
   const green = found.filter((r) => r.submittable || r.pending).length
-  const red = found.length - green - found.filter(awaitingFull).length
+  const erroredRows = found.filter((r) => r.errored && !(r.submittable || r.pending)).length
+  const errors = erroredRows + task.failed
+  const red = found.length - green - erroredRows - found.filter(awaitingFull).length
 
   const title = [
     task.labName,
@@ -689,7 +691,9 @@ function TaskDetail({
     >
       <div className="flex flex-col gap-4">
         <TaskDatasets task={task} />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {/* As many boxes as there are figures, sharing the row: some only show when they
+            have something to say, and a fixed grid left a hole where they were. */}
+        <div className="flex flex-wrap gap-3 *:min-w-44 *:flex-1">
           <Metric
             boxed
             label="Simulated"
@@ -704,31 +708,33 @@ function TaskDetail({
           />
           {/* Nothing is in flight once a task is over, so the box would only ever read 0. */}
           {!done && <Metric boxed label="In Flight" value={fmt.int(task.queued + task.running)} />}
-          {sampler ? (
-            <>
-              {/* `~` because the pending rows counted here have checks BRAIN has not run
-                  yet, any one of which can still come back FAIL. */}
-              <Metric
-                boxed
-                tone="profit"
-                label="Submittable"
-                value={
-                  <>
-                    {pending > 0 && '~'}
-                    {fmt.int(green)}
-                  </>
-                }
-              />
-              <Metric
-                boxed
-                tone={red > 0 ? 'loss' : 'neutral'}
-                label="Failed"
-                value={fmt.int(red)}
-                hint={task.failed > 0 ? `${fmt.int(task.failed)} could not simulate` : ''}
-              />
-            </>
-          ) : (
-            <Metric boxed label="Failed" value={fmt.int(task.failed)} />
+          {/* `~` because the pending rows counted here have checks BRAIN has not run
+              yet, any one of which can still come back FAIL. */}
+          <Metric
+            boxed
+            tone="profit"
+            label="Submittable"
+            value={
+              <>
+                {pending > 0 && '~'}
+                {fmt.int(green)}
+              </>
+            }
+          />
+          <Metric
+            boxed
+            tone={red > 0 ? 'loss' : 'neutral'}
+            label="Unsubmittable"
+            value={fmt.int(red)}
+          />
+          {errors > 0 && (
+            <Metric
+              boxed
+              tone="loss"
+              label="Error"
+              value={fmt.int(errors)}
+              hint={task.failed > 0 ? `${fmt.int(task.failed)} returned no Alpha` : ''}
+            />
           )}
           <Elapsed task={task} done={done} />
         </div>

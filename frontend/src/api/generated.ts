@@ -4113,6 +4113,11 @@ export interface components {
             alphaId: string | null;
             /** Drawdown */
             drawdown: number | null;
+            /**
+             * Errored
+             * @default false
+             */
+            errored: boolean;
             /** Expression */
             expression: string | null;
             /** Failedchecks */
@@ -4838,6 +4843,11 @@ export interface components {
             alphaId: string | null;
             /** Drawdown */
             drawdown: number | null;
+            /**
+             * Errored
+             * @default false
+             */
+            errored: boolean;
             /** Expression */
             expression: string | null;
             /** Failedchecks */
