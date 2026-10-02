@@ -12,6 +12,7 @@ import {
   SquareIcon,
   StarIcon,
   Trash2Icon,
+  TriangleAlertIcon,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
@@ -512,7 +513,15 @@ function confirmCopy(a: Act, fresh: number): { title: string; label: string; bod
 
 function TaskBadge({ task }: { task: LabTask }) {
   const { label, tone } = taskStatus(task)
-  return <Badge tone={tone}>{label}</Badge>
+  // A task that paused or failed by itself says why: on the list, too, where a bare "Paused"
+  // read as the app stopping for no reason.
+  const why = (task.status === 'PAUSED' || task.status === 'FAILED') && task.message
+  return (
+    <Badge tone={tone} {...(why ? { title: why } : {})}>
+      {why && <TriangleAlertIcon className="size-3" aria-hidden />}
+      {label}
+    </Badge>
+  )
 }
 
 /** A failed task can run again: simulations it sent before it failed are scored then. */
