@@ -239,7 +239,7 @@ export function TaskResultsScreen() {
   return (
     <Page>
       <PageHeader
-        title={task?.templateName || task?.labName || `Task ${taskId}`}
+        title={task?.name || task?.templateName || task?.labName || `Task ${taskId}`}
         // The lab is the title already; repeating it here spent the one line that says
         // where this task got to.
         description={

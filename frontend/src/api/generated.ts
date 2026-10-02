@@ -956,6 +956,26 @@ export interface paths {
         patch: operations["change_api_lab_tasks__task_id__patch"];
         trace?: never;
     };
+    "/api/lab-tasks/{task_id}/name": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Rename
+         * @description Name a task, whatever its state. Nothing it runs changes.
+         */
+        put: operations["rename_api_lab_tasks__task_id__name_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/lab-tasks/{task_id}/pause": {
         parameters: {
             query?: never;
@@ -2212,6 +2232,8 @@ export interface components {
             studyName: string | null;
             /** Task */
             task: string;
+            /** Taskname */
+            taskName?: string | null;
             /** Templatename */
             templateName: string | null;
         };
@@ -3457,6 +3479,8 @@ export interface components {
             message: string | null;
             /** Mutationrate */
             mutationRate: number | null;
+            /** Name */
+            name: string | null;
             /** Nanhandling */
             nanHandling?: string | null;
             /** Objectivelabel */
@@ -4989,6 +5013,11 @@ export interface components {
             cores?: number | null;
             /** Simulations */
             simulations?: number | null;
+        };
+        /** TaskName */
+        TaskName: {
+            /** Name */
+            name?: string | null;
         };
         /** TaskRemoved */
         TaskRemoved: {
@@ -6824,6 +6853,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["TaskChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabTask"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_api_lab_tasks__task_id__name_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskName"];
             };
         };
         responses: {

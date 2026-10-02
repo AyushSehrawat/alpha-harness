@@ -212,6 +212,7 @@ export function TasksScreen() {
   useRefetchOn('simulations', ['lab-tasks'], 5_000)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [editing, setEditing] = useState<LabTask | null>(null)
+  const [renaming, setRenaming] = useState<LabTask | null>(null)
   const [confirming, setConfirming] = useState<Act | null>(null)
   const [alphaId, setAlphaId] = useState<string | null>(null)
   const [view, setView] = useState<'tasks' | 'submittable'>('tasks')
@@ -265,10 +266,15 @@ export function TasksScreen() {
       cell: (t) => (
         <span className="block min-w-0 truncate" title={t.datasetIds.join(', ')}>
           <span className="text-ink">
-            {t.labName}
-            {t.templateName ? ` · ${t.templateName}` : ''}
+            {t.name ?? (
+              <>
+                {t.labName}
+                {t.templateName ? ` · ${t.templateName}` : ''}
+              </>
+            )}
           </span>
           <span className="text-ink-subtle">
+            {t.name && ` · ${t.labName}${t.templateName ? ` · ${t.templateName}` : ''}`}
             {/* A sweep spans many markets, so naming the source Alpha's one would mislead. */}
             {t.lab === SETTINGS_SAMPLER ? (
               <>
@@ -358,6 +364,7 @@ export function TasksScreen() {
             action === 'pause' ? act.mutate({ action, task: t }) : ask({ action, task: t })
           }
           onEdit={() => setEditing(t)}
+          onRename={() => setRenaming(t)}
         />
       ),
     },
@@ -449,6 +456,9 @@ export function TasksScreen() {
       {editing && (
         <EditTask key={editing.id} task={editing} slots={slots} onClose={() => setEditing(null)} />
       )}
+      {renaming && (
+        <RenameTask key={renaming.id} task={renaming} onClose={() => setRenaming(null)} />
+      )}
       <DetailSheet alphaId={alphaId} onClose={() => setAlphaId(null)} />
       <Confirm
         open={confirming !== null}
@@ -531,10 +541,12 @@ function Actions({
   task,
   onAct,
   onEdit,
+  onRename,
 }: {
   task: LabTask
   onAct: (action: 'run' | 'pause' | 'stop' | 'remove') => void
   onEdit: () => void
+  onRename: () => void
 }) {
   const { status, stopping } = task
   const finished = status === 'COMPLETE' || status === 'FAILED'
@@ -599,13 +611,13 @@ function Actions({
           <Trash2Icon />
         </Button>
       )}
-      <TaskActionsMenu task={task} />
+      <TaskActionsMenu task={task} onRename={onRename} />
     </span>
   )
 }
 
 /** Task actions that are not one-click enough to earn a button of their own. */
-function TaskActionsMenu({ task }: { task: LabTask }) {
+function TaskActionsMenu({ task, onRename }: { task: LabTask; onRename: () => void }) {
   const navigate = useNavigate()
   return (
     <Menu
@@ -615,6 +627,7 @@ function TaskActionsMenu({ task }: { task: LabTask }) {
         </Button>
       }
       items={[
+        { label: 'Rename', onClick: onRename },
         {
           label: 'Submission Planner',
           disabled: !task.simulated,
@@ -673,6 +686,7 @@ function TaskDetail({
   const red = found.length - green - erroredRows - found.filter(awaitingFull).length
 
   const title = [
+    task.name,
     task.labName,
     task.templateName,
     task.lab === SETTINGS_SAMPLER ? task.alphaId : `${task.region} D${task.delay}`,
@@ -838,6 +852,58 @@ function Elapsed({ task, done }: { task: LabTask; done: boolean }) {
       value={elapsed == null ? DASH : fmt.duration(elapsed)}
       hint={done ? '' : waiting ? 'for cores to free up' : 'still running'}
     />
+  )
+}
+
+function RenameTask({ task, onClose }: { task: LabTask; onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const [name, setName] = useState(task.name ?? '')
+  const rename = useMutation({
+    meta: { inline: true },
+    mutationFn: () => labTasks.rename(task.id, name),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['lab-tasks'] })
+      void queryClient.invalidateQueries({ queryKey: ['submittable-alphas'] })
+      onClose()
+    },
+  })
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(isOpen) => !isOpen && onClose()}
+      title="Rename Task"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" type="submit" form="rename-task" loading={rename.isPending}>
+            Save
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="rename-task"
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault()
+          rename.mutate()
+        }}
+      >
+        <Field label="Name" hint="Leave it blank to go back to the lab's own name.">
+          <Input
+            autoFocus
+            maxLength={128}
+            placeholder={[task.labName, task.templateName].filter(Boolean).join(' · ')}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </Field>
+        {rename.isError && <ErrorNotice error={rename.error} title="Could not rename the task" />}
+      </form>
+    </Dialog>
   )
 }
 

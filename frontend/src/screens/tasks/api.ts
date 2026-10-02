@@ -31,6 +31,8 @@ export const labTasks = {
   run: (id: number) => http.post<LabTask>(`${B}/${id}/run`),
   pause: (id: number) => http.post<LabTask>(`${B}/${id}/pause`),
   stop: (id: number) => http.post<LabTask>(`${B}/${id}/stop`),
+  /** A blank name clears it. */
+  rename: (id: number, name: string) => http.put<LabTask>(`${B}/${id}/name`, { name }),
   change: (id: number, body: { cores?: number; simulations?: number }) =>
     http.patch<LabTask>(`${B}/${id}`, body),
   remove: (id: number) => http.del<Schemas['TaskRemoved']>(`${B}/${id}`),

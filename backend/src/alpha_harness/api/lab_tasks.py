@@ -15,7 +15,7 @@ from typing import Annotated, Any, Literal
 import structlog
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 
 from ..brain.errors import BrainError, BrainRateLimited
 from ..db.models import (
@@ -66,8 +66,15 @@ class TaskChange(BaseModel):
     simulations: int | None = Field(default=None, ge=1, le=search.MAX_SIMULATIONS)
 
 
+class TaskName(BaseModel):
+    #: Blank clears it, back to the lab and template.
+    name: str | None = Field(default=None, max_length=128)
+
+
 class LabTask(Out):
     id: int
+    #: The name the user gave it, if any.
+    name: str | None
     lab: str
     lab_name: str
     #: Template Lab only: the template's name and its skeleton.
@@ -347,6 +354,7 @@ def _task(row: Study, progress: dict[str, Any]) -> LabTask:
     return LabTask.model_validate(
         {
             "id": row.id,
+            "name": row.label,
             "lab": row.sampler,
             "labName": TASK_SAMPLERS.get(row.sampler, row.sampler),
             "templateName": row.template_name if template else None,
@@ -643,6 +651,17 @@ async def change(task_id: int, body: TaskChange, state: State) -> LabTask:
     return await _payload(state, task_id)
 
 
+@router.put("/{task_id}/name")
+async def rename(task_id: int, body: TaskName, state: State) -> LabTask:
+    """Name a task, whatever its state. Nothing it runs changes."""
+    await _one(state, task_id)  # 404 for an unknown task
+    async with state.db.session() as session:
+        await session.execute(
+            update(Study).where(Study.id == task_id).values(label=(body.name or "").strip() or None)
+        )
+    return await _payload(state, task_id)
+
+
 @router.delete("/{task_id}")
 async def remove(task_id: int, state: State) -> TaskRemoved:
     """Remove a task that is not running. The Alphas it found stay in Alphas."""
@@ -903,7 +922,9 @@ async def submittable_alphas(state: State) -> list[TaskAlpha]:
                     "prodCorrelation": prod.get(alpha_id),
                     "submitted": is_submitted(vault),
                     "taskId": task.id,
-                    "taskName": task.template_name or TASK_SAMPLERS.get(task.sampler, task.sampler),
+                    "taskName": task.label
+                    or task.template_name
+                    or TASK_SAMPLERS.get(task.sampler, task.sampler),
                 }
             )
         )

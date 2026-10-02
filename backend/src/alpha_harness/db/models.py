@@ -405,6 +405,8 @@ class Study(Base):
     name: Mapped[str] = mapped_column(String(128), unique=True)
     template_id: Mapped[int | None] = mapped_column(ForeignKey("template.id", ondelete="SET NULL"))
     template_name: Mapped[str | None] = mapped_column(String(128))
+    #: What the user calls the task, shown in place of its lab and template.
+    label: Mapped[str | None] = mapped_column(String(128))
     template_source: Mapped[str] = mapped_column(Text)
 
     sampler: Mapped[str] = mapped_column(String(32), default="nsga3")
