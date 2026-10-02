@@ -25,6 +25,7 @@ import {
   METRIC_COLUMNS,
   METRICS,
   metricHeader,
+  PROD_CORRELATION,
   SETTING_COLUMNS,
   setting,
   taskStatus,
@@ -40,6 +41,7 @@ const market = (r: RankedAlpha) => setting(r, 'region') || DASH
 const columns = (): Column<RankedAlpha>[] => [
   ALPHA_ID,
   ...SETTING_COLUMNS,
+  PROD_CORRELATION,
   FAILED_CHECKS,
   ...METRIC_COLUMNS,
 ]

@@ -43,4 +43,9 @@ export const labTasks = {
   /** Downloads PnL, then turnover for the Alphas that satisfy Power Pool Correlation. */
   powerPoolWorkflow: (alphaIds: string[]) =>
     http.post<Schemas['WorkflowStarted']>(`${B}/power-pool-workflow`, { alphaIds }),
+  /** Asks BRAIN, in this order, for each Production Correlation it has not given yet. */
+  prodCorrelation: (alphaIds: string[]) =>
+    http.post<Schemas['WorkflowStarted']>(`${B}/prod-correlation`, { alphaIds }),
+  /** Stops that check; the answers already back stay. */
+  stopProdCorrelation: () => http.post<void>(`${B}/prod-correlation/stop`),
 }

@@ -846,6 +846,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/lab-tasks/prod-correlation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Prod Correlation
+         * @description Ask BRAIN for the Production Correlation of each unsubmitted Alpha here it has not given
+         *     one for, in the order sent. BRAIN limits these checks per hour, so a long list waits that
+         *     out and takes hours. No simulation quota.
+         */
+        post: operations["check_prod_correlation_api_lab_tasks_prod_correlation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lab-tasks/prod-correlation/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Prod Correlation
+         * @description Stop asking BRAIN. Every answer already back is kept.
+         */
+        post: operations["stop_prod_correlation_api_lab_tasks_prod_correlation_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/lab-tasks/run-all": {
         parameters: {
             query?: never;
@@ -4139,6 +4181,8 @@ export interface components {
              * @default false
              */
             pending: boolean;
+            /** Prodcorrelation */
+            prodCorrelation?: number | null;
             /**
              * Quick
              * @default false
@@ -4873,6 +4917,8 @@ export interface components {
              * @default false
              */
             pending: boolean;
+            /** Prodcorrelation */
+            prodCorrelation?: number | null;
             /**
              * Quick
              * @default false
@@ -6587,6 +6633,57 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    check_prod_correlation_api_lab_tasks_prod_correlation_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlphaIds"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowStarted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_prod_correlation_api_lab_tasks_prod_correlation_stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

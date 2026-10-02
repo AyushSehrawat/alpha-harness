@@ -152,6 +152,14 @@ class Backfill:
         """
         return await self._launch(kind, label, lambda task: self._job(task, work))
 
+    def cancel_job(self, kind: str) -> bool:
+        """Stop the running job if it is a ``kind``. Whatever it already saved stays."""
+        job = self._running
+        if job is None or job.done() or job.get_name() != kind:
+            return False
+        job.cancel()
+        return True
+
     async def _launch(
         self, kind: str, label: str, run: Callable[[Task], Coroutine[Any, Any, None]]
     ) -> str:

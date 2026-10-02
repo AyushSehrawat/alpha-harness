@@ -92,6 +92,28 @@ export const ALPHA_ID: Column<RankedAlpha> = {
   cell: (r) => <span className="num text-ink">{r.alphaId ?? DASH}</span>,
 }
 
+/** BRAIN wants it below 0.7, or a Sharpe 10% above each production Alpha it exceeds. */
+export const PROD_CORRELATION: Column<RankedAlpha> = {
+  key: 'prodCorrelation',
+  header: 'Production Correlation',
+  width: 'minmax(120px,1.1fr)',
+  align: 'right',
+  sortable: true,
+  cell: (r) =>
+    r.prodCorrelation == null ? (
+      <span className="text-ink-subtle">{DASH}</span>
+    ) : (
+      <span
+        className={cn(
+          'num',
+          r.prodCorrelation < 0.7 ? 'text-pnl-positive-text' : 'text-status-warning',
+        )}
+      >
+        {fmt.ratio(r.prodCorrelation, 4)}
+      </span>
+    ),
+}
+
 export const FAILED_CHECKS: Column<RankedAlpha> = {
   key: 'failed',
   header: 'Checks Failed',

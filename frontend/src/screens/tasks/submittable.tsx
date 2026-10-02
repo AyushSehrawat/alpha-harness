@@ -7,13 +7,20 @@ import { useMemo, useState } from 'react'
 import { useRefetchOn } from '@/lib/ws'
 import { AlphaPane } from '@/screens/tasks/alpha-pane'
 import { labTasks, type RankedAlpha, type TaskAlpha } from '@/screens/tasks/api'
-import { ALPHA_ID, compareAlphas, METRIC_COLUMNS, SETTING_COLUMNS } from '@/screens/tasks/columns'
+import {
+  ALPHA_ID,
+  compareAlphas,
+  METRIC_COLUMNS,
+  PROD_CORRELATION,
+  SETTING_COLUMNS,
+} from '@/screens/tasks/columns'
 import type { Column, Sort } from '@/ui/table'
 
 /** The task's own columns, minus Checks Failed — every row here has none — plus the task. */
 const columns = (): Column<RankedAlpha>[] => [
   ALPHA_ID,
   ...SETTING_COLUMNS,
+  PROD_CORRELATION,
   ...METRIC_COLUMNS,
   {
     key: 'taskName',

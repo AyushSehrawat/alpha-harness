@@ -9,13 +9,25 @@ import asyncio
 import contextlib
 import itertools
 import json
+import math
 from typing import Annotated, Any, Literal
 
+import structlog
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 
-from ..db.models import SimStatus, SimulationRecord, Study, StudyStatus, Trial, TrialState, utcnow
+from ..brain.errors import BrainError, BrainRateLimited
+from ..db.models import (
+    BrainCache,
+    SimStatus,
+    SimulationRecord,
+    Study,
+    StudyStatus,
+    Trial,
+    TrialState,
+    utcnow,
+)
 from ..labs import scheduler, search
 from ..labs.objectives import FAILURE, OBJECTIVES, StudyNotFoundError
 from ..labs.params import (
@@ -32,6 +44,8 @@ from ..tools import power_pool
 from ..tools.submission_planner import ESCAPE
 from ..vault.yields import checks_of, clean, is_submitted, verdict
 from .deps import State, refuse
+
+log = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/lab-tasks", tags=["lab-tasks"])
 
@@ -141,6 +155,9 @@ class RankedAlpha(Out):
     #: shows it. Shown, never searched on, so they stay out of sample. Null without a test period.
     test_sharpe: float | None = None
     test_fitness: float | None = None
+    #: The highest correlation with any consultant Alpha in production, which BRAIN wants
+    #: below 0.7. Null until BRAIN has been asked: it limits these checks per hour.
+    prod_correlation: float | None = None
     feasible: bool | None
     failed_checks: list[str]
     #: Of ``failed_checks``, those that gate submission. A check BRAIN fails for a reason
@@ -467,6 +484,97 @@ async def power_pool_workflow(body: AlphaIds, state: State) -> WorkflowStarted:
     return WorkflowStarted(task_id=started)
 
 
+#: The least to wait once BRAIN still refuses a correlation check after the client's own
+#: retries: its limit is per hour, so asking again a minute later only spends another refusal.
+PROD_WAIT = 300.0
+
+
+def _prod_key(alpha_id: str) -> str:
+    # The key the Alpha page keeps BRAIN's answer under, so either one fills the other.
+    return f"correlation:prod:{alpha_id}"
+
+
+async def _prod_correlations(
+    state: State, alpha_ids: list[str], checks: dict[str, list[dict[str, Any]]]
+) -> dict[str, float]:
+    """Production Correlation where BRAIN has given one: a kept answer from its correlation
+    check, else the PROD_CORRELATION submission check."""
+    known: dict[str, float] = {}
+    for alpha_id, rows in checks.items():
+        for check in rows:
+            value = check.get("value")
+            if check.get("name") == "PROD_CORRELATION" and isinstance(value, int | float):
+                known[alpha_id] = float(value)
+    async with state.db.session() as session:
+        for chunk in itertools.batched(alpha_ids, TRIAL_CHUNK, strict=False):
+            kept = await session.execute(
+                select(BrainCache.key, func.json_extract(BrainCache.body, "$.max")).where(
+                    BrainCache.key.in_([_prod_key(a) for a in chunk])
+                )
+            )
+            for key, value in kept.tuples():
+                if isinstance(value, int | float):
+                    known[key.removeprefix(_prod_key(""))] = float(value)
+    return known
+
+
+@router.post("/prod-correlation", status_code=202)
+async def check_prod_correlation(body: AlphaIds, state: State) -> WorkflowStarted:
+    """Ask BRAIN for the Production Correlation of each unsubmitted Alpha here it has not given
+    one for, in the order sent. BRAIN limits these checks per hour, so a long list waits that
+    out and takes hours. No simulation quota."""
+    alpha_ids = list(dict.fromkeys(body.alpha_ids))
+
+    async def work(task: Task) -> str:
+        stored = await state.alphas.by_ids(alpha_ids)
+        checks = {a: checks_of(r.get("checks")) for a, r in stored.items()}
+        known = await _prod_correlations(state, list(stored), checks)
+        wanted = [
+            a for a in alpha_ids if a in stored and not is_submitted(stored[a]) and a not in known
+        ]
+        failed = 0
+        for done, alpha_id in enumerate(wanted):
+            progress = f"{done} of {len(wanted)}"
+            await state.tasks.update(task, progress=done / len(wanted), detail=progress)
+            while True:
+                try:
+                    answer = await state.endpoints.correlations(alpha_id, "prod")
+                except BrainRateLimited as exc:
+                    if not exc.retryable:
+                        raise
+                    wait = min(max(exc.retry_after or 0.0, PROD_WAIT), 3600.0)
+                    minutes = math.ceil(wait / 60)
+                    await state.tasks.update(
+                        task, detail=f"{progress} · BRAIN's hourly limit, next in {minutes} min"
+                    )
+                    await asyncio.sleep(wait)
+                    continue
+                # One Alpha BRAIN cannot check must not abandon the rest.
+                except BrainError as exc:
+                    log.warning("prod_correlation.failed", alpha_id=alpha_id, error=exc.message)
+                    failed += 1
+                    break
+                async with state.db.session() as session:
+                    await session.merge(
+                        BrainCache(key=_prod_key(alpha_id), body=answer, fetched_at=utcnow())
+                    )
+                break
+        detail = f"Production Correlation for {len(wanted) - failed} Alphas"
+        return detail + (f". BRAIN could not check {failed}" if failed else "")
+
+    try:
+        started = await state.backfill.start_job("prod-correlation", "Production Correlation", work)
+    except RuntimeError as exc:
+        raise refuse(409, "already_running", str(exc)) from exc
+    return WorkflowStarted(task_id=started)
+
+
+@router.post("/prod-correlation/stop", status_code=204)
+async def stop_prod_correlation(state: State) -> None:
+    """Stop asking BRAIN. Every answer already back is kept."""
+    state.backfill.cancel_job("prod-correlation")
+
+
 @router.post("/power-pool-correlation")
 async def power_pool_correlation_for(body: AlphaIds, state: State) -> PowerPoolCorrelation:
     """The same measurement over an explicit set of Alphas, for the panes that span tasks."""
@@ -589,6 +697,7 @@ async def top(
         )
     stored = await state.alphas.by_ids([t.alpha_id for t in best if t.alpha_id])
     current = {a: checks_of(r.get("checks")) for a, r in stored.items() if r.get("checks")}
+    prod = await _prod_correlations(state, list(stored), current)
     # No download is started from here. Reading a page is not asking for one, and these are
     # three BRAIN requests per Alpha: enough of them earns a 429, which pauses *every* caller
     # of the shared client -- the simulation engine's dispatch and polling included. Calculate
@@ -602,6 +711,7 @@ async def top(
                 "afterCostSharpe": (stored.get(r["alphaId"]) or {}).get("after_cost_t10"),
                 "testSharpe": (stored.get(r["alphaId"]) or {}).get("test_sharpe"),
                 "testFitness": (stored.get(r["alphaId"]) or {}).get("test_fitness"),
+                "prodCorrelation": prod.get(r["alphaId"]),
                 "submitted": is_submitted(stored.get(r["alphaId"])),
             }
         )
@@ -770,6 +880,7 @@ async def submittable_alphas(state: State) -> list[TaskAlpha]:
     trials.sort(key=lambda t: (t.study_id, t.number))
     stored = await state.alphas.by_ids(list({str(t.alpha_id) for t in trials}))
     current = {a: checks_of(r.get("checks")) for a, r in stored.items() if r.get("checks")}
+    prod = await _prod_correlations(state, list(stored), current)
     by_trial = {t.id: t.study_id for t in trials}
     out: list[TaskAlpha] = []
     seen: set[str] = set()
@@ -789,6 +900,7 @@ async def submittable_alphas(state: State) -> list[TaskAlpha]:
                     "afterCostSharpe": vault.get("after_cost_t10"),
                     "testSharpe": vault.get("test_sharpe"),
                     "testFitness": vault.get("test_fitness"),
+                    "prodCorrelation": prod.get(alpha_id),
                     "submitted": is_submitted(vault),
                     "taskId": task.id,
                     "taskName": task.template_name or TASK_SAMPLERS.get(task.sampler, task.sampler),
