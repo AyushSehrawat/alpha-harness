@@ -4166,6 +4166,10 @@ export interface components {
              * @default false
              */
             submitted: boolean;
+            /** Testfitness */
+            testFitness?: number | null;
+            /** Testsharpe */
+            testSharpe?: number | null;
             /** Trialid */
             trialId: number;
             /** Turnover */
@@ -4900,6 +4904,10 @@ export interface components {
             taskId: number;
             /** Taskname */
             taskName: string;
+            /** Testfitness */
+            testFitness?: number | null;
+            /** Testsharpe */
+            testSharpe?: number | null;
             /** Trialid */
             trialId: number;
             /** Turnover */

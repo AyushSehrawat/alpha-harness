@@ -137,6 +137,10 @@ class RankedAlpha(Out):
     #: day's own turnover, scaled by sqrt(years of data / 10) so fewer years prove less. Null
     #: until the daily PnL *and* turnover are stored.
     after_cost_sharpe: float | None = None
+    #: The held-out test years, from the vault: where an Alpha that only fits its train years
+    #: shows it. Shown, never searched on, so they stay out of sample. Null without a test period.
+    test_sharpe: float | None = None
+    test_fitness: float | None = None
     feasible: bool | None
     failed_checks: list[str]
     #: Of ``failed_checks``, those that gate submission. A check BRAIN fails for a reason
@@ -596,6 +600,8 @@ async def top(
                 "longCount": (stored.get(r["alphaId"]) or {}).get("long_count"),
                 "shortCount": (stored.get(r["alphaId"]) or {}).get("short_count"),
                 "afterCostSharpe": (stored.get(r["alphaId"]) or {}).get("after_cost_t10"),
+                "testSharpe": (stored.get(r["alphaId"]) or {}).get("test_sharpe"),
+                "testFitness": (stored.get(r["alphaId"]) or {}).get("test_fitness"),
                 "submitted": is_submitted(stored.get(r["alphaId"])),
             }
         )
@@ -781,6 +787,8 @@ async def submittable_alphas(state: State) -> list[TaskAlpha]:
                     "longCount": vault.get("long_count"),
                     "shortCount": vault.get("short_count"),
                     "afterCostSharpe": vault.get("after_cost_t10"),
+                    "testSharpe": vault.get("test_sharpe"),
+                    "testFitness": vault.get("test_fitness"),
                     "submitted": is_submitted(vault),
                     "taskId": task.id,
                     "taskName": task.template_name or TASK_SAMPLERS.get(task.sampler, task.sampler),

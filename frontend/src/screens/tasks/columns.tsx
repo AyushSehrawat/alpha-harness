@@ -147,6 +147,15 @@ export const METRICS: Metric[] = [
     signed: true,
     best: 'max',
   },
+  // The held-out years: an Alpha that decays shows it here, beside its full-period figures.
+  { key: 'testSharpe', label: 'Test Sharpe', show: (v) => fmt.ratio(v), signed: true, best: 'max' },
+  {
+    key: 'testFitness',
+    label: 'Test Fitness',
+    show: (v) => fmt.ratio(v),
+    signed: true,
+    best: 'max',
+  },
 ]
 
 /** A metric's figure, in profit or loss colour where its sign means something. */

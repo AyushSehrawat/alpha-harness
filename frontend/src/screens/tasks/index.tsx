@@ -82,6 +82,16 @@ const TOP_COLUMNS: Column<RankedAlpha>[] = [
     cell: (r) => <SharpeCell value={r.sharpe} />,
   },
   {
+    // The held-out years, where an Alpha that only fits its train years shows its decay.
+    key: 'testSharpe',
+    header: 'Test Sharpe',
+    width: '100px',
+    align: 'right',
+    cell: (r) => (
+      <span className={TEXT_TONE[signTone(r.testSharpe)]}>{fmt.ratio(r.testSharpe)}</span>
+    ),
+  },
+  {
     key: 'fitness',
     header: 'Fitness',
     width: '80px',
