@@ -316,6 +316,7 @@ jobs:
       - uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.version && format('v{0}', inputs.version) || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           generate_release_notes: true
           # Keeps a candidate out of /releases/latest, which is the only thing the in-app
           # updater reads. Tag `v0.1.1rc1` to build and publish without offering it to anyone.
