@@ -38,7 +38,8 @@ if TYPE_CHECKING:
 log = structlog.get_logger(__name__)
 
 PACKAGE = "alpha-harness"
-REPOSITORY = "residual-lab/alpha-harness"
+REPOSITORY_VARIABLE = "ALPHA_HARNESS_REPOSITORY"
+REPOSITORY = os.environ.get(REPOSITORY_VARIABLE) or "residual-lab/alpha-harness"
 RELEASES_URL = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 #: Where a person goes to fetch a release by hand, when the app cannot do it for them.
 RELEASES_PAGE = f"https://github.com/{REPOSITORY}/releases/latest"
