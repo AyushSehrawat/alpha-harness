@@ -104,6 +104,8 @@ class LabTask(Out):
     alpha_id: str | None = None
     markets: int | None = None
     truncation: float | None = None
+    #: Settings Sampler: truncation set per market by the Truncation Agent.
+    truncation_agent: bool = False
     nan_handling: str | None = None
     test_period: str | None = None
     #: The expression every simulation in the task ran, for the tasks that have one: the
@@ -396,6 +398,7 @@ def _task(row: Study, progress: dict[str, Any]) -> LabTask:
             "alphaId": params.get("alphaId"),
             "markets": params.get("markets"),
             "truncation": params.get("truncation"),
+            "truncationAgent": bool(params.get("truncationAgent")),
             "nanHandling": params.get("nanHandling"),
             "testPeriod": params.get("testPeriod"),
             "expression": row.template_source if row.sampler in ONE_EXPRESSION else None,

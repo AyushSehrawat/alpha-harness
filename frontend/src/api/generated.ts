@@ -3523,6 +3523,11 @@ export interface components {
             testPeriod?: string | null;
             /** Truncation */
             truncation?: number | null;
+            /**
+             * Truncationagent
+             * @default false
+             */
+            truncationAgent: boolean;
             /** Universe */
             universe: string | null;
         };
@@ -3596,6 +3601,8 @@ export interface components {
         };
         /** MarketRow */
         MarketRow: {
+            /** Agenttruncation */
+            agentTruncation: number;
             /** Coverage */
             coverage: number;
             /** Delay */
@@ -4375,6 +4382,11 @@ export interface components {
             testPeriod?: string | null;
             /** Truncation */
             truncation?: number | null;
+            /**
+             * Truncationagent
+             * @default false
+             */
+            truncationAgent: boolean;
         };
         /**
          * Say
