@@ -3800,6 +3800,8 @@ export interface components {
             classifications: string[];
             /** Correlation */
             correlation: number | null;
+            /** Datesubmitted */
+            dateSubmitted?: string | null;
             /** Delay */
             delay: number | null;
             /** Drawdown */
@@ -3821,8 +3823,12 @@ export interface components {
             margin: number | null;
             /** Name */
             name: string | null;
+            /** Prodcorrelation */
+            prodCorrelation?: number | null;
             /** Pyramids */
             pyramids: string[];
+            /** Raparent */
+            raParent?: string | null;
             /** Region */
             region: string | null;
             /** Returns */

@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 from ..brain.filters import AlphaQuery, Filter
-from ..brain.schemas import QUICK_MODE, Alpha, RecordSet
+from ..brain.schemas import QUICK_MODE, Alpha, RecordSet, SimulationType
 from .store import checks_json
 from .yields import checks_of, gating_results
 
@@ -240,7 +240,8 @@ class Backfill:
                 results = page.get("results") or []
                 alphas = [Alpha.model_validate(raw) for raw in results]
                 await self.vault.save_alphas(alphas)
-                ids.extend(a.id for a in alphas)
+                # A region-agnostic parent has no PnL of its own: its submitted children do.
+                ids.extend(a.id for a in alphas if a.type != SimulationType.RA_PARENT)
                 await self.tasks.update(task, detail=f"Listed {len(ids)} SUBMITTED Alphas")
                 if len(results) < PAGE:
                     break

@@ -5,7 +5,6 @@
  */
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
 import { CopyIcon, RefreshCwIcon } from 'lucide-react'
 import { Fragment, useState } from 'react'
 import { toast } from 'sonner'
@@ -16,12 +15,12 @@ import { CORE_METRICS, CORE_ORDER, DASH, fmt } from '@/lib/format'
 import { useLive } from '@/lib/live'
 import { useDebounced } from '@/lib/use-debounced'
 import { useRefetchOn } from '@/lib/ws'
+import { DetailSheet } from '@/screens/pool/detail'
 import {
   Button,
   Chips,
   ErrorNotice,
   Input,
-  LINK,
   Notice,
   Page,
   PageHeader,
@@ -163,6 +162,7 @@ export function PortfolioScreen() {
   const [picked, setPicked] = useState<Record<string, string[]>>({})
   /** Ticked or unticked by hand, over what the filters pick. A filter change clears it. */
   const [overrides, setOverrides] = useState<ReadonlyMap<string, boolean>>(new Map())
+  const [openAlpha, setOpenAlpha] = useState<string | null>(null)
   const [costText, setCostText] = useState('5')
   const cost = useDebounced(Math.min(100, Math.max(0, Number(costText) || 0)), 400)
 
@@ -294,9 +294,11 @@ export function PortfolioScreen() {
           rows={rows}
           selected={new Set(included)}
           onSelect={(id, on) => setOverrides((prev) => new Map(prev).set(id, on))}
+          onOpen={setOpenAlpha}
           loading={members.isPending}
         />
       </Panel>
+      <DetailSheet alphaId={openAlpha} onClose={() => setOpenAlpha(null)} />
 
       {ids.length > 0 && !result ? (
         <Skeleton className="h-96" label="Combining Alphas" />
@@ -406,6 +408,9 @@ export function PortfolioScreen() {
   )
 }
 
+/** The classification the backend gives a region-agnostic child. */
+const RA_CLASS = 'Region Agnostic'
+
 function FacetBlock({
   facet,
   members,
@@ -421,10 +426,20 @@ function FacetBlock({
 }) {
   const counts = new Map<string, number>()
   for (const m of members) for (const v of facet.values(m)) counts.set(v, (counts.get(v) ?? 0) + 1)
+  // Region Agnostic counts what was submitted: one parent, however many of its children
+  // passed. Choosing it still selects every child, the Alphas that carry the class.
+  const children = counts.get(RA_CLASS)
+  const parents = new Set(members.flatMap((m) => (m.raParent ? [m.raParent] : []))).size
+  if (children !== undefined) counts.set(RA_CLASS, parents)
   const items = [...counts.entries()]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .map(([v, n]) => ({
       value: v,
+      ...(v === RA_CLASS && children !== undefined
+        ? {
+            title: `${parents} Region Agnostic Alpha${parents === 1 ? '' : 's'} · ${children} child Alpha${children === 1 ? '' : 's'}`,
+          }
+        : {}),
       label:
         size === 'lg' ? (
           <span className="flex w-full items-center justify-between gap-3">
@@ -530,20 +545,67 @@ function imbalanceOf(m: PortfolioMember): number | null {
 }
 
 function sortValue(m: PortfolioMember, key: string): number | null {
+  // The Alpha column sorts by when it was submitted.
+  if (key === 'id') return m.dateSubmitted ? Date.parse(m.dateSubmitted) : null
   if (key === 'imbalance') return imbalanceOf(m)
   const value = (m as unknown as Record<string, unknown>)[key]
   return typeof value === 'number' ? value : null
+}
+
+interface FamilyShape {
+  parent: string
+  /** Where the row sits in a run of its family's rows, as the table shows them. */
+  first: boolean
+  last: boolean
+}
+
+/**
+ * A region-agnostic family's rows, joined: BRAIN submits a parent's passing children together,
+ * so they share a parent and a submission time and sit next to each other. A sort that
+ * splits them gives each piece its own block.
+ */
+function familyShapes(rows: PortfolioMember[]): Map<string, FamilyShape> {
+  const shapes = new Map<string, FamilyShape>()
+  rows.forEach((m, i) => {
+    if (!m.raParent) return
+    shapes.set(m.alphaId, {
+      parent: m.raParent,
+      first: rows[i - 1]?.raParent !== m.raParent,
+      last: rows[i + 1]?.raParent !== m.raParent,
+    })
+  })
+  return shapes
+}
+
+/**
+ * A family's rows drawn as one block: a tinted box opening on its first row and closing on
+ * its last. The edges are an overlay rather than the row's own border, which would narrow the
+ * row and shift its columns out of line with every other row's.
+ */
+function familyRow(shape: FamilyShape | undefined): string | undefined {
+  if (!shape) return undefined
+  return cn(
+    'bg-primary-subtle hover:bg-primary-subtle',
+    'after:pointer-events-none after:absolute after:inset-0 after:border-x after:border-primary/45',
+    shape.first && 'rounded-t-md after:rounded-t-md after:border-t',
+    shape.last
+      ? 'rounded-b-md border-b-transparent after:rounded-b-md after:border-b'
+      : 'border-b-primary/15',
+  )
 }
 
 function MembersTable({
   rows,
   selected,
   onSelect,
+  onOpen,
   loading,
 }: {
   rows: PortfolioMember[]
   selected: ReadonlySet<string>
   onSelect: (id: string, on: boolean) => void
+  /** Show the row's Alpha in the side pane. */
+  onOpen: (alphaId: string) => void
   loading: boolean
 }) {
   const [sort, setSort] = useState<Sort | null>(null)
@@ -557,16 +619,15 @@ function MembersTable({
         return sort.desc ? y - x : x - y
       })
     : rows
+  const families = familyShapes(sorted)
   const columns: Column<PortfolioMember>[] = [
     {
       key: 'id',
-      header: 'Alpha',
+      header: <span title="Sorts by the date it was submitted">Alpha</span>,
       width: '104px',
-      cell: (m) => (
-        <Link to="/alpha/$alphaId" params={{ alphaId: m.alphaId }} className={LINK}>
-          {m.alphaId}
-        </Link>
-      ),
+      sortable: true,
+      // Plain text: the row itself opens the Alpha, as every Alpha table does.
+      cell: (m) => <span className="num text-ink">{m.alphaId}</span>,
     },
     {
       key: 'classifications',
@@ -624,8 +685,8 @@ function MembersTable({
       key: 'correlation',
       sortable: true,
       header: (
-        <span title="Highest daily PnL correlation with any other submitted Alpha, over the last 4 years">
-          Correlation
+        <span title="Highest daily PnL correlation with any other Alpha in your portfolio, over the last 4 years">
+          Portfolio Correlation
         </span>
       ),
       width: 'minmax(96px,1fr)',
@@ -648,6 +709,30 @@ function MembersTable({
           </span>
         ),
     },
+    {
+      key: 'prodCorrelation',
+      sortable: true,
+      header: (
+        <span title="BRAIN's Production Correlation for the Alpha, as its Submitted Alphas page shows it">
+          Production Correlation
+        </span>
+      ),
+      width: 'minmax(112px,1fr)',
+      align: 'right',
+      cell: (m) =>
+        m.prodCorrelation == null ? (
+          DASH
+        ) : (
+          <span
+            className={cn(
+              'num',
+              m.prodCorrelation >= 0.7 ? 'text-status-warning' : 'text-pnl-positive-text',
+            )}
+          >
+            {fmt.ratio(m.prodCorrelation, 4)}
+          </span>
+        ),
+    },
   ]
   return (
     <DataTable
@@ -659,6 +744,8 @@ function MembersTable({
       onSort={setSort}
       selected={selected}
       onSelect={onSelect}
+      onRowClick={(m) => onOpen(m.alphaId)}
+      rowClass={(m) => familyRow(families.get(m.alphaId))}
       loading={loading}
       maxHeight="28rem"
       empty="No SUBMITTED Alpha matches these filters."

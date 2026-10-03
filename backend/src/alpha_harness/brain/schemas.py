@@ -257,6 +257,10 @@ class SampleStats(BrainModel):
     fitness: float | None = None
     sharpe: float | None = None
     start_date: str | None = None
+    #: On a submitted Alpha only: BRAIN's Production and Self-Correlation, as its Submitted
+    #: Alphas page shows them.
+    prod_correlation: float | None = None
+    self_correlation: float | None = None
     checks: list[Check] = Field(default_factory=list)
 
 

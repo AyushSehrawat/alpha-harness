@@ -149,6 +149,9 @@ ALTER TABLE alpha ADD COLUMN IF NOT EXISTS max_position VARCHAR;
 -- Quick mode alphas carry every performance metric and none of the submission checks,
 -- so nothing in `checks` reveals that BRAIN will never take one.
 ALTER TABLE alpha ADD COLUMN IF NOT EXISTS simulation_mode VARCHAR;
+-- A submitted Alpha's own Production and Self-Correlation, as BRAIN lists it.
+ALTER TABLE alpha ADD COLUMN IF NOT EXISTS prod_correlation DOUBLE;
+ALTER TABLE alpha ADD COLUMN IF NOT EXISTS self_correlation DOUBLE;
 ALTER TABLE alpha ADD COLUMN IF NOT EXISTS tags VARCHAR;
 ALTER TABLE alpha ADD COLUMN IF NOT EXISTS classifications VARCHAR;
 ALTER TABLE alpha ADD COLUMN IF NOT EXISTS pyramids VARCHAR;
@@ -287,6 +290,8 @@ ALPHA_COLUMNS = (
     "is_pnl",
     "end_date",
     "simulation_mode",
+    "prod_correlation",
+    "self_correlation",
 )
 
 #: Written only with an Alpha that has a ``train`` block (see ``AlphaVault.save_alphas``).
