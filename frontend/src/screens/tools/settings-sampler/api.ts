@@ -19,6 +19,7 @@ export interface MarketPick {
 export interface Holding {
   decay?: number
   truncation?: number
+  pasteurization?: 'ON' | 'OFF'
   nanHandling?: 'ON' | 'OFF'
   /** `P0Y0M0D` to `P6Y0M0D`, BRAIN's own bounds. */
   testPeriod?: string

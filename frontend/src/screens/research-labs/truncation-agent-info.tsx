@@ -92,20 +92,6 @@ export function TruncationAgentInfo() {
         </table>
       </InfoSection>
 
-      <InfoSection title="The Alpha you start from">
-        <p>You can start a sweep from one of your Alphas.</p>
-        <p>
-          The sweep then has one simulation with all the settings of that Alpha. A star shows this
-          simulation in the results.
-        </p>
-        <p>
-          The agent does not change the Truncation of this simulation. It keeps the Truncation of
-          your Alpha.
-        </p>
-        <p>Thus you can compare each market with your Alpha as it is now.</p>
-        <p>If you start from an expression, the sweep has no starred simulation.</p>
-      </InfoSection>
-
       <InfoSection title="When to use Single Value">
         <p>Use Single Value to give all markets the same Truncation.</p>
         <p>Use Single Value to compare markets with no other change.</p>

@@ -55,7 +55,7 @@ class RegionPlan(Out):
     universes: list[str]
     neutralizations: list[str]
     pairs: list[Pair]
-    #: Whether BRAIN accepts Max Position here, measured rather than assumed.
+    #: Whether BRAIN accepts Max Position here.
     position_available: bool
     #: Simulations of the day's allowance one run here uses: 4 in All Regions, else 1.
     cost: int
@@ -76,6 +76,7 @@ class SourceSettings(Out):
     neutralization: str | None
     decay: int | None
     truncation: float | None
+    pasteurization: str
     nan_handling: str
     test_period: str
     max_trade: str
@@ -106,6 +107,7 @@ class PreviewRequest(BaseModel):
     #: there is no Alpha.
     decay: int | None = Field(default=None, ge=0, le=512)
     truncation: float | None = Field(default=None, ge=0, le=1)
+    pasteurization: Literal["ON", "OFF"] | None = None
     nan_handling: Literal["ON", "OFF"] | None = Field(default=None, alias="nanHandling")
     #: ``P{years}Y{months}M0D``, the shape BRAIN's own field takes; its bounds are
     #: ``P0Y0M0D`` to ``P6Y0M0D``.
@@ -128,6 +130,7 @@ class PreviewRequest(BaseModel):
             expression=self.expression.strip() if self.expression else None,
             decay=self.decay,
             truncation=self.truncation,
+            pasteurization=self.pasteurization,
             nan_handling=self.nan_handling,
             test_period=self.test_period,
         )
@@ -247,7 +250,7 @@ async def add_task(body: SampleRequest, state: State) -> AddedTask:
         batch_size=(body.cores + 1) * MAX_BATCH,
         template_source=found["expression"],
         template_name=f"Settings Sampler · {body.alpha_id or 'Expression'}",
-        seeds=settings_sampler.seed_trials(requests, has_source=bool(body.alpha_id)),
+        seeds=settings_sampler.seed_trials(requests),
     )
 
 
@@ -519,5 +522,5 @@ async def breaker_task(body: BreakerRequest, state: State) -> AddedTask:
         batch_size=(body.cores + 1) * MAX_BATCH,
         template_source=found["expression"],
         template_name=f"Correlation Breaker · {body.alpha_id}",
-        seeds=settings_sampler.seed_trials(requests, has_source=False),
+        seeds=settings_sampler.seed_trials(requests),
     )

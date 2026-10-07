@@ -680,7 +680,6 @@ def ranked(
                 "refusedBy": [c for c in failed if str(c).upper() not in IGNORED_CHECKS],
                 "submittable": submittable(result),
                 "pending": still_judging(result),
-                "source": bool((t.params or {}).get("source")),
                 "quick": bool(result.get("quick")),
                 "errored": "ERROR" in gating_results(result.get("checks") or []),
             }

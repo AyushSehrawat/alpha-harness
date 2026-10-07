@@ -77,14 +77,22 @@ interface Live {
   onChange: (text: string) => void
 }
 
-/** VS Code's Dark+ colours, and its default bracket pair colours. */
+/** One colour per kind of name; the rest is VS Code's Dark+ and its bracket pair colours. */
+const COLOUR = {
+  operator: '#dcdcaa',
+  matrix: '#9cdcfe',
+  vector: '#4ec9b0',
+  group: '#ffab70',
+  variable: '#c586c0',
+}
+
 const darkPlus = HighlightStyle.define([
-  { tag: t.function(t.variableName), color: '#dcdcaa' },
-  { tag: t.variableName, color: '#9cdcfe' },
-  { tag: t.propertyName, color: '#9cdcfe', fontStyle: 'italic' },
-  { tag: local, color: '#4fc1ff' },
-  { tag: group, color: '#4ec9b0' },
-  { tag: variable, color: '#c586c0', fontWeight: '600' },
+  { tag: t.function(t.variableName), color: COLOUR.operator },
+  { tag: t.variableName, color: COLOUR.matrix },
+  { tag: t.propertyName, color: '#9d9d9d', fontStyle: 'italic' },
+  { tag: local, color: COLOUR.variable },
+  { tag: group, color: COLOUR.group },
+  { tag: variable, color: COLOUR.variable, fontWeight: '600' },
   {
     tag: hole,
     color: '#f48771',
@@ -127,7 +135,9 @@ const theme = EditorView.theme(
       outline: '1px solid #888888',
     },
     '&.cm-focused .cm-nonmatchingBracket': { color: '#f44747' },
-    '.cm-fx-local, .cm-fx-local *': { color: '#4fc1ff' },
+    '.cm-fx-local, .cm-fx-local *': { color: COLOUR.variable },
+    '.cm-fx-vector, .cm-fx-vector *': { color: COLOUR.vector },
+    '.cm-fx-group, .cm-fx-group *': { color: COLOUR.group },
     '.cm-tooltip': {
       backgroundColor: '#252526',
       color: '#cccccc',
@@ -167,32 +177,73 @@ const theme = EditorView.theme(
 
 // --- reading the document -------------------------------------------------------------
 
-/** A name's uses coloured like its definition, as VS Code colours a local variable. */
-const localNames = ViewPlugin.fromClass(
-  class {
-    decorations: DecorationSet
-    constructor(view: EditorView) {
-      this.decorations = marked(view)
-    }
-    update(update: ViewUpdate) {
-      if (update.docChanged) this.decorations = marked(update.view)
-    }
-  },
-  { decorations: (plugin) => plugin.decorations },
-)
+/** Redraws the names once a field's type arrives or the market changes. */
+const recolour = StateEffect.define<null>()
 
-const localMark = Decoration.mark({ class: 'cm-fx-local' })
-
-function marked(view: EditorView): DecorationSet {
-  const blank = code(view.state.doc.toString())
-  const names = locals(blank)
-  const builder = new RangeSetBuilder<Decoration>()
-  if (names.size === 0) return builder.finish()
-  for (const m of blank.matchAll(NAMES)) {
-    if (names.has(m[0])) builder.add(m.index, m.index + m[0].length, localMark)
-  }
-  return builder.finish()
+/**
+ * Colours a local's uses like its definition, and a field by its catalog type, which the text
+ * alone cannot tell: a VECTOR or GROUP field reads differently from a MATRIX one.
+ */
+function nameColours(live: { current: Live }) {
+  return ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet
+      gone = false
+      readonly view: EditorView
+      constructor(view: EditorView) {
+        this.view = view
+        this.decorations = this.marked()
+      }
+      update(update: ViewUpdate) {
+        if (
+          update.docChanged ||
+          update.transactions.some((tr) => tr.effects.some((e) => e.is(recolour)))
+        )
+          this.decorations = this.marked()
+      }
+      destroy() {
+        this.gone = true
+      }
+      marked(): DecorationSet {
+        const blank = code(this.view.state.doc.toString())
+        const names = locals(blank)
+        const scope = live.current.scope
+        const builder = new RangeSetBuilder<Decoration>()
+        for (const m of blank.matchAll(NAMES)) {
+          const name = m[0]
+          let mark: Decoration | undefined
+          if (names.has(name)) mark = MARK.local
+          else if (scope && !GROUPS.has(name) && !WORDS.includes(name.toLowerCase()))
+            mark = this.fieldMark(scope, name)
+          if (mark) builder.add(m.index, m.index + name.length, mark)
+        }
+        return builder.finish()
+      }
+      fieldMark(scope: Scope, name: string): Decoration | undefined {
+        const key = `${scope.region}|${scope.delay}|${scope.universe}|${name}`
+        if (!typed.has(key)) {
+          typed.set(key, null)
+          void lookUp(scope, name).then((field) => {
+            typed.set(key, field?.field_type ?? null)
+            if (field && !this.gone) this.view.dispatch({ effects: recolour.of(null) })
+          })
+        }
+        const type = typed.get(key)
+        return type === 'VECTOR' ? MARK.vector : type === 'GROUP' ? MARK.group : undefined
+      }
+    },
+    { decorations: (plugin) => plugin.decorations },
+  )
 }
+
+const MARK = {
+  local: Decoration.mark({ class: 'cm-fx-local' }),
+  vector: Decoration.mark({ class: 'cm-fx-vector' }),
+  group: Decoration.mark({ class: 'cm-fx-group' }),
+}
+
+/** A field's type by market and name, once its lookup has answered. */
+const typed = new Map<string, string | null>()
 
 /** The word under `pos`, `$` included. */
 function wordAt(view: EditorView, pos: number): { from: number; to: number; text: string } | null {
@@ -321,9 +372,6 @@ async function hover(view: EditorView, pos: number, live: Live): Promise<Tooltip
         'cm-fx-kind',
       ),
       field.description ? element('p', field.description) : null,
-      field.coverage != null
-        ? element('span', `Coverage ${fmt.pct(field.coverage, 0)}`, 'cm-fx-kind')
-        : null,
     ]),
   )
 }
@@ -496,7 +544,7 @@ const outside = Annotation.define<boolean>()
  */
 const relint = StateEffect.define<null>()
 
-function extensions(live: { current: Live }) {
+function extensions(live: { current: Live }, label: string) {
   return [
     lineNumbers(),
     highlightActiveLineGutter(),
@@ -514,7 +562,7 @@ function extensions(live: { current: Live }) {
     rectangularSelection(),
     highlightActiveLine(),
     highlightSelectionMatches(),
-    localNames,
+    nameColours(live),
     hoverTooltip((view, pos) => hover(view, pos, live.current), { hoverTime: 300 }),
     linter((view) => diagnose(view, live.current), {
       delay: 250,
@@ -531,7 +579,7 @@ function extensions(live: { current: Live }) {
       ...lintKeymap,
     ]),
     EditorView.lineWrapping,
-    EditorView.contentAttributes.of({ 'aria-label': 'Template', spellcheck: 'false' }),
+    EditorView.contentAttributes.of({ 'aria-label': label, spellcheck: 'false' }),
     EditorView.updateListener.of((update) => {
       if (update.docChanged && !update.transactions.some((tr) => tr.annotation(outside)))
         live.current.onChange(update.state.doc.toString())
@@ -540,12 +588,17 @@ function extensions(live: { current: Live }) {
   ]
 }
 
-export function TemplateEditor({ value, ...rest }: Live & { value: string }) {
+export function TemplateEditor({
+  value,
+  label = 'Template',
+  ...rest
+}: Live & { value: string; label?: string }) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const live = useRef<Live>(rest)
   live.current = rest
   const first = useRef(value)
+  const name = useRef(label)
 
   useEffect(() => {
     if (!host.current) return
@@ -553,7 +606,7 @@ export function TemplateEditor({ value, ...rest }: Live & { value: string }) {
       parent: host.current,
       state: EditorState.create({
         doc: first.current,
-        extensions: extensions(live),
+        extensions: extensions(live, name.current),
       }),
     })
     view.current = editor
@@ -583,6 +636,12 @@ export function TemplateEditor({ value, ...rest }: Live & { value: string }) {
     editor.dispatch({ effects: relint.of(null) })
     forceLinting(editor)
   }, [problems, reference])
+
+  const market = rest.scope && `${rest.scope.region}|${rest.scope.delay}|${rest.scope.universe}`
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the colours read the scope through `live`
+  useEffect(() => {
+    view.current?.dispatch({ effects: recolour.of(null) })
+  }, [market])
 
   return <div ref={host} className="overflow-hidden rounded-md border border-hairline-strong" />
 }

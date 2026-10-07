@@ -384,8 +384,9 @@ def data_fields(tree: Node, *, grouping: bool = False) -> list[str]:
     """
     nodes = walk(tree)
     assigned = {n.value for _, n in nodes if n.kind == "assign"}
-    return sorted(
-        {
+    # In order of first appearance, left to right, as the reader wrote them.
+    return list(
+        dict.fromkeys(
             n.value
             for path, n in nodes
             if n.kind == "name"
@@ -393,7 +394,7 @@ def data_fields(tree: Node, *, grouping: bool = False) -> list[str]:
             and n.value not in assigned
             and (grouping or n.value not in GROUPING)
             and n.value.lower() not in ("true", "false", "nan")
-        }
+        )
     )
 
 

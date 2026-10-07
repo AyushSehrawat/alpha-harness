@@ -81,7 +81,7 @@ let syncedThisSession = false
  * the same fields, bar a few, so the one with the most stands for all. `null` when it is not
  * downloaded, `undefined` until that is known.
  */
-function useMarketScope(region: string, delay: number): Scope | null | undefined {
+export function useMarketScope(region: string, delay: number): Scope | null | undefined {
   const scopes = useQuery({ queryKey: ['catalog', 'scopes'], queryFn: catalog.scopes })
   return useMemo(() => {
     if (!scopes.data) return undefined

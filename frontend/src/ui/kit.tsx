@@ -254,13 +254,15 @@ export function Fieldset({
   legend,
   hint,
   children,
+  className,
 }: {
   legend: ReactNode
   hint?: ReactNode
   children: ReactNode
+  className?: string
 }) {
   return (
-    <fieldset className="flex min-w-0 flex-col gap-1.5">
+    <fieldset className={cn('flex min-w-0 flex-col gap-1.5', className)}>
       <legend className="text-caption font-medium float-left w-full text-ink-muted">
         {legend}
       </legend>
@@ -729,9 +731,7 @@ export function Empty({
       <p role="status" className="text-body font-medium text-balance break-words text-ink">
         {title}
       </p>
-      {children && (
-        <div className="max-w-md text-body-compact text-pretty text-ink-subtle">{children}</div>
-      )}
+      {children && <div className="text-body-compact text-pretty text-ink-subtle">{children}</div>}
     </div>
   )
 }

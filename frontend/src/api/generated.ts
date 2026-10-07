@@ -4120,6 +4120,8 @@ export interface components {
             expression?: string | null;
             /** Nanhandling */
             nanHandling?: ("ON" | "OFF") | null;
+            /** Pasteurization */
+            pasteurization?: ("ON" | "OFF") | null;
             /** Testperiod */
             testPeriod?: string | null;
             /** Truncation */
@@ -4273,11 +4275,6 @@ export interface components {
             sharpe: number | null;
             /** Shortcount */
             shortCount?: number | null;
-            /**
-             * Source
-             * @default false
-             */
-            source: boolean;
             /** Submittable */
             submittable: boolean;
             /**
@@ -4391,6 +4388,8 @@ export interface components {
             neutralizations?: string[];
             /** Pairs */
             pairs?: components["schemas"]["PairPick"][];
+            /** Pasteurization */
+            pasteurization?: ("ON" | "OFF") | null;
             /** Testperiod */
             testPeriod?: string | null;
             /** Truncation */
@@ -4676,6 +4675,8 @@ export interface components {
             nanHandling: string;
             /** Neutralization */
             neutralization: string | null;
+            /** Pasteurization */
+            pasteurization: string;
             /** Region */
             region: string | null;
             /** Testperiod */
@@ -5014,11 +5015,6 @@ export interface components {
             sharpe: number | null;
             /** Shortcount */
             shortCount?: number | null;
-            /**
-             * Source
-             * @default false
-             */
-            source: boolean;
             /** Submittable */
             submittable: boolean;
             /**

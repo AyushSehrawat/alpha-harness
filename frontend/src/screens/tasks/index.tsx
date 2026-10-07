@@ -10,7 +10,6 @@ import {
   PencilIcon,
   PlayIcon,
   SquareIcon,
-  StarIcon,
   Trash2Icon,
   TriangleAlertIcon,
 } from 'lucide-react'
@@ -153,7 +152,7 @@ const setting = (key: string, header: string, width: string): Column<RankedAlpha
 
 /**
  * A Settings Sampler row is only ever the same expression, so the settings lead instead and
- * Sharpe closes. The Alpha the sweep started from is starred as the reference point.
+ * Sharpe closes.
  */
 const SAMPLER_COLUMNS: Column<RankedAlpha>[] = [
   {
@@ -162,7 +161,6 @@ const SAMPLER_COLUMNS: Column<RankedAlpha>[] = [
     width: '120px',
     cell: (r) => (
       <span className="num flex items-center gap-1.5 text-ink-subtle">
-        {r.source && <StarIcon className="size-3 shrink-0 fill-primary text-primary" />}
         {r.number}
         <QuickBadge alpha={r} />
       </span>
@@ -657,11 +655,8 @@ function TaskDetail({
     queryFn: () => labTasks.top(task.id, Math.min(Math.max(task.target, 50), 5000)),
   })
   useRefetchOn('studies', ['lab-task-top', task.id], 10_000)
-  // The Alpha the sweep came from leads and is never ranked: it is the reference, not a
-  // result. Everything else arrives sorted on the objective already.
+  // Arrives sorted on the objective already.
   const found = top.data ?? []
-  const source = found.find((r) => r.source)
-  const rows = source ? [source, ...found.filter((r) => r !== source)] : found
   // Red only where a check refuses the Alpha. A row still waiting on BRAIN is green like a
   // passing one: nothing has said no, which is the question this pane answers. Whether it is
   // submittable *yet* is the Submittable count's job, and that one does hold pending back.
@@ -673,10 +668,7 @@ function TaskDetail({
       : awaitingFull(r)
         ? ''
         : 'bg-pnl-negative-tint'
-  const rowClass = (r: RankedAlpha) =>
-    // The source keeps its verdict, and a heavier rule under it so the ranking below reads
-    // as its own block.
-    r.source ? `${verdict(r)} border-b-2 border-b-hairline-strong` : verdict(r)
+  const rowClass = verdict
 
   const done = task.status === 'COMPLETE' || task.status === 'FAILED'
   // Three outcomes and nothing else. Submittable: nothing has refused it, pending checks
@@ -706,8 +698,8 @@ function TaskDetail({
           ? `${task.universe ?? DASH} · ${fmt.int(task.seeds)} seeds · Population ${fmt.int(task.population)} · Mutation ${fmt.pct(task.mutationRate, 0)}`
           : `Decay ${task.decay ?? DASH} · ${fmt.int(task.fields)} fields`
   const copyResults = () =>
-    navigator.clipboard.writeText(resultsMarkdown(task, rows)).then(
-      () => toast.success(`Copied ${fmt.int(rows.length)} results`),
+    navigator.clipboard.writeText(resultsMarkdown(task, found)).then(
+      () => toast.success(`Copied ${fmt.int(found.length)} results`),
       (e: unknown) => toast.error(errorMessage(e)),
     )
 
@@ -717,7 +709,7 @@ function TaskDetail({
       description={description}
       actions={
         <>
-          <Button size="sm" variant="ghost" disabled={!rows.length} onClick={copyResults}>
+          <Button size="sm" variant="ghost" disabled={!found.length} onClick={copyResults}>
             <CopyIcon />
             Copy Results
           </Button>
@@ -813,7 +805,7 @@ function TaskDetail({
         </div>
         <DataTable
           label={task.lab === SETTINGS_SAMPLER ? 'Results' : 'Top Alphas'}
-          rows={rows}
+          rows={found}
           columns={topColumns(task)}
           rowKey={(r) => String(r.trialId)}
           onRowClick={(r) => r.alphaId && onOpenAlpha(r.alphaId)}

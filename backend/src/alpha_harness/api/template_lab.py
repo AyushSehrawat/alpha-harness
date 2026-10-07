@@ -38,7 +38,6 @@ from ..labs.launch import (
 )
 from ..labs.params import TEMPLATE_SAMPLER, TemplateParams
 from ..schemas import Out
-from ..tools import settings_sampler
 from .deps import State, refuse
 
 router = APIRouter(prefix="/api/template-lab", tags=["template-lab"])
@@ -373,6 +372,8 @@ async def _stats(
         if market
         else {}
     )
+    # A field this market lacks still has a dataset, as long as every market agrees on it.
+    datasets |= await state.queries.sole_datasets([n for n in names if n not in datasets])
     found: list[dict[str, Any]] = []
     for start in range(0, len(items), CHUNK):
         part = slice(start, start + CHUNK)
@@ -560,7 +561,7 @@ async def _plan(body: TemplateTask, state: Any) -> dict[str, Any]:
     neutralizations = [n for n in choices(legal, "neutralization") if n in body.neutralizations]
     if not neutralizations:
         settings_problems.append(NO_NEUTRALIZATION)
-    position = schema is not None and body.region in await settings_sampler.position_regions(state)
+    position = template.takes_max_position(body.region)
     investable = [n for n in template.INVESTABILITY if n != "max_position" or position]
     investability = [n for n in investable if n in body.investability]
     if not investability:

@@ -197,8 +197,6 @@ class RankedAlpha(Out):
     #: Submittable only because a check has not answered yet. The Submission Planner waits for
     #: these rather than planning a permanent submission on them.
     pending: bool = False
-    #: The Alpha the sweep started from, kept first as its reference point.
-    source: bool = False
     #: Simulated in Quick mode: the figures stand, but BRAIN submits it only once it is
     #: simulated again in Full. The task does that for every one that passes, and the Full
     #: Alpha replaces it here once it is back.

@@ -59,6 +59,28 @@ INVESTABILITY: dict[str, tuple[str, str]] = {
 #: Where an Alpha without Max Trade has to keep 70% of its Sharpe under investability
 #: constraints to be submitted: BRAIN's Investability Sharpe test.
 MAX_TRADE_REGIONS = frozenset({"ASI", "JPN", "HKG", "TWN", "KOR"})
+#: The Investability each region takes. BRAIN's settings schema offers Max Position everywhere
+#: but refuses it outside the first five, for every delay and universe. A region missing here
+#: is offered no Max Position.
+REGION_INVESTABILITY: dict[str, tuple[str, ...]] = {
+    "USA": ("none", "max_trade", "max_position"),
+    "EUR": ("none", "max_trade", "max_position"),
+    "GLB": ("none", "max_trade", "max_position"),
+    "ASI": ("none", "max_trade", "max_position"),
+    "ALL": ("none", "max_trade", "max_position"),
+    "JPN": ("none", "max_trade"),
+    "CHN": ("none", "max_trade"),
+    "DEU": ("none", "max_trade"),
+    "GBR": ("none", "max_trade"),
+    "IND": ("none", "max_trade"),
+    "AMR": ("none", "max_trade"),
+}
+
+
+def takes_max_position(region: str) -> bool:
+    return "max_position" in REGION_INVESTABILITY.get(region, ())
+
+
 MAX_TEXT = 8000
 MAX_VARIABLES = 16
 MAX_VALUES = 64
