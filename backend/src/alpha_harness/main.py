@@ -147,11 +147,14 @@ def create_app() -> FastAPI:
         """Refuse requests another page started, and writes that lack the UI's custom header.
 
         CORS only hides the response of a "simple" cross-site request; it does not stop it
-        running, and some GETs spend BRAIN quota, so Sec-Fetch-Site guards every method
-        (same-origin from the Vite proxy, none from a typed URL). The custom header covers
-        writes from clients that send no Sec-Fetch-Site.
+        running, and some GETs spend BRAIN quota, so Sec-Fetch-Site guards every API method
+        (same-origin from the Vite proxy, none from a typed URL). The page itself is served to
+        any navigation, since following a link or a proxy's login redirect is never same-origin.
+        The custom header covers writes from clients that send no Sec-Fetch-Site.
         """
-        if request.headers.get("sec-fetch-site", "none") not in {"same-origin", "none"}:
+        if request.url.path.startswith("/api") and request.headers.get(
+            "sec-fetch-site", "none"
+        ) not in {"same-origin", "none"}:
             return JSONResponse(
                 {"detail": {"code": "forbidden", "message": "Requests must come from the app."}},
                 status_code=403,
